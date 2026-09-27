@@ -40,4 +40,5 @@ dependencies {
     implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.jackson.module.kotlin)
     implementation(libs.kotlin.reflect)
+    implementation(libs.spring.boot.starter.websocket) // подключаем плагин веб сокетов
 }

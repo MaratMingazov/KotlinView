@@ -18,3 +18,4 @@ spring-dependency-management = { id = "io.spring.dependency-management", version
 spring-boot-starter-webmvc = { module = "org.springframework.boot:spring-boot-starter-webmvc" } # HTTP-server и REST
 jackson-module-kotlin = { module = "tools.jackson.module:jackson-module-kotlin" } # Kotlin-классы в JSON и обратно
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" } # позволяет Spring и Jackson читать Kotlin-классы, включая то, чего не видно на уровне Java
+spring-boot-starter-websocket = { module = "org.springframework.boot:spring-boot-starter-websocket" } # Сервер умеет общаться через веб сокеты
