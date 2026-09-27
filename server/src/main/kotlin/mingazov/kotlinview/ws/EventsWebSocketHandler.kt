@@ -6,6 +6,7 @@ import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketSession
 import org.springframework.web.socket.handler.TextWebSocketHandler
 import tools.jackson.databind.json.JsonMapper
+import mingazov.kotlinview.core.PROTOCOL_VERSION
 
 data class Envelope(
     val seq: Long,
@@ -36,7 +37,7 @@ class EventsWebSocketHandler(
             seq = 0,
             ts = System.currentTimeMillis(),
             type = "SNAPSHOT",
-            data = SnapshotData(protocolVersion = 1, executors = emptyList()),
+            data = SnapshotData(protocolVersion = PROTOCOL_VERSION, executors = emptyList()),
         )
         session.sendMessage(TextMessage(jsonMapper.writeValueAsString(snapshot)))
     }

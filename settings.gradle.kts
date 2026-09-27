@@ -17,6 +17,7 @@ rootProject.name = "kotlin-view" // IntelliJ: под этим именем пр�
 
 
 include("server") // gradle знает что у нас есть модуль server
+include("algorithms") // gradle знает что у нас есть модуль algorithms
 
 // откуда качать библиотеки
 dependencyResolutionManagement {
