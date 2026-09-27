@@ -4,7 +4,17 @@
 # Без этого файла версии пришлось бы прописывать в  build.gradle.kts каждого модуля
 
 [versions]
-kotlin = "2.4.20"
+kotlin = "2.3.21"
+spring-boot = "4.1.1"
+spring-dependency-management = "1.1.7"
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-spring = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotlin" }
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
+spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "spring-dependency-management" }
+
+[libraries]
+spring-boot-starter-webmvc = { module = "org.springframework.boot:spring-boot-starter-webmvc" } # HTTP-server и REST
+jackson-module-kotlin = { module = "tools.jackson.module:jackson-module-kotlin" } # Kotlin-классы в JSON и обратно
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" } # позволяет Spring и Jackson читать Kotlin-классы, включая то, чего не видно на уровне Java
