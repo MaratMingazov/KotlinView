@@ -34,9 +34,10 @@ kotlin {
         freeCompilerArgs.addAll("-Xjsr305=strict") //  аннотации @Nullable/@NonNull из Java-кода Spring Kotlin будет понимать как String? и String
     }
 
-    dependencies {
-        implementation(libs.spring.boot.starter.webmvc)
-        implementation(libs.jackson.module.kotlin)
-        implementation(libs.kotlin.reflect)
-    }
+}
+
+dependencies {
+    implementation(libs.spring.boot.starter.webmvc)
+    implementation(libs.jackson.module.kotlin)
+    implementation(libs.kotlin.reflect)
 }
