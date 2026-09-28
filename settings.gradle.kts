@@ -11,6 +11,13 @@
  *    ws.onmessage = e => console.log(e.data);
  *    ws.close()
  *
+ *   curl -i -X POST localhost:8080/api/queues -H 'Content-Type: application/json' -d '{"capacity":2}'
+ *   curl -i -X POST localhost:8080/api/queues/queue-1/offer
+ *   curl -i -X POST localhost:8080/api/queues/queue-1/offer
+ *   curl -i -X POST localhost:8080/api/queues/queue-1/offer      # не влезет → accepted: false
+ *   curl -i -X POST localhost:8080/api/queues/queue-1/poll
+ *   curl -i -X POST localhost:8080/api/queues/queue-2/poll       # нет такой → 404
+ *
  */
 
 rootProject.name = "kotlin-view" // IntelliJ: под этим именем проект виден в окне Gradle и в дереве модулей.
