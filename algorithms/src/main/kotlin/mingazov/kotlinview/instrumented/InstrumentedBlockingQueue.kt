@@ -1,8 +1,10 @@
 package mingazov.kotlinview.instrumented
 
 import mingazov.kotlinview.event.AfterOffer
+import mingazov.kotlinview.event.AfterPoll
 import mingazov.kotlinview.event.AfterTake
 import mingazov.kotlinview.event.BeforeOffer
+import mingazov.kotlinview.event.BeforePoll
 import mingazov.kotlinview.event.BeforeTake
 import mingazov.kotlinview.event.EventSink
 import java.util.concurrent.BlockingQueue
@@ -31,6 +33,13 @@ class InstrumentedBlockingQueue<E : Any>(
         sink.emit(BeforeTake(queueId, delegate.size))
         val element = delegate.take() // это блокирующий вызов. Если очередь пустая, то поток уснет
         sink.emit(AfterTake(queueId, delegate.size))
+        return element
+    }
+
+    override fun poll(): E? {
+        sink.emit(BeforePoll(queueId, delegate.size))
+        val element = delegate.poll() // неблокирующий вызов, вернет NULL если очередь пуста
+        sink.emit(AfterPoll(queueId, delegate.size))
         return element
     }
 
