@@ -2,6 +2,7 @@ package mingazov.kotlinview.controller
 
 import mingazov.kotlinview.service.LinkedBlockingQueueService
 import org.springframework.http.HttpStatus
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -31,4 +32,8 @@ class LinkedBlockingQueueController(
     @PostMapping("/{queueId}/poll")
     @ResponseStatus(HttpStatus.ACCEPTED)
     fun poll(@PathVariable queueId: String) = PollResponse(service.poll(queueId)?.id)
+
+    @DeleteMapping("/{queueId}")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    fun remove(@PathVariable queueId: String) = service.remove(queueId)
 }

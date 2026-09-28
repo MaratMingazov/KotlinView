@@ -2,6 +2,7 @@ package mingazov.kotlinview.service
 
 import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.event.QueueCreated
+import mingazov.kotlinview.event.QueueRemoved
 import mingazov.kotlinview.instrumented.InstrumentedBlockingQueue
 import mingazov.kotlinview.instrumented.InstrumentedRunnable
 import org.springframework.http.HttpStatus
@@ -27,6 +28,11 @@ class LinkedBlockingQueueService(private val sink: EventSink) {
         queues[queueId] = InstrumentedBlockingQueue(queueId, LinkedBlockingQueue(capacity), sink)
         sink.emit(QueueCreated(queueId, capacity, Thread.currentThread().name))
         return queueId
+    }
+
+    fun remove(queueId: String) {
+        queues.remove(queueId) ?: throw QueueNotFoundException(queueId)
+        sink.emit(QueueRemoved(queueId, Thread.currentThread().name))
     }
 
     fun offer(queueId: String): Boolean = getQueue(queueId).offer(InstrumentedRunnable(taskIds.incrementAndGet(), durationMs = 1000))

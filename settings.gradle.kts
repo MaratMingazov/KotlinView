@@ -18,6 +18,7 @@
  *   curl -i -X POST localhost:8080/api/queues/queue-1/offer      # не влезет → accepted: false
  *   curl -i -X POST localhost:8080/api/queues/queue-1/poll
  *   curl -i -X POST localhost:8080/api/queues/queue-2/poll       # нет такой → 404
+ *   curl -i -X DELETE localhost:8080/api/queues/queue-1
  *
  */
 

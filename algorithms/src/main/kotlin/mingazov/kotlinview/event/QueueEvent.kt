@@ -5,7 +5,7 @@ sealed interface QueueEvent : Event {
 }
 
 data class QueueCreated(override val queueId: String, val capacity: Int, val thread: String) : QueueEvent
-data class QueueRemoved(override val queueId: String) : QueueEvent
+data class QueueRemoved(override val queueId: String, val thread: String) : QueueEvent
 
 data class BeforeOffer(override val queueId: String, val queueSize: Int, val thread: String) : QueueEvent
 data class AfterOffer(override val queueId: String, val accepted: Boolean, val queueSize: Int, val thread: String) : QueueEvent
