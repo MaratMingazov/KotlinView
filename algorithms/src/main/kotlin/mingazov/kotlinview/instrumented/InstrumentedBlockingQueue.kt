@@ -21,25 +21,25 @@ class InstrumentedBlockingQueue<E : Any>(
 ) : BlockingQueue<E> by delegate {
 
     override fun offer(e: E): Boolean {
-        sink.emit(BeforeOffer(queueId, delegate.size))
+        sink.emit(BeforeOffer(queueId, delegate.size, Thread.currentThread().name))
         val accepted = delegate.offer(e) // неблокирующий вызов. Говорит смог ли положить элемент в очередь
-        sink.emit(AfterOffer(queueId, accepted, delegate.size))
+        sink.emit(AfterOffer(queueId, accepted, delegate.size, Thread.currentThread().name))
         return accepted
     }
 
     // TODO: без общего монитора событие onTaken может прийти раньше onOffered
     // Вернуть publishLock перед подключением к серверу.
     override fun take(): E {
-        sink.emit(BeforeTake(queueId, delegate.size))
+        sink.emit(BeforeTake(queueId, delegate.size, Thread.currentThread().name))
         val element = delegate.take() // это блокирующий вызов. Если очередь пустая, то поток уснет
-        sink.emit(AfterTake(queueId, delegate.size))
+        sink.emit(AfterTake(queueId, delegate.size, Thread.currentThread().name))
         return element
     }
 
     override fun poll(): E? {
-        sink.emit(BeforePoll(queueId, delegate.size))
+        sink.emit(BeforePoll(queueId, delegate.size, Thread.currentThread().name))
         val element = delegate.poll() // неблокирующий вызов, вернет NULL если очередь пуста
-        sink.emit(AfterPoll(queueId, delegate.size))
+        sink.emit(AfterPoll(queueId, delegate.size, Thread.currentThread().name))
         return element
     }
 

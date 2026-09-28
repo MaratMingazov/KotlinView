@@ -12,6 +12,7 @@
  *    ws.close()
  *
  *   curl -i -X POST localhost:8080/api/queues -H 'Content-Type: application/json' -d '{"capacity":2}'
+ *   curl -X POST localhost:8080/api/queues -H 'Content-Type: application/json' -d '{"capacity":2}'
  *   curl -i -X POST localhost:8080/api/queues/queue-1/offer
  *   curl -i -X POST localhost:8080/api/queues/queue-1/offer
  *   curl -i -X POST localhost:8080/api/queues/queue-1/offer      # не влезет → accepted: false
