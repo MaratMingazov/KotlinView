@@ -8,6 +8,7 @@ import mingazov.kotlinview.event.BeforePoll
 import mingazov.kotlinview.event.BeforeTake
 import mingazov.kotlinview.event.EventSink
 import java.util.concurrent.BlockingQueue
+import java.util.concurrent.TimeUnit
 
 
 /**
@@ -39,6 +40,13 @@ class InstrumentedBlockingQueue<E : Any>(
     override fun poll(): E? {
         sink.emit(BeforePoll(queueId, delegate.size, Thread.currentThread().name))
         val element = delegate.poll() // неблокирующий вызов, вернет NULL если очередь пуста
+        sink.emit(AfterPoll(queueId, delegate.size, Thread.currentThread().name))
+        return element
+    }
+
+    override fun poll(timeout: Long, unit: TimeUnit): E? {
+        sink.emit(BeforePoll(queueId, delegate.size, Thread.currentThread().name))
+        val element = delegate.poll(timeout, unit) // блокирующий: ждёт не дольше timeout, потом вернёт null
         sink.emit(AfterPoll(queueId, delegate.size, Thread.currentThread().name))
         return element
     }
