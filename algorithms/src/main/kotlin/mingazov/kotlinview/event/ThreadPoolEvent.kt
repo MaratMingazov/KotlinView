@@ -9,7 +9,6 @@ data class PoolCreated(
     val corePoolSize: Int,
     val maximumPoolSize: Int,
     val keepAliveMs: Long,
-    val queueType: String,          // LinkedBlockingQueue, ArrayBlockingQueue, SynchronousQueue
     val queueCapacity: Int,         // Int.MAX_VALUE = без ограничения
     val thread: String,
 ) : ThreadPoolEvent

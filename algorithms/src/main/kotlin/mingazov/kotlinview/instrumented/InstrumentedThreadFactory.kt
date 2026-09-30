@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class InstrumentedThreadFactory (
     private val namePrefix: String, // например "pool-1"
     private val sink: EventSink,
+    private val sleepMillis: Long = 0,
 ) : ThreadFactory {
 
     private val counter = AtomicInteger()
@@ -19,6 +20,7 @@ class InstrumentedThreadFactory (
 
         val thread = Thread({
             sink.emit(ThreadStarted(name))
+            Thread.sleep(sleepMillis)
             var error: Throwable? = null
             try {
                 r.run() // главный цикл воркера
@@ -27,10 +29,12 @@ class InstrumentedThreadFactory (
                 throw e // пробрасываем: поведение потока не меняем
             } finally {
                 sink.emit(ThreadTerminated(name, error?.toString()))
+                Thread.sleep(sleepMillis)
             }
         }, name)
 
         sink.emit(ThreadCreated(name, Thread.currentThread().name))
+        Thread.sleep(sleepMillis)
         return thread
     }
 }
