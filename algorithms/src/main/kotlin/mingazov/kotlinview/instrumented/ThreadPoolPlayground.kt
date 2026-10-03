@@ -12,7 +12,7 @@ fun main() {
     println("${Thread.currentThread().name} - MAIN started")
     val sink = EventSink { event -> println(event) }
 
-    val queue = InstrumentedBlockingQueue<Runnable>("LinkedBlockingQueue", LinkedBlockingQueue(2), sink, 1000)
+    val queue = InstrumentedRunnableBlockingQueue("LinkedBlockingQueue", 2, sink, 1000)
     val factory = InstrumentedThreadFactory("ThreadFactory", sink, 1000)
 
     val threadPoolExecutor = InstrumentedThreadPoolExecutor("ThreadPoolExecutor", sink, 1, 1, 1000, queue, factory, 1000)

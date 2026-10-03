@@ -2,7 +2,7 @@ package mingazov.kotlinview.service
 
 import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.event.PoolRemoved
-import mingazov.kotlinview.instrumented.InstrumentedBlockingQueue
+import mingazov.kotlinview.instrumented.InstrumentedRunnableBlockingQueue
 import mingazov.kotlinview.instrumented.InstrumentedRunnableTask
 import mingazov.kotlinview.instrumented.InstrumentedThreadFactory
 import mingazov.kotlinview.instrumented.InstrumentedThreadPoolExecutor
@@ -59,7 +59,7 @@ class ThreadPoolService(private val sink: EventSink) {
         val queue: BlockingQueue<Runnable> = when (queueType) {
             QueueType.LINKED ->
                 if (queueCapacity == null) LinkedBlockingQueue()
-                else InstrumentedBlockingQueue(queueId, LinkedBlockingQueue(queueCapacity), sink, sleepMillis)
+                else InstrumentedRunnableBlockingQueue(queueId, queueCapacity, sink, sleepMillis)
             QueueType.ARRAY -> ArrayBlockingQueue(queueCapacity ?: throw InvalidRequestException("ARRAY queue requires queueCapacity"))
             QueueType.SYNCHRONOUS -> SynchronousQueue()
         }

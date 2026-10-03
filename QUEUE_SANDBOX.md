@@ -93,8 +93,8 @@ Element {
 - [ ] `core/Event.kt` — `interface Event`, `fun interface EventSink { fun emit(event: Event) }`.
 - [ ] `queues/QueueEvent.kt` — `sealed interface QueueEvent : Event` и пять событий из таблицы.
 - [ ] `queues/QueueElement.kt` — `id`, `label`.
-- [ ] `queues/QueueEventsListener.kt` — реализует `BlockingQueueListener<QueueElement>`, переводит вызовы в `QueueEvent` и отдаёт в `EventSink`.
-- [ ] `InstrumentedBlockingQueue`: переопределить `poll()` без таймаута, добавить в слушатель `onEmpty()`.
+- [ ] `queues/QueueEventsListener.kt` — реализует `BlockingQueueListener<QueueElement>`, переводит вызовы в `RunnableBlockingQueueEvent` и отдаёт в `EventSink`.
+- [ ] `InstrumentedRunnableBlockingQueue`: переопределить `poll()` без таймаута, добавить в слушатель `onEmpty()`.
 
 **Проверка:** `main` в `queues/Playground.kt` с `EventSink { println(it) }`: создать очередь на 2,
 три `offer`, три `poll` → в консоли `ELEMENT_OFFERED ×2`, `QUEUE_FULL`, `ELEMENT_TAKEN ×2`, `QUEUE_EMPTY`.
@@ -135,7 +135,7 @@ curl -i -X POST localhost:8080/api/queues/queue-1/poll
 
 ## Известные упрощения (TODO)
 
-- **Гонка `offer` / `take`.** В `InstrumentedBlockingQueue` нет общего монитора, поэтому `ELEMENT_TAKEN` может прийти
+- **Гонка `offer` / `take`.** В `InstrumentedRunnableBlockingQueue` нет общего монитора, поэтому `ELEMENT_TAKEN` может прийти
   раньше `ELEMENT_OFFERED` для того же элемента (PROTOCOL.md, 11.2). На шагах 1–3 не проявится: `poll` вызывается
   вручную из HTTP-запросов. Вернуть `publishLock` до шага 4.
 - **`size` приблизительный** — читается отдельно от операции; исправляется тем же монитором.

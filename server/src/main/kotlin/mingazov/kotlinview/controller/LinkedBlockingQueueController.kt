@@ -29,10 +29,6 @@ class LinkedBlockingQueueController(
     @ResponseStatus(HttpStatus.ACCEPTED)
     fun offer(@PathVariable queueId: String) = OfferResponse(service.offer(queueId))
 
-    @PostMapping("/{queueId}/poll")
-    @ResponseStatus(HttpStatus.ACCEPTED)
-    fun poll(@PathVariable queueId: String) = PollResponse(service.poll(queueId)?.id)
-
     @DeleteMapping("/{queueId}")
     @ResponseStatus(HttpStatus.ACCEPTED)
     fun remove(@PathVariable queueId: String) = service.remove(queueId)
