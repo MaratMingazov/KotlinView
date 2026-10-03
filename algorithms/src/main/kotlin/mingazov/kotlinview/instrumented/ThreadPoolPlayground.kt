@@ -10,10 +10,10 @@ class ThreadPoolPlayground {
 
 fun main() {
     println("${Thread.currentThread().name} - MAIN started")
+    val sleepMillis = 1000L
     val sink = EventSink { event -> println(event) }
-
-    val queue = InstrumentedRunnableBlockingQueue("LinkedBlockingQueue", 2, sink, 1000)
-    val factory = InstrumentedThreadFactory("ThreadFactory", sink, 1000)
+    val queue = InstrumentedRunnableBlockingQueue("LinkedBlockingQueue", 2, sink, sleepMillis)
+    val factory = InstrumentedThreadFactory("ThreadFactory", sink, sleepMillis)
 
     val threadPoolExecutor = InstrumentedThreadPoolExecutor("ThreadPoolExecutor", sink, 1, 1, 1000, queue, factory, 1000)
 

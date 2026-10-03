@@ -34,14 +34,14 @@ class InstrumentedThreadPoolExecutor(
 ) : ThreadPoolExecutor(corePoolSize, maximumPoolSize, keepAliveMs, TimeUnit.MILLISECONDS, queue, threadFactory) {
 
     override fun beforeExecute(t: Thread, r: Runnable) {
-        sink.emit(TaskStarted(poolId, taskId(r), t.name))
+        sink.emit(TaskStarted(poolId, t.name, taskId(r)))
         Thread.sleep(sleepMillis)
     }
 
     override fun afterExecute(r: Runnable, t: Throwable?) {
         val thread = Thread.currentThread().name
-        if (t == null) sink.emit(TaskCompleted(poolId, taskId(r), thread))
-        else sink.emit(TaskFailed(poolId, taskId(r), thread, t.toString()))
+        if (t == null) sink.emit(TaskCompleted(poolId, thread, taskId(r)))
+        else sink.emit(TaskFailed(poolId, thread, taskId(r), t.toString()))
         Thread.sleep(sleepMillis)
     }
 
@@ -62,7 +62,7 @@ class InstrumentedThreadPoolExecutor(
     override fun shutdownNow(): MutableList<Runnable> {
         val drained = super.shutdownNow()
         sink.emit(PoolShutdownNow(poolId, Thread.currentThread().name))
-        sink.emit(TasksDrained(poolId, drained.mapNotNull { taskId(it) }, Thread.currentThread().name))
+        sink.emit(TasksDrained(poolId, Thread.currentThread().name, drained.mapNotNull { taskId(it) }))
         Thread.sleep(sleepMillis)
         return drained
     }

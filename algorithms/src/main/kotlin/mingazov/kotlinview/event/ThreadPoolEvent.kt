@@ -1,17 +1,17 @@
 package mingazov.kotlinview.event
 
 sealed interface ThreadPoolEvent : Event {
-    val poolId: String
+    val threadPoolId: String
 }
 
-data class PoolShutdownIn(override val poolId: String, val thread: String) : ThreadPoolEvent
-data class PoolShutdownOut(override val poolId: String, val thread: String) : ThreadPoolEvent
+data class PoolShutdownIn(override val threadPoolId: String, override val thread: String) : ThreadPoolEvent
+data class PoolShutdownOut(override val threadPoolId: String, override val thread: String) : ThreadPoolEvent
 
-data class PoolShutdownNow(override val poolId: String, val thread: String) : ThreadPoolEvent
-data class TasksDrained(override val poolId: String, val taskIds: List<Long>, val thread: String) : ThreadPoolEvent
-data class PoolRemoved(override val poolId: String, val thread: String) : ThreadPoolEvent
+data class PoolShutdownNow(override val threadPoolId: String, override val thread: String) : ThreadPoolEvent
+data class TasksDrained(override val threadPoolId: String, override val thread: String, val taskIds: List<Long>) : ThreadPoolEvent
+data class PoolRemoved(override val threadPoolId: String, override val thread: String) : ThreadPoolEvent
 
-data class TaskStarted(override val poolId: String, val taskId: Long?, val thread: String) : ThreadPoolEvent
-data class TaskCompleted(override val poolId: String, val taskId: Long?, val thread: String) : ThreadPoolEvent
-data class TaskFailed(override val poolId: String, val taskId: Long?, val thread: String, val error: String) : ThreadPoolEvent
-data class PoolTerminated(override val poolId: String, val thread: String) : ThreadPoolEvent
+data class TaskStarted(override val threadPoolId: String, override val thread: String, val taskId: Long?) : ThreadPoolEvent
+data class TaskCompleted(override val threadPoolId: String, override val thread: String, val taskId: Long?) : ThreadPoolEvent
+data class TaskFailed(override val threadPoolId: String, override val thread: String, val taskId: Long?, val error: String) : ThreadPoolEvent
+data class PoolTerminated(override val threadPoolId: String, override val thread: String) : ThreadPoolEvent
