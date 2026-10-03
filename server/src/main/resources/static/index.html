@@ -51,6 +51,22 @@
     .cell.filled { background: #90caf9; border-color: #1565c0; }
     .queue-size { font-family: monospace; font-size: 12px; color: #555; margin-top: 4px; text-align: center; }
 
+    .workers { display: flex; flex-wrap: wrap; gap: 8px; }
+    .worker {
+      width: 200px; padding: 8px; box-sizing: border-box; font-family: monospace; font-size: 12px;
+      border: 2px solid #ccc; border-radius: 8px; background: #fafafa; color: #555;
+      transition: background .15s, border-color .15s;
+    }
+    .worker .wname { font-size: 13px; font-weight: bold; color: #222; word-break: break-all; }
+    .worker .wstate { margin-top: 4px; font-weight: bold; }
+    .worker .wmeta { margin-top: 4px; color: #777; }
+    .worker.CREATED { border-style: dashed; color: #999; }                  /* поток создан, но ещё не запущен */
+    .worker.IDLE { border-color: #1565c0; background: #e3f2fd; }            /* живой, задачи нет */
+    .worker.BUSY { border-color: #2e7d32; background: #c8f7c5; }            /* выполняет задачу */
+    .worker.TERMINATED { border-color: #bbb; background: #eee; opacity: .6; }
+    .worker.TERMINATED .wname { text-decoration: line-through; }
+    .worker.error { border-color: #c62828; background: #ffcdd2; opacity: 1; }
+
     #log { margin-top: 32px; height: 200px; overflow: auto; background: #fff; border: 1px solid #ddd;
            font-family: monospace; font-size: 12px; padding: 8px; white-space: pre; }
   </style>
@@ -72,10 +88,6 @@
     </div>
     <div id="config" class="config"></div>
     <div class="methods">
-      <div id="initMethod" class="method">
-        <div class="name">init()</div>
-        <div class="threads"></div>
-      </div>
       <div id="shutdownMethod" class="method">
         <div class="name">shutdown()</div>
         <div class="threads"></div>
@@ -103,8 +115,8 @@
       </div>
     </div>
     <div class="section">
-      <div class="title">threads</div>
-      <div class="placeholder">—</div>
+      <div class="title">threads <span id="workersCount"></span></div>
+      <div id="workers" class="workers"></div>
     </div>
   </div>
 </div>
@@ -112,13 +124,12 @@
 <div id="log"></div>
 
 <script>
-  const INT_MAX = 2147483647;
-
   const state = {
-    poolId: null,       // какой пул визуализирует прямоугольник
-    pending: false,     // нажали create, ждём первое событие нового пула
-    pools: {},          // все пулы, о которых пришли события: poolId -> { config, state, methods }
+    poolId: null,       // какой пул визуализирует прямоугольник (из CreateThreadPoolResponse)
+    pending: false,     // нажали create, ждём ответ
+    pools: {},          // poolId -> { config, state, methods }
     queues: {},         // все очереди: queueId -> { size, methods }. Пул ссылается на свою через config.queueId
+    workers: {},        // все потоки фабрик: threadName -> { threadFactoryId, name, parent, state, taskId, completed, error }
   };
 
   const $ = id => document.getElementById(id);
@@ -127,9 +138,9 @@
 
   function poolOf(poolId) {
     return state.pools[poolId] ??= {
-      config: null,
+      config: null,     // CreateThreadPoolResponse
       state: null,      // RUNNING → SHUTDOWN → TERMINATED
-      methods: { init: newMethod(), shutdown: newMethod() },
+      methods: { shutdown: newMethod() },
     };
   }
 
@@ -170,13 +181,40 @@
       ['corePoolSize', config.corePoolSize],
       ['maximumPoolSize', config.maximumPoolSize],
       ['keepAliveMs', config.keepAliveMs],
-      ['queueCapacity', config.queueCapacity === INT_MAX ? '∞' : config.queueCapacity],
-      ['created by', config.thread],
+      ['queueType', config.queueType],
+      ['queueCapacity', config.queueCapacity ?? '∞'],
+      ['threadFactory', config.threadFactoryId],
     ].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
 
-    renderMethod($('initMethod'), pool?.methods.init);
     renderMethod($('shutdownMethod'), pool?.methods.shutdown);
     renderQueue(config);
+    renderWorkers(config);
+  }
+
+  function renderWorkers(config) {
+    const queue = config?.queueId ? state.queues[config.queueId] : null;
+    // порядок вставки в объект = порядок ThreadCreated, то есть порядок создания воркеров
+    const workers = !config ? [] :
+      Object.values(state.workers).filter(w => w.threadFactoryId === config.threadFactoryId);
+    const alive = workers.filter(w => w.state !== 'TERMINATED').length;
+    $('workersCount').textContent = !config ? '' :
+      `живых: ${alive} / core: ${config.corePoolSize} / max: ${config.maximumPoolSize}`;
+
+    $('workers').innerHTML = workers.map(w => {
+      // IDLE уточняем по очереди: воркер без задачи обычно сидит в take() или poll()
+      let label = w.state;
+      if (w.state === 'BUSY') label = `BUSY · task-${w.taskId}`;
+      else if (w.state === 'IDLE' && queue?.methods.take.threads.has(w.name)) label = 'IDLE · ждёт в take()';
+      else if (w.state === 'IDLE' && queue?.methods.poll.threads.has(w.name)) label = 'IDLE · ждёт в poll()';
+      return `
+        <div class="worker ${w.state} ${w.error ? 'error' : ''}">
+          <div class="wname">${w.name}</div>
+          <div class="wstate">${label}</div>
+          <div class="wmeta">created by ${w.parent}</div>
+          <div class="wmeta">completed: ${w.completed}</div>
+          ${w.error ? `<div class="wmeta">error: ${w.error}</div>` : ''}
+        </div>`;
+    }).join('');
   }
 
   function renderQueue(config) {
@@ -190,8 +228,8 @@
     const capacity = config?.queueCapacity;
     const cells = $('cells');
     cells.innerHTML = '';
-    // для безграничной очереди ячейки не рисуем, только число
-    if (capacity && capacity !== INT_MAX) {
+    // для безграничной очереди (capacity = null) ячейки не рисуем, только число
+    if (capacity) {
       // tail слева (рядом с offer), head справа (рядом с take) — заполняем справа налево
       for (let i = 0; i < capacity; i++) {
         const cell = document.createElement('div');
@@ -200,7 +238,7 @@
       }
     }
     cells.style.display = cells.childElementCount ? '' : 'none';
-    $('queueSize').textContent = !config ? '' : `${size} / ${capacity === INT_MAX ? '∞' : capacity}`;
+    $('queueSize').textContent = !config ? '' : `${size} / ${capacity ?? '∞'}`;
   }
 
   function log(text) {
@@ -212,20 +250,6 @@
   // ---------- События ----------
 
   const handlers = {
-    PoolInitIn(e) {
-      // init — самое первое событие пула. Если ждём свой пул, привязываемся к нему сразу,
-      // не дожидаясь HTTP-ответа (он придёт только после всех событий create)
-      if (state.pending && state.poolId === null && !state.pools[e.poolId]) state.poolId = e.poolId;
-      enter(poolOf(e.poolId).methods.init, e.thread);
-    },
-    PoolInitOut(e) {
-      exit(poolOf(e.poolId).methods.init, e.thread);
-    },
-    PoolCreated(e) {
-      const pool = poolOf(e.poolId);
-      pool.config = e;
-      pool.state = 'RUNNING';
-    },
     PoolShutdownIn(e) {
       enter(poolOf(e.poolId).methods.shutdown, e.thread);
     },
@@ -246,7 +270,47 @@
     AfterTake: e => queueExit('take', e),
     BeforePoll: e => queueEnter('poll', e),
     AfterPoll: e => queueExit('poll', e),
+
+    // Воркеры: CREATED → IDLE ⇄ BUSY → TERMINATED
+    ThreadCreated(e) {
+      state.workers[e.threadName] = {
+        threadFactoryId: e.threadFactoryId, name: e.threadName, parent: e.parentThreadName,
+        state: 'CREATED', taskId: null, completed: 0, error: null,
+      };
+    },
+    ThreadStarted(e) {
+      workerOf(e.threadName).state = 'IDLE';
+    },
+    TaskStarted(e) {
+      const w = workerOf(e.thread);
+      w.state = 'BUSY';
+      w.taskId = e.taskId;
+    },
+    TaskCompleted(e) {
+      const w = workerOf(e.thread);
+      w.state = 'IDLE';
+      w.taskId = null;
+      w.completed++;
+    },
+    TaskFailed(e) {
+      const w = workerOf(e.thread);
+      w.state = 'IDLE';
+      w.taskId = null;
+    },
+    ThreadTerminated(e) {
+      const w = workerOf(e.threadName);
+      w.state = 'TERMINATED';
+      w.taskId = null;
+      w.error = e.error;
+    },
   };
+
+  // ThreadCreated мог прийти до открытия страницы: не падаем. Такой воркер не рисуется — фабрика неизвестна
+  function workerOf(name) {
+    return state.workers[name] ??= {
+      threadFactoryId: null, name, parent: '?', state: 'IDLE', taskId: null, completed: 0, error: null,
+    };
+  }
 
   function queueEnter(method, e) {
     const queue = queueOf(e.queueId);
@@ -296,12 +360,16 @@
     state.pending = false;
     if (!res.ok) {
       log(`create failed: ${res.status}`);
-      state.poolId = null;
       render();
       return;
     }
-    // ответ — окончательный источник poolId: если по ошибке привязались к чужому пулу, исправляемся
-    state.poolId = (await res.json()).poolId;
+    // событий о создании пула нет: всё про пул — в ответе
+    const config = await res.json();
+    log(`created ${JSON.stringify(config)}`);
+    const pool = poolOf(config.poolId);
+    pool.config = config;
+    pool.state = 'RUNNING';
+    state.poolId = config.poolId;
     render();
   };
 

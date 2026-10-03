@@ -18,7 +18,7 @@ data class CreatePoolRequest(
     val queueType: QueueType,
     val queueCapacity: Int? = null,
 )
-data class CreatePoolResponse(val poolId: String)
+
 data class SubmitTasksRequest(val durationMs: Long)
 data class ShutdownNowResponse(val drainedTaskIds: List<Long>)
 
@@ -30,8 +30,8 @@ class ThreadPoolController(
 
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
-    fun create(@RequestBody r: CreatePoolRequest) =
-        CreatePoolResponse(service.create(r.corePoolSize, r.maximumPoolSize, r.keepAliveMs, r.queueType, r.queueCapacity))
+    fun create(@RequestBody r: CreatePoolRequest) = service.create(r.corePoolSize, r.maximumPoolSize, r.keepAliveMs, r.queueType, r.queueCapacity)
+
 
     @PostMapping("/{poolId}/execute")
     @ResponseStatus(HttpStatus.ACCEPTED)

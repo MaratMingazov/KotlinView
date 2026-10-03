@@ -4,10 +4,6 @@ sealed interface ThreadPoolEvent : Event {
     val poolId: String
 }
 
-data class PoolInitIn(override val poolId: String, val thread: String, ) : ThreadPoolEvent
-data class PoolInitOut(override val poolId: String, val thread: String, ) : ThreadPoolEvent
-data class PoolCreated(override val poolId: String, val corePoolSize: Int, val maximumPoolSize: Int, val keepAliveMs: Long, val queueCapacity: Int, val queueId: String?, val thread: String) : ThreadPoolEvent  // queueId = null, если очередь не инструментирована
-
 data class PoolShutdownIn(override val poolId: String, val thread: String) : ThreadPoolEvent
 data class PoolShutdownOut(override val poolId: String, val thread: String) : ThreadPoolEvent
 

@@ -1,7 +1,6 @@
 package mingazov.kotlinview.service
 
 import mingazov.kotlinview.event.EventSink
-import mingazov.kotlinview.event.PoolCreated
 import mingazov.kotlinview.event.PoolRemoved
 import mingazov.kotlinview.instrumented.InstrumentedBlockingQueue
 import mingazov.kotlinview.instrumented.InstrumentedRunnable
@@ -30,6 +29,17 @@ class InvalidPoolStateException(message: String) : RuntimeException(message)
 @ResponseStatus(HttpStatus.BAD_REQUEST)
 class InvalidRequestException(message: String) : RuntimeException(message)
 
+data class CreateThreadPoolResponse(
+    val poolId: String,
+    val corePoolSize: Int,
+    val maximumPoolSize: Int,
+    val keepAliveMs: Long,
+    val queueType: QueueType,
+    val queueCapacity: Int? = null,
+    val queueId: String,
+    val threadFactoryId: String,
+)
+
 @Service
 class ThreadPoolService(private val sink: EventSink) {
 
@@ -43,21 +53,22 @@ class ThreadPoolService(private val sink: EventSink) {
         keepAliveMs: Long,
         queueType: QueueType,
         queueCapacity: Int?,
-    ): String {
+    ): CreateThreadPoolResponse {
         val sleepMillis = 2000L
         val poolId = "pool-${poolIds.incrementAndGet()}"
+        val queueId = "$poolId/queue"
+        val threadFactoryId = "$poolId/threadFactory"
         val queue: BlockingQueue<Runnable> = when (queueType) {
             QueueType.LINKED ->
                 if (queueCapacity == null) LinkedBlockingQueue()
-                else InstrumentedBlockingQueue("$poolId/main", LinkedBlockingQueue(queueCapacity), sink, sleepMillis)
+                else InstrumentedBlockingQueue(queueId, LinkedBlockingQueue(queueCapacity), sink, sleepMillis)
             QueueType.ARRAY -> ArrayBlockingQueue(queueCapacity ?: throw InvalidRequestException("ARRAY queue requires queueCapacity"))
             QueueType.SYNCHRONOUS -> SynchronousQueue()
         }
-        val threadFactory = InstrumentedThreadFactory(poolId, sink)
+        val threadFactory = InstrumentedThreadFactory(threadFactoryId, sink)
         pools[poolId] = InstrumentedThreadPoolExecutor(poolId, sink, corePoolSize, maximumPoolSize, keepAliveMs, queue, threadFactory, sleepMillis)
-        sink.emit(PoolCreated(poolId, corePoolSize, maximumPoolSize, keepAliveMs, queueCapacity = queue.remainingCapacity(), queueId = (queue as? InstrumentedBlockingQueue<*>)?.queueId, thread = Thread.currentThread().name))
-        Thread.sleep(sleepMillis)
-        return poolId
+
+        return CreateThreadPoolResponse(poolId, corePoolSize, maximumPoolSize, keepAliveMs, queueType, queueCapacity, queueId, threadFactoryId)
     }
 
     fun execute(poolId: String, durationMs: Long) {

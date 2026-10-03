@@ -1,8 +1,6 @@
 package mingazov.kotlinview.instrumented
 
 import mingazov.kotlinview.event.EventSink
-import mingazov.kotlinview.event.PoolInitIn
-import mingazov.kotlinview.event.PoolInitOut
 import mingazov.kotlinview.event.PoolShutdownIn
 import mingazov.kotlinview.event.PoolShutdownNow
 import mingazov.kotlinview.event.PoolShutdownOut
@@ -34,14 +32,6 @@ class InstrumentedThreadPoolExecutor(
     threadFactory: ThreadFactory,
     private val sleepMillis: Long = 0,
 ) : ThreadPoolExecutor(corePoolSize, maximumPoolSize, keepAliveMs, TimeUnit.MILLISECONDS, queue, threadFactory) {
-
-    init {
-        val thread = Thread.currentThread().name
-        sink.emit(PoolInitIn(poolId, thread = thread))
-        Thread.sleep(sleepMillis)
-        sink.emit(PoolInitOut(poolId, thread = thread))
-        Thread.sleep(sleepMillis)
-    }
 
     override fun beforeExecute(t: Thread, r: Runnable) {
         sink.emit(TaskStarted(poolId, taskId(r), t.name))
