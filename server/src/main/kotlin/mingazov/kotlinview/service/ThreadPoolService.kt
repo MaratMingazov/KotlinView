@@ -1,8 +1,10 @@
 package mingazov.kotlinview.service
 
 import mingazov.kotlinview.event.EventSink
+import mingazov.kotlinview.event.PoolCreated
 import mingazov.kotlinview.event.PoolRemoved
 import mingazov.kotlinview.instrumented.InstrumentedRunnable
+import mingazov.kotlinview.instrumented.InstrumentedThreadFactory
 import mingazov.kotlinview.instrumented.InstrumentedThreadPoolExecutor
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -42,13 +44,16 @@ class ThreadPoolService(private val sink: EventSink) {
         queueType: QueueType,
         queueCapacity: Int?,
     ): String {
+        val sleepMillis = 1000L
         val queue: BlockingQueue<Runnable> = when (queueType) {
             QueueType.LINKED -> if (queueCapacity == null) LinkedBlockingQueue() else LinkedBlockingQueue(queueCapacity)
             QueueType.ARRAY -> ArrayBlockingQueue(queueCapacity ?: throw InvalidRequestException("ARRAY queue requires queueCapacity"))
             QueueType.SYNCHRONOUS -> SynchronousQueue()
         }
         val poolId = "pool-${poolIds.incrementAndGet()}"
-        pools[poolId] = InstrumentedThreadPoolExecutor(poolId, corePoolSize, maximumPoolSize, keepAliveMs, queue, sink)
+        pools[poolId] = InstrumentedThreadPoolExecutor(poolId, sink, corePoolSize, maximumPoolSize, keepAliveMs, queue, InstrumentedThreadFactory(poolId, sink), sleepMillis)
+        sink.emit(PoolCreated(poolId, corePoolSize, maximumPoolSize, keepAliveMs, queueCapacity = queue.remainingCapacity(), thread = Thread.currentThread().name))
+        Thread.sleep(sleepMillis)
         return poolId
     }
 

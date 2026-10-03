@@ -25,7 +25,7 @@ class LinkedBlockingQueueService(private val sink: EventSink) {
 
     fun create(capacity: Int): String {
         val queueId = "queue-${queueIds.incrementAndGet()}"
-        queues[queueId] = InstrumentedBlockingQueue(queueId, LinkedBlockingQueue(capacity), sink)
+        queues[queueId] = InstrumentedBlockingQueue(queueId, LinkedBlockingQueue(capacity), sink, sleepMillis = 1000)
         sink.emit(QueueCreated(queueId, capacity, Thread.currentThread().name))
         return queueId
     }
