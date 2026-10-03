@@ -14,7 +14,7 @@
     .controls { display: flex; flex-direction: column; gap: 8px; width: 110px; }
 
     .pool {
-      width: 560px; min-height: 260px; padding: 12px; box-sizing: border-box;
+      width: 860px; min-height: 260px; padding: 12px; box-sizing: border-box;
       border: 2px dashed #bbb; border-radius: 10px; background: #fff;
       display: flex; flex-direction: column; gap: 12px;
     }
@@ -45,6 +45,12 @@
     .section .title { font-size: 12px; color: #777; margin-bottom: 6px; }
     .placeholder { font-size: 12px; color: #aaa; font-style: italic; }
 
+    .queue-row { display: flex; align-items: flex-start; gap: 8px; }
+    .cells { display: flex; gap: 4px; padding: 6px; border: 2px dashed #bbb; border-radius: 8px; }
+    .cell { width: 32px; height: 32px; border: 2px solid #999; border-radius: 6px; background: #fff; }
+    .cell.filled { background: #90caf9; border-color: #1565c0; }
+    .queue-size { font-family: monospace; font-size: 12px; color: #555; margin-top: 4px; text-align: center; }
+
     #log { margin-top: 32px; height: 200px; overflow: auto; background: #fff; border: 1px solid #ddd;
            font-family: monospace; font-size: 12px; padding: 8px; white-space: pre; }
   </style>
@@ -56,6 +62,7 @@
 <div class="row">
   <div class="controls">
     <button id="create">create</button>
+    <button id="execute">execute</button>
     <button id="shutdown">shutdown</button>
   </div>
 
@@ -75,8 +82,25 @@
       </div>
     </div>
     <div class="section">
-      <div class="title">queue</div>
-      <div class="placeholder">—</div>
+      <div class="title">queue <span id="queueId"></span></div>
+      <div class="queue-row">
+        <div id="offerMethod" class="method">
+          <div class="name">offer()</div>
+          <div class="threads"></div>
+        </div>
+        <div>
+          <div id="cells" class="cells"></div>
+          <div id="queueSize" class="queue-size"></div>
+        </div>
+        <div id="takeMethod" class="method">
+          <div class="name">take()</div>
+          <div class="threads"></div>
+        </div>
+        <div id="pollMethod" class="method">
+          <div class="name">poll()</div>
+          <div class="threads"></div>
+        </div>
+      </div>
     </div>
     <div class="section">
       <div class="title">threads</div>
@@ -94,6 +118,7 @@
     poolId: null,       // какой пул визуализирует прямоугольник
     pending: false,     // нажали create, ждём первое событие нового пула
     pools: {},          // все пулы, о которых пришли события: poolId -> { config, state, methods }
+    queues: {},         // все очереди: queueId -> { size, methods }. Пул ссылается на свою через config.queueId
   };
 
   const $ = id => document.getElementById(id);
@@ -105,6 +130,13 @@
       config: null,
       state: null,      // RUNNING → SHUTDOWN → TERMINATED
       methods: { init: newMethod(), shutdown: newMethod() },
+    };
+  }
+
+  function queueOf(queueId) {
+    return state.queues[queueId] ??= {
+      size: 0,
+      methods: { offer: newMethod(), take: newMethod(), poll: newMethod() },
     };
   }
 
@@ -126,6 +158,8 @@
     const pool = state.poolId && state.pools[state.poolId];
     const config = pool?.config;
     $('create').disabled = state.pending || state.poolId !== null;
+    // execute после shutdown не блокируем: пусть будет видно, как пул отклоняет задачу
+    $('execute').disabled = !pool?.state;
     $('shutdown').disabled = pool?.state !== 'RUNNING';
     $('pool').classList.toggle('bound', !!config);
     $('dot').className = 'dot ' + (pool?.state ?? '');
@@ -142,6 +176,31 @@
 
     renderMethod($('initMethod'), pool?.methods.init);
     renderMethod($('shutdownMethod'), pool?.methods.shutdown);
+    renderQueue(config);
+  }
+
+  function renderQueue(config) {
+    const queue = config?.queueId ? state.queues[config.queueId] : null;
+    $('queueId').textContent = config?.queueId ?? '';
+    renderMethod($('offerMethod'), queue?.methods.offer);
+    renderMethod($('takeMethod'), queue?.methods.take);
+    renderMethod($('pollMethod'), queue?.methods.poll);
+
+    const size = queue?.size ?? 0;
+    const capacity = config?.queueCapacity;
+    const cells = $('cells');
+    cells.innerHTML = '';
+    // для безграничной очереди ячейки не рисуем, только число
+    if (capacity && capacity !== INT_MAX) {
+      // tail слева (рядом с offer), head справа (рядом с take) — заполняем справа налево
+      for (let i = 0; i < capacity; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell' + (i >= capacity - size ? ' filled' : '');
+        cells.appendChild(cell);
+      }
+    }
+    cells.style.display = cells.childElementCount ? '' : 'none';
+    $('queueSize').textContent = !config ? '' : `${size} / ${capacity === INT_MAX ? '∞' : capacity}`;
   }
 
   function log(text) {
@@ -179,7 +238,27 @@
     PoolTerminated(e) {
       poolOf(e.poolId).state = 'TERMINATED';
     },
+
+    // Очередь: Before* — поток вошёл в метод, After* — вышел. queueSize обновляем по обоим.
+    BeforeOffer: e => queueEnter('offer', e),
+    AfterOffer: e => queueExit('offer', e),
+    BeforeTake: e => queueEnter('take', e),
+    AfterTake: e => queueExit('take', e),
+    BeforePoll: e => queueEnter('poll', e),
+    AfterPoll: e => queueExit('poll', e),
   };
+
+  function queueEnter(method, e) {
+    const queue = queueOf(e.queueId);
+    queue.size = e.queueSize;
+    enter(queue.methods[method], e.thread);
+  }
+
+  function queueExit(method, e) {
+    const queue = queueOf(e.queueId);
+    queue.size = e.queueSize;
+    exit(queue.methods[method], e.thread);
+  }
 
   function onEnvelope(env) {
     log(`#${env.seq} ${env.type} ${JSON.stringify(env.data)}`);
@@ -224,6 +303,16 @@
     // ответ — окончательный источник poolId: если по ошибке привязались к чужому пулу, исправляемся
     state.poolId = (await res.json()).poolId;
     render();
+  };
+
+  // Не ждём ответа: несколько быстрых нажатий — несколько параллельных потоков Tomcat в execute()
+  $('execute').onclick = async () => {
+    const res = await fetch(`/api/executors/${state.poolId}/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ durationMs: 3000 }),
+    });
+    if (!res.ok) log(`execute failed: ${res.status}`);
   };
 
   // результат узнаём из событий PoolShutdownIn / PoolShutdownOut / PoolTerminated

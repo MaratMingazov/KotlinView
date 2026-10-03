@@ -1,7 +1,6 @@
 package mingazov.kotlinview.controller
 
 import mingazov.kotlinview.service.QueueType
-import mingazov.kotlinview.service.ExecuteResult
 import mingazov.kotlinview.service.ThreadPoolService
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -20,7 +19,7 @@ data class CreatePoolRequest(
     val queueCapacity: Int? = null,
 )
 data class CreatePoolResponse(val poolId: String)
-data class SubmitTasksRequest(val count: Int, val durationMs: Long)
+data class SubmitTasksRequest(val durationMs: Long)
 data class ShutdownNowResponse(val drainedTaskIds: List<Long>)
 
 @RestController
@@ -34,10 +33,9 @@ class ThreadPoolController(
     fun create(@RequestBody r: CreatePoolRequest) =
         CreatePoolResponse(service.create(r.corePoolSize, r.maximumPoolSize, r.keepAliveMs, r.queueType, r.queueCapacity))
 
-    @PostMapping("/{poolId}/tasks")
+    @PostMapping("/{poolId}/execute")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    fun submit(@PathVariable poolId: String, @RequestBody r: SubmitTasksRequest): ExecuteResult =
-        service.execute(poolId, r.count, r.durationMs)
+    fun execute(@PathVariable poolId: String, @RequestBody r: SubmitTasksRequest) = service.execute(poolId, r.durationMs)
 
     @PostMapping("/{poolId}/shutdown")
     @ResponseStatus(HttpStatus.ACCEPTED)

@@ -23,7 +23,7 @@
 
  *   curl -X DELETE localhost:8080/api/executors/pool-1
  *   curl -X POST localhost:8080/api/executors/pool-1/shutdown
- *   curl -X POST localhost:8080/api/executors/pool-1/tasks -H "Content-Type: application/json" -d '{"count":1,"durationMs":1000}'
+ *   curl -X POST localhost:8080/api/executors/pool-1/execute -H "Content-Type: application/json" -d '{"count":1,"durationMs":1000}'
  */
 
 rootProject.name = "kotlin-view" // IntelliJ: под этим именем проект виден в окне Gradle и в дереве модулей.

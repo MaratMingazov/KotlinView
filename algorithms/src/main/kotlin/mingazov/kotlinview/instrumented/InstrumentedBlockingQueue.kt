@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
  *   только ненулевые типы, и E? тогда пишется явно там, где null действительно возможен.
  */
 class InstrumentedBlockingQueue<E : Any>(
-    private val queueId: String,
+    val queueId: String,
     private val delegate: BlockingQueue<E>,
     private val sink: EventSink,
     private val sleepMillis: Long = 0,

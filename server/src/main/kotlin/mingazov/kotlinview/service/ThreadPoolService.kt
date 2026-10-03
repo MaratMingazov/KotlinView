@@ -3,6 +3,7 @@ package mingazov.kotlinview.service
 import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.event.PoolCreated
 import mingazov.kotlinview.event.PoolRemoved
+import mingazov.kotlinview.instrumented.InstrumentedBlockingQueue
 import mingazov.kotlinview.instrumented.InstrumentedRunnable
 import mingazov.kotlinview.instrumented.InstrumentedThreadFactory
 import mingazov.kotlinview.instrumented.InstrumentedThreadPoolExecutor
@@ -15,11 +16,10 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ThreadFactory
 import java.util.concurrent.atomic.AtomicLong
 
 enum class QueueType { LINKED, ARRAY, SYNCHRONOUS }
-
-data class ExecuteResult(val executed: List<Long>, val rejected: List<Long>)
 
 @ResponseStatus(HttpStatus.NOT_FOUND)
 class PoolNotFoundException(poolId: String) : RuntimeException("Pool $poolId not found")
@@ -44,35 +44,26 @@ class ThreadPoolService(private val sink: EventSink) {
         queueType: QueueType,
         queueCapacity: Int?,
     ): String {
-        val sleepMillis = 1000L
+        val sleepMillis = 2000L
+        val poolId = "pool-${poolIds.incrementAndGet()}"
         val queue: BlockingQueue<Runnable> = when (queueType) {
-            QueueType.LINKED -> if (queueCapacity == null) LinkedBlockingQueue() else LinkedBlockingQueue(queueCapacity)
+            QueueType.LINKED ->
+                if (queueCapacity == null) LinkedBlockingQueue()
+                else InstrumentedBlockingQueue("$poolId/main", LinkedBlockingQueue(queueCapacity), sink, sleepMillis)
             QueueType.ARRAY -> ArrayBlockingQueue(queueCapacity ?: throw InvalidRequestException("ARRAY queue requires queueCapacity"))
             QueueType.SYNCHRONOUS -> SynchronousQueue()
         }
-        val poolId = "pool-${poolIds.incrementAndGet()}"
-        pools[poolId] = InstrumentedThreadPoolExecutor(poolId, sink, corePoolSize, maximumPoolSize, keepAliveMs, queue, InstrumentedThreadFactory(poolId, sink), sleepMillis)
-        sink.emit(PoolCreated(poolId, corePoolSize, maximumPoolSize, keepAliveMs, queueCapacity = queue.remainingCapacity(), thread = Thread.currentThread().name))
+        val threadFactory = InstrumentedThreadFactory(poolId, sink)
+        pools[poolId] = InstrumentedThreadPoolExecutor(poolId, sink, corePoolSize, maximumPoolSize, keepAliveMs, queue, threadFactory, sleepMillis)
+        sink.emit(PoolCreated(poolId, corePoolSize, maximumPoolSize, keepAliveMs, queueCapacity = queue.remainingCapacity(), queueId = (queue as? InstrumentedBlockingQueue<*>)?.queueId, thread = Thread.currentThread().name))
         Thread.sleep(sleepMillis)
         return poolId
     }
 
-    fun execute(poolId: String, count: Int, durationMs: Long): ExecuteResult {
+    fun execute(poolId: String, durationMs: Long) {
+        val task = InstrumentedRunnable(taskIds.incrementAndGet(), durationMs)
         val pool = getPool(poolId)
-        if (pool.isShutdown) throw InvalidPoolStateException("Pool $poolId is shut down")
-
-        val executed = mutableListOf<Long>()
-        val rejected = mutableListOf<Long>()
-        repeat(count) {
-            val task = InstrumentedRunnable(taskIds.incrementAndGet(), durationMs)
-            try {
-                pool.execute(task)
-                executed += task.id
-            } catch (e: RejectedExecutionException) {
-                rejected += task.id
-            }
-        }
-        return ExecuteResult(executed, rejected)
+        pool.execute(task)
     }
 
     fun shutdown(poolId: String) = getPool(poolId).shutdown()
