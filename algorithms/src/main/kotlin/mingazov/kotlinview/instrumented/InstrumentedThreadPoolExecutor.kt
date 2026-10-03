@@ -2,6 +2,8 @@ package mingazov.kotlinview.instrumented
 
 import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.event.PoolCreated
+import mingazov.kotlinview.event.PoolInitIn
+import mingazov.kotlinview.event.PoolInitOut
 import mingazov.kotlinview.event.PoolShutdown
 import mingazov.kotlinview.event.PoolShutdownNow
 import mingazov.kotlinview.event.PoolTerminated
@@ -34,13 +36,10 @@ class InstrumentedThreadPoolExecutor(
 ) : ThreadPoolExecutor(corePoolSize, maximumPoolSize, keepAliveMs, TimeUnit.MILLISECONDS, queue, threadFactory) {
 
     init {
-        sink.emit(
-            PoolCreated(
-                poolId, corePoolSize, maximumPoolSize, keepAliveMs,
-                queueCapacity = queue.remainingCapacity(),
-                thread = Thread.currentThread().name,
-            )
-        )
+        val thread = Thread.currentThread().name
+        sink.emit(PoolInitIn(poolId, thread = thread))
+        Thread.sleep(sleepMillis)
+        sink.emit(PoolInitOut(poolId, thread = thread))
         Thread.sleep(sleepMillis)
     }
 
@@ -56,12 +55,18 @@ class InstrumentedThreadPoolExecutor(
         Thread.sleep(sleepMillis)
     }
 
+    /**
+     * Мяшкая остановка. Ждем завершения всех задач
+     */
     override fun shutdown() {
         super.shutdown()
         sink.emit(PoolShutdown(poolId, Thread.currentThread().name))
         Thread.sleep(sleepMillis)
     }
 
+    /**
+     * Жесткая остановка. Незавершенные задачи возвращаем
+     */
     override fun shutdownNow(): MutableList<Runnable> {
 
         val drained = super.shutdownNow()
