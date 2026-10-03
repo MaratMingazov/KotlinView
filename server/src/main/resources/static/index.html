@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>KotlinView — ThreadPoolExecutor</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; background: #f6f7f9; color: #222; }
+    button { padding: 6px 14px; cursor: pointer; }
+    #status { font-size: 13px; }
+    #status.on { color: #2e7d32; }
+    #status.off { color: #c62828; }
+
+    .row { display: flex; align-items: flex-start; gap: 16px; margin-top: 24px; }
+    .controls { display: flex; flex-direction: column; gap: 8px; width: 110px; }
+
+    .pool {
+      width: 560px; min-height: 260px; padding: 12px; box-sizing: border-box;
+      border: 2px dashed #bbb; border-radius: 10px; background: #fff;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .pool.bound { border-style: solid; border-color: #2e7d32; }
+
+    .header { display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 16px; font-weight: bold; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; background: #ccc; }
+    .dot.created { background: #2e7d32; }
+
+    .config { font-family: monospace; font-size: 13px; color: #555;
+              display: grid; grid-template-columns: max-content max-content; gap: 2px 16px; }
+
+    .methods { display: flex; gap: 8px; }
+    .method {
+      width: 160px; min-height: 56px; padding: 8px; box-sizing: border-box;
+      border: 2px solid #ccc; border-radius: 8px; background: #fafafa; color: #999;
+      transition: background .15s, border-color .15s;
+    }
+    .method .name { font-family: monospace; font-size: 14px; font-weight: bold; }
+    .method .threads { margin-top: 4px; font-family: monospace; font-size: 12px; }
+    .method.active { background: #c8f7c5; border-color: #2e7d32; color: #222; }  /* поток внутри метода */
+    .method.done { border-color: #999; color: #555; }                              /* поток уже вышел */
+
+    .section { border: 1px solid #ddd; border-radius: 8px; padding: 8px; }
+    .section .title { font-size: 12px; color: #777; margin-bottom: 6px; }
+    .placeholder { font-size: 12px; color: #aaa; font-style: italic; }
+
+    #log { margin-top: 32px; height: 200px; overflow: auto; background: #fff; border: 1px solid #ddd;
+           font-family: monospace; font-size: 12px; padding: 8px; white-space: pre; }
+  </style>
+</head>
+<body>
+
+<span id="status" class="off">● disconnected</span>
+
+<div class="row">
+  <div class="controls">
+    <button id="create">create</button>
+  </div>
+
+  <div id="pool" class="pool">
+    <div class="header"><span id="dot" class="dot"></span><span id="poolId">нет пула</span></div>
+    <div id="config" class="config"></div>
+    <div class="methods">
+      <div id="initMethod" class="method">
+        <div class="name">init()</div>
+        <div class="threads"></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="title">queue</div>
+      <div class="placeholder">—</div>
+    </div>
+    <div class="section">
+      <div class="title">threads</div>
+      <div class="placeholder">—</div>
+    </div>
+  </div>
+</div>
+
+<div id="log"></div>
+
+<script>
+  const INT_MAX = 2147483647;
+
+  const state = {
+    poolId: null,       // какой пул визуализирует прямоугольник
+    pending: false,     // нажали create, ждём первое событие нового пула
+    pools: {},          // все пулы, о которых пришли события: poolId -> { config, initThreads, initDone }
+  };
+
+  const $ = id => document.getElementById(id);
+
+  function poolOf(poolId) {
+    return state.pools[poolId] ??= { config: null, initThreads: new Set(), initDone: false };
+  }
+
+  // ---------- Рендер ----------
+
+  function render() {
+    const pool = state.poolId && state.pools[state.poolId];
+    const config = pool?.config;
+    $('create').disabled = state.pending || state.poolId !== null;
+    $('pool').classList.toggle('bound', !!config);
+    $('dot').classList.toggle('created', !!config);
+    $('poolId').textContent = state.poolId ?? (state.pending ? 'создаётся…' : 'нет пула');
+
+    $('config').innerHTML = !config ? '' : [
+      ['corePoolSize', config.corePoolSize],
+      ['maximumPoolSize', config.maximumPoolSize],
+      ['keepAliveMs', config.keepAliveMs],
+      ['queueCapacity', config.queueCapacity === INT_MAX ? '∞' : config.queueCapacity],
+      ['created by', config.thread],
+    ].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
+
+    const init = $('initMethod');
+    const initThreads = pool ? [...pool.initThreads] : [];
+    init.classList.toggle('active', initThreads.length > 0);
+    init.classList.toggle('done', !!pool?.initDone && initThreads.length === 0);
+    init.querySelector('.threads').innerHTML =
+      initThreads.length > 0 ? initThreads.join('<br>') : (pool?.initDone ? 'вышел ✓' : '');
+  }
+
+  function log(text) {
+    const el = $('log');
+    el.textContent += text + '\n';
+    el.scrollTop = el.scrollHeight;
+  }
+
+  // ---------- События ----------
+
+  const handlers = {
+    PoolInitIn(e) {
+      // init — самое первое событие пула. Если ждём свой пул, привязываемся к нему сразу,
+      // не дожидаясь HTTP-ответа (он придёт только после всех событий create)
+      if (state.pending && state.poolId === null && !state.pools[e.poolId]) state.poolId = e.poolId;
+      poolOf(e.poolId).initThreads.add(e.thread);
+    },
+    PoolInitOut(e) {
+      const pool = poolOf(e.poolId);
+      pool.initThreads.delete(e.thread);
+      pool.initDone = true;
+    },
+    PoolCreated(e) {
+      poolOf(e.poolId).config = e;
+    },
+  };
+
+  function onEnvelope(env) {
+    log(`#${env.seq} ${env.type} ${JSON.stringify(env.data)}`);
+    const handler = handlers[env.type];
+    if (!handler) return;
+    handler(env.data);
+    render();
+  }
+
+  function connect() {
+    const ws = new WebSocket(`ws://${location.host}/ws/events`);
+    ws.onopen = () => {
+      $('status').textContent = '● web-socket connected';
+      $('status').className = 'on'; }; //  'on' зеленый цвет //
+    ws.onclose = () => {
+      $('status').textContent = '● websocket disconnected';
+      $('status').className = 'off';
+      setTimeout(connect, 1000);
+    };
+    // обрабатываем каждый web socket message
+    ws.onmessage = msg => onEnvelope(JSON.parse(msg.data));
+  }
+
+  // ---------- Кнопки ----------
+
+  $('create').onclick = async () => {
+    const CREATE_REQUEST = { corePoolSize: 1, maximumPoolSize: 1, keepAliveMs: 2000, queueType: 'LINKED', queueCapacity: 2 };
+    state.pending = true;
+    render();
+    const res = await fetch('/api/executors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(CREATE_REQUEST),
+    });
+    state.pending = false;
+    if (!res.ok) {
+      log(`create failed: ${res.status}`);
+      state.poolId = null;
+      render();
+      return;
+    }
+    // ответ — окончательный источник poolId: если по ошибке привязались к чужому пулу, исправляемся
+    state.poolId = (await res.json()).poolId;
+    render();
+  };
+
+  render();
+  connect();
+</script>
+</body>
+</html>
