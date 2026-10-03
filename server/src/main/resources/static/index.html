@@ -22,7 +22,10 @@
 
     .header { display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 16px; font-weight: bold; }
     .dot { width: 12px; height: 12px; border-radius: 50%; background: #ccc; }
-    .dot.created { background: #2e7d32; }
+    .dot.RUNNING { background: #2e7d32; }
+    .dot.SHUTDOWN { background: #ef6c00; }
+    .dot.TERMINATED { background: #616161; }
+    .state { font-size: 12px; font-weight: normal; color: #777; }
 
     .config { font-family: monospace; font-size: 13px; color: #555;
               display: grid; grid-template-columns: max-content max-content; gap: 2px 16px; }
@@ -53,14 +56,21 @@
 <div class="row">
   <div class="controls">
     <button id="create">create</button>
+    <button id="shutdown">shutdown</button>
   </div>
 
   <div id="pool" class="pool">
-    <div class="header"><span id="dot" class="dot"></span><span id="poolId">нет пула</span></div>
+    <div class="header">
+      <span id="dot" class="dot"></span><span id="poolId">нет пула</span><span id="state" class="state"></span>
+    </div>
     <div id="config" class="config"></div>
     <div class="methods">
       <div id="initMethod" class="method">
         <div class="name">init()</div>
+        <div class="threads"></div>
+      </div>
+      <div id="shutdownMethod" class="method">
+        <div class="name">shutdown()</div>
         <div class="threads"></div>
       </div>
     </div>
@@ -83,13 +93,31 @@
   const state = {
     poolId: null,       // какой пул визуализирует прямоугольник
     pending: false,     // нажали create, ждём первое событие нового пула
-    pools: {},          // все пулы, о которых пришли события: poolId -> { config, initThreads, initDone }
+    pools: {},          // все пулы, о которых пришли события: poolId -> { config, state, methods }
   };
 
   const $ = id => document.getElementById(id);
 
+  const newMethod = () => ({ threads: new Set(), done: false });
+
   function poolOf(poolId) {
-    return state.pools[poolId] ??= { config: null, initThreads: new Set(), initDone: false };
+    return state.pools[poolId] ??= {
+      config: null,
+      state: null,      // RUNNING → SHUTDOWN → TERMINATED
+      methods: { init: newMethod(), shutdown: newMethod() },
+    };
+  }
+
+  // поток вошёл в метод / вышел из него
+  const enter = (method, thread) => method.threads.add(thread);
+  const exit = (method, thread) => { method.threads.delete(thread); method.done = true; };
+
+  function renderMethod(el, method) {
+    const threads = method ? [...method.threads] : [];
+    el.classList.toggle('active', threads.length > 0);
+    el.classList.toggle('done', !!method?.done && threads.length === 0);
+    el.querySelector('.threads').innerHTML =
+      threads.length > 0 ? threads.join('<br>') : (method?.done ? 'вышел ✓' : '');
   }
 
   // ---------- Рендер ----------
@@ -98,9 +126,11 @@
     const pool = state.poolId && state.pools[state.poolId];
     const config = pool?.config;
     $('create').disabled = state.pending || state.poolId !== null;
+    $('shutdown').disabled = pool?.state !== 'RUNNING';
     $('pool').classList.toggle('bound', !!config);
-    $('dot').classList.toggle('created', !!config);
+    $('dot').className = 'dot ' + (pool?.state ?? '');
     $('poolId').textContent = state.poolId ?? (state.pending ? 'создаётся…' : 'нет пула');
+    $('state').textContent = pool?.state ?? '';
 
     $('config').innerHTML = !config ? '' : [
       ['corePoolSize', config.corePoolSize],
@@ -110,12 +140,8 @@
       ['created by', config.thread],
     ].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
 
-    const init = $('initMethod');
-    const initThreads = pool ? [...pool.initThreads] : [];
-    init.classList.toggle('active', initThreads.length > 0);
-    init.classList.toggle('done', !!pool?.initDone && initThreads.length === 0);
-    init.querySelector('.threads').innerHTML =
-      initThreads.length > 0 ? initThreads.join('<br>') : (pool?.initDone ? 'вышел ✓' : '');
+    renderMethod($('initMethod'), pool?.methods.init);
+    renderMethod($('shutdownMethod'), pool?.methods.shutdown);
   }
 
   function log(text) {
@@ -131,15 +157,27 @@
       // init — самое первое событие пула. Если ждём свой пул, привязываемся к нему сразу,
       // не дожидаясь HTTP-ответа (он придёт только после всех событий create)
       if (state.pending && state.poolId === null && !state.pools[e.poolId]) state.poolId = e.poolId;
-      poolOf(e.poolId).initThreads.add(e.thread);
+      enter(poolOf(e.poolId).methods.init, e.thread);
     },
     PoolInitOut(e) {
-      const pool = poolOf(e.poolId);
-      pool.initThreads.delete(e.thread);
-      pool.initDone = true;
+      exit(poolOf(e.poolId).methods.init, e.thread);
     },
     PoolCreated(e) {
-      poolOf(e.poolId).config = e;
+      const pool = poolOf(e.poolId);
+      pool.config = e;
+      pool.state = 'RUNNING';
+    },
+    PoolShutdownIn(e) {
+      enter(poolOf(e.poolId).methods.shutdown, e.thread);
+    },
+    PoolShutdownOut(e) {
+      const pool = poolOf(e.poolId);
+      exit(pool.methods.shutdown, e.thread);
+      // если воркеров нет, PoolTerminated приходит раньше (изнутри super.shutdown) — не откатываем состояние назад
+      if (pool.state === 'RUNNING') pool.state = 'SHUTDOWN';
+    },
+    PoolTerminated(e) {
+      poolOf(e.poolId).state = 'TERMINATED';
     },
   };
 
@@ -186,6 +224,12 @@
     // ответ — окончательный источник poolId: если по ошибке привязались к чужому пулу, исправляемся
     state.poolId = (await res.json()).poolId;
     render();
+  };
+
+  // результат узнаём из событий PoolShutdownIn / PoolShutdownOut / PoolTerminated
+  $('shutdown').onclick = async () => {
+    const res = await fetch(`/api/executors/${state.poolId}/shutdown`, { method: 'POST' });
+    if (!res.ok) log(`shutdown failed: ${res.status}`);
   };
 
   render();

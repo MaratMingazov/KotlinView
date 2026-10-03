@@ -15,7 +15,7 @@ fun main() {
     val queue = InstrumentedBlockingQueue<Runnable>("LinkedBlockingQueue", LinkedBlockingQueue(2), sink, 1000)
     val factory = InstrumentedThreadFactory("ThreadFactory", sink, 1000)
 
-    val threadPoolExecutor = InstrumentedThreadPoolExecutor("ThreadPoolExecutor", sink, 1, 1, 1000, queue, factory)
+    val threadPoolExecutor = InstrumentedThreadPoolExecutor("ThreadPoolExecutor", sink, 1, 1, 1000, queue, factory, 1000)
 
 
     for (id in 1L..5L) {

@@ -8,7 +8,9 @@ data class PoolInitIn(override val poolId: String, val thread: String, ) : Threa
 data class PoolInitOut(override val poolId: String, val thread: String, ) : ThreadPoolEvent
 data class PoolCreated(override val poolId: String, val corePoolSize: Int, val maximumPoolSize: Int, val keepAliveMs: Long, val queueCapacity: Int, val thread: String) : ThreadPoolEvent
 
-data class PoolShutdown(override val poolId: String, val thread: String) : ThreadPoolEvent
+data class PoolShutdownIn(override val poolId: String, val thread: String) : ThreadPoolEvent
+data class PoolShutdownOut(override val poolId: String, val thread: String) : ThreadPoolEvent
+
 data class PoolShutdownNow(override val poolId: String, val thread: String) : ThreadPoolEvent
 data class TasksDrained(override val poolId: String, val taskIds: List<Long>, val thread: String) : ThreadPoolEvent
 data class PoolRemoved(override val poolId: String, val thread: String) : ThreadPoolEvent
