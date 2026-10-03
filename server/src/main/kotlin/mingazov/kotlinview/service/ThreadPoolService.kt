@@ -3,7 +3,7 @@ package mingazov.kotlinview.service
 import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.event.PoolRemoved
 import mingazov.kotlinview.instrumented.InstrumentedBlockingQueue
-import mingazov.kotlinview.instrumented.InstrumentedRunnable
+import mingazov.kotlinview.instrumented.InstrumentedRunnableTask
 import mingazov.kotlinview.instrumented.InstrumentedThreadFactory
 import mingazov.kotlinview.instrumented.InstrumentedThreadPoolExecutor
 import org.springframework.http.HttpStatus
@@ -13,9 +13,7 @@ import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.SynchronousQueue
-import java.util.concurrent.ThreadFactory
 import java.util.concurrent.atomic.AtomicLong
 
 enum class QueueType { LINKED, ARRAY, SYNCHRONOUS }
@@ -72,7 +70,7 @@ class ThreadPoolService(private val sink: EventSink) {
     }
 
     fun execute(poolId: String, durationMs: Long) {
-        val task = InstrumentedRunnable(taskIds.incrementAndGet(), durationMs)
+        val task = InstrumentedRunnableTask(taskIds.incrementAndGet(), durationMs, sink)
         val pool = getPool(poolId)
         pool.execute(task)
     }
@@ -80,7 +78,7 @@ class ThreadPoolService(private val sink: EventSink) {
     fun shutdown(poolId: String) = getPool(poolId).shutdown()
 
     fun shutdownNow(poolId: String): List<Long> =
-        getPool(poolId).shutdownNow().mapNotNull { (it as? InstrumentedRunnable)?.id }
+        getPool(poolId).shutdownNow().mapNotNull { (it as? InstrumentedRunnableTask)?.id }
 
     fun remove(poolId: String) {
         val pool = getPool(poolId)

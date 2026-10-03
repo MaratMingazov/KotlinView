@@ -72,5 +72,5 @@ class InstrumentedThreadPoolExecutor(
         Thread.sleep(sleepMillis)
     }
 
-    private fun taskId(r: Runnable): Long? = (r as? InstrumentedRunnable)?.id
+    private fun taskId(r: Runnable): Long? = (r as? InstrumentedRunnableTask)?.id
 }

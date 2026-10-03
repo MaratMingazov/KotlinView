@@ -19,7 +19,7 @@ fun main() {
 
 
     for (id in 1L..5L) {
-        val task = InstrumentedRunnable(id, durationMs = 1000)
+        val task = InstrumentedRunnableTask(id, durationMs = 1000, sink)
         try {
             threadPoolExecutor.execute(task)
         } catch (e: RejectedExecutionException) {

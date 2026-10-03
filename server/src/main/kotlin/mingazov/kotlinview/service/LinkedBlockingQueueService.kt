@@ -4,7 +4,7 @@ import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.event.QueueCreated
 import mingazov.kotlinview.event.QueueRemoved
 import mingazov.kotlinview.instrumented.InstrumentedBlockingQueue
-import mingazov.kotlinview.instrumented.InstrumentedRunnable
+import mingazov.kotlinview.instrumented.InstrumentedRunnableTask
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.bind.annotation.ResponseStatus
@@ -18,7 +18,7 @@ class QueueNotFoundException(queueId: String) : RuntimeException("Queue $queueId
 @Service
 class LinkedBlockingQueueService(private val sink: EventSink) {
 
-    private val queues = ConcurrentHashMap<String, InstrumentedBlockingQueue<InstrumentedRunnable>>()
+    private val queues = ConcurrentHashMap<String, InstrumentedBlockingQueue<InstrumentedRunnableTask>>()
     private val queueIds = AtomicLong()
     private val taskIds = AtomicLong()
 
@@ -35,9 +35,9 @@ class LinkedBlockingQueueService(private val sink: EventSink) {
         sink.emit(QueueRemoved(queueId, Thread.currentThread().name))
     }
 
-    fun offer(queueId: String): Boolean = getQueue(queueId).offer(InstrumentedRunnable(taskIds.incrementAndGet(), durationMs = 1000))
+    fun offer(queueId: String): Boolean = getQueue(queueId).offer(InstrumentedRunnableTask(taskIds.incrementAndGet(), durationMs = 1000, sink))
 
-    fun poll(queueId: String): InstrumentedRunnable? = getQueue(queueId).poll()
+    fun poll(queueId: String): InstrumentedRunnableTask? = getQueue(queueId).poll()
 
     private fun getQueue(queueId: String) = queues[queueId] ?: throw QueueNotFoundException(queueId)
 }
