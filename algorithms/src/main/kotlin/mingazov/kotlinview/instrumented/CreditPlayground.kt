@@ -1,5 +1,7 @@
 package mingazov.kotlinview.instrumented
 
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.Clock
 
@@ -7,7 +9,8 @@ import kotlin.time.Clock
 fun main() {
     println("${Thread.currentThread().name} - MAIN started - ${Clock.System.now()}")
     //calculateCreditSynchronous(0)
-    calculateCreditAsynchronous(0)
+    //calculateCreditAsynchronous(0)
+    calculateCreditWithExecutor(0)
     println("${Thread.currentThread().name} - MAIN completed - ${Clock.System.now()}")
 }
 
@@ -47,6 +50,16 @@ fun calculateCreditAsynchronous(personId: Long) : Credit {
     val credit =  calculateCredit(assetRef.get(), liabilityRef.get()) // 1 sec
     thread3.join()
     return credit
+}
+
+fun calculateCreditWithExecutor(personId: Long): Credit {
+    val person = getPerson(personId) // Вызов БД блокирует поток 1 sec
+    return Executors.newFixedThreadPool(3).use { executor ->
+        val assetFuture = executor.submit(Callable { getAsset(person) })         // 1 sec
+        val liabilityFuture = executor.submit(Callable { getLiability(person) }) // 1 sec
+        executor.submit({ importantWork() })                           // 1 sec
+        calculateCredit(assetFuture.get(), liabilityFuture.get()) // 1 sec
+    }
 }
 
 fun getPerson(personId: Long): Person { Thread.sleep(1000); return Person(personId, "") }

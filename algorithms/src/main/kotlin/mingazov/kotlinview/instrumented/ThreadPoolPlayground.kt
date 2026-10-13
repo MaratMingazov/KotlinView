@@ -1,7 +1,6 @@
 package mingazov.kotlinview.instrumented
 
 import mingazov.kotlinview.event.EventSink
-import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 
