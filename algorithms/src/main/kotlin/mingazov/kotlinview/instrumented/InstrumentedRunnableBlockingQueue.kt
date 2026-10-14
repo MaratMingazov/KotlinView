@@ -10,17 +10,15 @@ import java.util.concurrent.LinkedBlockingQueue
 
 
 class InstrumentedRunnableBlockingQueue private constructor(
-    val id: String,
+    val id: Long,
     private val delegate: BlockingQueue<Runnable>,
     private val sink: EventSink,
-    private val sleepMillis: Long,
 ) : BlockingQueue<Runnable> by delegate {
 
-    constructor(id: String, capacity: Int, sink: EventSink, sleepMillis: Long) : this(id, LinkedBlockingQueue(capacity), sink, sleepMillis)
+    constructor(id: Long, capacity: Int, sink: EventSink) : this(id, LinkedBlockingQueue(capacity), sink)
 
     override fun offer(runnable: Runnable): Boolean {
         sink.emit(RunnableBlockingQueueOfferInEvent(id, delegate.size, Thread.currentThread().name))
-        Thread.sleep(sleepMillis)
         val accepted = delegate.offer(runnable) // неблокирующий вызов. Говорит смог ли положить элемент в очередь
         sink.emit(RunnableBlockingQueueOfferOutEvent(id, accepted, delegate.size, Thread.currentThread().name))
         return accepted
@@ -29,10 +27,8 @@ class InstrumentedRunnableBlockingQueue private constructor(
     // TODO: без общего монитора событие onTaken может прийти раньше onOffered
     override fun take(): Runnable {
         sink.emit(RunnableBlockingQueueTakeInEvent(id, delegate.size, Thread.currentThread().name))
-        Thread.sleep(sleepMillis)
         val element = delegate.take() // это блокирующий вызов. Если очередь пустая, то поток уснет
         sink.emit(RunnableBlockingQueueTakeOutEvent(id, delegate.size, Thread.currentThread().name))
-        Thread.sleep(sleepMillis)
         return element
     }
 
