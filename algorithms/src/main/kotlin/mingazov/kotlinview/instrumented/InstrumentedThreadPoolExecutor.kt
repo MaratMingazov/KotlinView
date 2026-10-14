@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit
  */
 
 class InstrumentedThreadPoolExecutor(
-    val poolId: String,
+    val poolId: Long,
     private val sink: EventSink,
     corePoolSize: Int,
     maximumPoolSize: Int,

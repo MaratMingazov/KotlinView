@@ -4,6 +4,7 @@ import mingazov.kotlinview.core.PROTOCOL_VERSION
 import mingazov.kotlinview.event.Event
 import mingazov.kotlinview.event.EventSink
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketSession
@@ -21,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap
 @Component
 class EventBroadcaster(
     private val jsonMapper: JsonMapper,
+    @Value("\${kotlinview.events.sleep-millis:0}") private val sleepMillis: Long,
 ) : EventSink {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -30,6 +32,7 @@ class EventBroadcaster(
     @Synchronized
     override fun emit(event: Event) {
         log.info("event: {}", event)
+        Thread.sleep(sleepMillis)
         val message = toMessage(++seq, event::class.simpleName!!, event)
         sessions.values.forEach { send(it, message) }
     }
