@@ -16,5 +16,5 @@ class InstrumentedRunnableTask(
         sink.emit(RunnableTaskRunOutEvent(id, Thread.currentThread().name))
     }
 
-    override fun toString() = "runnableTask-$id"
+    override fun toString() = "$id"
 }
