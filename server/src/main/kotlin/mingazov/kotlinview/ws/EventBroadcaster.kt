@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap
 @Component
 class EventBroadcaster(
     private val jsonMapper: JsonMapper,
-    @Value("\${kotlinview.events.sleep-millis:0}") private val sleepMillis: Long,
+    @Value("\${kotlinview.events.sleep-millis:1000}") private val sleepMillis: Long,
 ) : EventSink {
 
     private val log = LoggerFactory.getLogger(javaClass)

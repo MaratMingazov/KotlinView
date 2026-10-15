@@ -1,0 +1,3 @@
+kotlinview:
+  events:
+    sleep-millis: 1000
