@@ -18,7 +18,7 @@ class InstrumentedRunnableBlockingQueue private constructor(
     constructor(id: Long, capacity: Int, sink: EventSink) : this(id, LinkedBlockingQueue(capacity), sink)
 
     override fun offer(runnable: Runnable): Boolean {
-        val taskId = getTaskId(runnable)
+        val taskId = InstrumentedRunnableTask.taskIdOf(runnable)
         sink.emit(RunnableBlockingQueueOfferInEvent(id, delegate.size, Thread.currentThread().name, taskId))
         val accepted = delegate.offer(runnable) // неблокирующий вызов. Говорит смог ли положить элемент в очередь
         sink.emit(RunnableBlockingQueueOfferOutEvent(id, accepted, delegate.size, Thread.currentThread().name, taskId))
@@ -29,14 +29,9 @@ class InstrumentedRunnableBlockingQueue private constructor(
     override fun take(): Runnable {
         sink.emit(RunnableBlockingQueueTakeInEvent(id, delegate.size, Thread.currentThread().name))
         val element = delegate.take() // это блокирующий вызов. Если очередь пустая, то поток уснет
-        val taskId = getTaskId(element)
+        val taskId = InstrumentedRunnableTask.taskIdOf(element)
         sink.emit(RunnableBlockingQueueTakeOutEvent(id, delegate.size, Thread.currentThread().name, taskId))
         return element
-    }
-
-    private fun getTaskId(runnable: Runnable): Long {
-        require(runnable is InstrumentedRunnableTask) { "Expected InstrumentedRunnableTask, got ${runnable::class.qualifiedName}" }
-        return runnable.id
     }
 
 }

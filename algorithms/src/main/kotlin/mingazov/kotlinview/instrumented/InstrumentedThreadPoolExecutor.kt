@@ -30,19 +30,17 @@ class InstrumentedThreadPoolExecutor(
     keepAliveMs: Long,
     queue: BlockingQueue<Runnable>,
     threadFactory: ThreadFactory,
-    private val sleepMillis: Long = 0,
 ) : ThreadPoolExecutor(corePoolSize, maximumPoolSize, keepAliveMs, TimeUnit.MILLISECONDS, queue, threadFactory) {
 
     override fun beforeExecute(t: Thread, r: Runnable) {
-        sink.emit(TaskStarted(poolId, t.name, taskId(r)))
-        Thread.sleep(sleepMillis)
+
+        sink.emit(TaskStarted(poolId, t.name, InstrumentedRunnableTask.taskIdOf(r)))
     }
 
     override fun afterExecute(r: Runnable, t: Throwable?) {
         val thread = Thread.currentThread().name
-        if (t == null) sink.emit(TaskCompleted(poolId, thread, taskId(r)))
-        else sink.emit(TaskFailed(poolId, thread, taskId(r), t.toString()))
-        Thread.sleep(sleepMillis)
+        if (t == null) sink.emit(TaskCompleted(poolId, thread, InstrumentedRunnableTask.taskIdOf(r)))
+        else sink.emit(TaskFailed(poolId, thread, InstrumentedRunnableTask.taskIdOf(r), t.toString()))
     }
 
     /**
@@ -50,10 +48,8 @@ class InstrumentedThreadPoolExecutor(
      */
     override fun shutdown() {
         sink.emit(PoolShutdownIn(poolId, Thread.currentThread().name))
-        Thread.sleep(sleepMillis)
         super.shutdown()
         sink.emit(PoolShutdownOut(poolId, Thread.currentThread().name))
-        Thread.sleep(sleepMillis)
     }
 
     /**
@@ -62,15 +58,11 @@ class InstrumentedThreadPoolExecutor(
     override fun shutdownNow(): MutableList<Runnable> {
         val drained = super.shutdownNow()
         sink.emit(PoolShutdownNow(poolId, Thread.currentThread().name))
-        sink.emit(TasksDrained(poolId, Thread.currentThread().name, drained.mapNotNull { taskId(it) }))
-        Thread.sleep(sleepMillis)
+        sink.emit(TasksDrained(poolId, Thread.currentThread().name, drained.mapNotNull { InstrumentedRunnableTask.taskIdOf(it) }))
         return drained
     }
 
     override fun terminated() {
         sink.emit(PoolTerminated(poolId, Thread.currentThread().name))
-        Thread.sleep(sleepMillis)
     }
-
-    private fun taskId(r: Runnable): Long? = (r as? InstrumentedRunnableTask)?.id
 }

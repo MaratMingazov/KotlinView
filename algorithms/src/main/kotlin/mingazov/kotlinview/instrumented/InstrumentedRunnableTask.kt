@@ -17,4 +17,11 @@ class InstrumentedRunnableTask(
     }
 
     override fun toString() = "$id"
+
+    companion object {
+        fun taskIdOf(runnable: Runnable): Long {
+            require(runnable is InstrumentedRunnableTask) { "Expected InstrumentedRunnableTask, got ${runnable::class.qualifiedName}" }
+            return runnable.id
+        }
+    }
 }
