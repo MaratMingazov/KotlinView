@@ -9,12 +9,11 @@ class ThreadPoolPlayground {
 
 fun main() {
     println("${Thread.currentThread().name} - MAIN started")
-    val sleepMillis = 1000L
-    val sink = EventSink { event -> println(event) }
-    val queue = InstrumentedRunnableBlockingQueue("LinkedBlockingQueue", 2, sink, sleepMillis)
-    val factory = InstrumentedThreadFactory("ThreadFactory", sink, sleepMillis)
+    val sink = EventSink { event -> println("${java.time.LocalTime.now()} $event") }
+    val queue = InstrumentedRunnableBlockingQueue(0, 2, sink)
+    val factory = InstrumentedThreadFactory(1, sink)
 
-    val threadPoolExecutor = InstrumentedThreadPoolExecutor("ThreadPoolExecutor", sink, 1, 1, 1000, queue, factory, 1000)
+    val threadPoolExecutor = InstrumentedThreadPoolExecutor(1, sink, 1, 1, 1000, queue, factory, 0)
 
 
     for (id in 1L..5L) {
@@ -22,7 +21,7 @@ fun main() {
         try {
             threadPoolExecutor.execute(task)
         } catch (e: RejectedExecutionException) {
-            println("$task REJECTED")
+            println("$task REJECTED, ${e.message}")
         }
     }
 
