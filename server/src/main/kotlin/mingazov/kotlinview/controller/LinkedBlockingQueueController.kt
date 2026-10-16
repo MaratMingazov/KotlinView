@@ -1,6 +1,7 @@
 package mingazov.kotlinview.controller
 
 import mingazov.kotlinview.service.InstrumentedRunnableBlockingQueueService
+import mingazov.kotlinview.service.InstrumentedRunnableTaskService
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -18,22 +19,27 @@ data class PollResponse(val elementId: Long?)
 @RestController
 @RequestMapping("/api/queues")
 class LinkedBlockingQueueController(
-    private val service: InstrumentedRunnableBlockingQueueService,
+    private val blockingQueueService: InstrumentedRunnableBlockingQueueService,
+    private val runnableTaskService: InstrumentedRunnableTaskService,
 ) {
 
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
     fun create(@RequestBody request: CreateQueueRequest): CreateQueueResponse {
-        val queue = service.create(request.capacity)
+        val queue = blockingQueueService.create(request.capacity)
         val response = CreateQueueResponse(queue.id)
         return response
     }
 
-    @PostMapping("/{queueId}/offer")
+    @PostMapping("/{queueId}/{taskId}/offer")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    fun offer(@PathVariable queueId: Long) = OfferResponse(service.offer(queueId))
+    fun offer(@PathVariable queueId: Long, @PathVariable taskId: Long) : OfferResponse {
+        val task = runnableTaskService.get(taskId)
+        val accepted = blockingQueueService.offer(queueId, task)
+        return OfferResponse(accepted)
+    }
 
     @DeleteMapping("/{queueId}")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    fun remove(@PathVariable queueId: Long) = service.remove(queueId)
+    fun remove(@PathVariable queueId: Long) = blockingQueueService.remove(queueId)
 }

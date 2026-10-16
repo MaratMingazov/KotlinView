@@ -12,7 +12,6 @@ class InstrumentedRunnableBlockingQueueService(private val sink: EventSink) {
 
     private val queues = ConcurrentHashMap<Long, InstrumentedRunnableBlockingQueue>()
     private val queueIds = AtomicLong()
-    private val taskIds = AtomicLong()
 
 
     fun create(capacity: Int): InstrumentedRunnableBlockingQueue {
@@ -24,7 +23,10 @@ class InstrumentedRunnableBlockingQueueService(private val sink: EventSink) {
 
     fun remove(queueId: Long) { queues.remove(queueId) ?: throw RuntimeException("Queue $queueId not found")}
 
-    fun offer(queueId: Long): Boolean = getQueue(queueId).offer(InstrumentedRunnableTask(taskIds.incrementAndGet(), durationMs = 1000, sink))
+    fun offer(queueId: Long, task: InstrumentedRunnableTask): Boolean {
+        val accepted = getQueue(queueId).offer(task)
+        return accepted
+    }
 
     private fun getQueue(queueId: Long) = queues[queueId] ?: throw RuntimeException("Queue $queueId not found")
 }

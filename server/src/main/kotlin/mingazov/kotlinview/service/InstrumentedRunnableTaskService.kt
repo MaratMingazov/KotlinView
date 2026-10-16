@@ -22,5 +22,5 @@ class InstrumentedRunnableTaskService(private val sink: EventSink) {
 
     fun remove(taskId: Long) { tasks.remove(taskId) ?: throw RuntimeException("Task $taskId not found") }
 
-    private fun getTask(taskId: Long) = tasks[taskId] ?: throw RuntimeException("Task $taskId not found")
+    fun get(taskId: Long) = tasks[taskId] ?: throw RuntimeException("Task $taskId not found")
 }
