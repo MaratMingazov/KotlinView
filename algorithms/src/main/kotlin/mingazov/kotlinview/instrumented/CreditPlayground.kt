@@ -1,8 +1,13 @@
 package mingazov.kotlinview.instrumented
 
 import java.util.concurrent.Callable
+import java.util.concurrent.CompletableFuture.runAsync
+import java.util.concurrent.CompletableFuture.supplyAsync
+import java.util.concurrent.CompletionStage
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
+import java.util.function.BiFunction
+import java.util.function.Supplier
 import kotlin.time.Clock
 
 
@@ -61,6 +66,28 @@ fun calculateCreditWithExecutor(personId: Long): Credit {
         calculateCredit(assetFuture.get(), liabilityFuture.get()) // 1 sec
     }
 }
+
+fun calculateCreditWithCompletableFuture(personId: Long): Credit {
+
+    val personFuture = supplyAsync { getPerson(personId) } // принимает supplier, return CompletableFuture<Person>. Сразу начинается выполнение.
+    val importantFuture = runAsync { importantWork() } // принимает Runnable, return CompletableFuture<Void>. Сразу начинается выполнение.
+    val assetFuture = personFuture.thenApplyAsync { person -> getAsset(person) } // запустится сразу как завершится personFuture.
+    val liabilityFuture = personFuture.thenApplyAsync { person -> getLiability(person) } // запустится сразу как завершится personFuture.
+    return assetFuture.thenCombine(liabilityFuture) { asset, liability -> calculateCredit(asset, liability) }
+        .thenCombine(importantFuture) { credit, _ -> credit } // здесь мы просто ждем пока завершится credit и importantWork
+        .join()
+}
+
+fun calculateCreditWithCompletableFuture2(personId: Long): Credit =
+    Executors.newFixedThreadPool(3).use { executor ->
+        val personFuture = supplyAsync({ getPerson(personId) }, executor)                 // 1 сек
+        val importantFuture = runAsync({ importantWork() }, executor)                      // 1 сек, параллельно
+        val assetF = personFuture.thenApplyAsync({ getAsset(it) }, executor)               // 1–2 сек
+        val liabilityF = personFuture.thenApplyAsync({ getLiability(it) }, executor)       // 1–2 сек, параллельно
+        assetF.thenCombine(liabilityF) { asset, liability -> calculateCredit(asset, liability) } // 2–3 сек
+            .thenCombine(importantFuture) { credit, _ -> credit }  // как join() у thread3: ждём importantWork
+            .join()
+    }
 
 fun getPerson(personId: Long): Person { Thread.sleep(1000); return Person(personId, "") }
 fun getAsset(person: Person): Asset { Thread.sleep(1000); return Asset(person.name, 0) }
