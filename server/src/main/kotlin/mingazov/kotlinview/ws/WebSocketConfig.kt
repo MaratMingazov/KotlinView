@@ -9,11 +9,11 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 @Configuration
 @EnableWebSocket // включаем поддержку веб сокетоы
 class WebSocketConfig(
-    private val broadcaster: Broadcaster,
+    private val sessionRegistry: SessionRegistry,
 ) : WebSocketConfigurer {
 
     @Bean
-    fun eventsHandler(): EventsWebSocketHandler = EventsWebSocketHandler(broadcaster)
+    fun eventsHandler(): WebSocketHandler = WebSocketHandler(sessionRegistry)
 
     override fun registerWebSocketHandlers(registry: WebSocketHandlerRegistry) {
         registry.addHandler(eventsHandler(), "/ws/events") // связываем адрес /ws/events с нашим обработчиком

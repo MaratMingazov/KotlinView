@@ -18,28 +18,26 @@ data class SnapshotData(
     val executors: List<Any>,
 )
 
-/**
- * TextWebSocketHandler — базовый класс Spring для WebSocket с текстовыми сообщениями. Переопределяем то, что нужно:
- *  - afterConnectionEstablished — клиент подключился: broadcaster шлёт ему снимок и дальше все события;
- *  - afterConnectionClosed — клиент отключился.
- */
-class EventsWebSocketHandler(
-    private val broadcaster: Broadcaster,
+
+class WebSocketHandler(
+    private val sessionRegistry: SessionRegistry,
 ) : TextWebSocketHandler() {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
     override fun afterConnectionEstablished(session: WebSocketSession) {
         log.info("WebSocket connected: {}", session.id)
-        broadcaster.register(session)
+        sessionRegistry.register(session)
     }
 
     override fun afterConnectionClosed(session: WebSocketSession, status: CloseStatus) {
         log.info("WebSocket closed: {} {}", session.id, status)
-        broadcaster.unregister(session)
+        sessionRegistry.unregister(session)
     }
 
     override fun handleTextMessage(session: WebSocketSession, message: TextMessage) {
+        // Это когда клиент по веб сокету прислал сообщение
+        // У нас такого пока нет.
         log.info("from {}: {}", session.id, message.payload)
     }
 }
