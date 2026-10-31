@@ -24,7 +24,7 @@ data class SnapshotData(
  *  - afterConnectionClosed — клиент отключился.
  */
 class EventsWebSocketHandler(
-    private val broadcaster: EventBroadcaster,
+    private val broadcaster: Broadcaster,
 ) : TextWebSocketHandler() {
 
     private val log = LoggerFactory.getLogger(javaClass)

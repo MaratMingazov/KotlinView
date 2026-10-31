@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap
  *  - сессия обёрнута в ConcurrentWebSocketSessionDecorator: обычный sendMessage не потокобезопасен.
  */
 @Component
-class EventBroadcaster(
+class Broadcaster(
     private val jsonMapper: JsonMapper,
     @Value("\${kotlinview.events.sleep-millis:1000}") private val sleepMillis: Long,
 ) : EventSink {

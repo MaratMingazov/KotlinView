@@ -9,7 +9,7 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 @Configuration
 @EnableWebSocket // включаем поддержку веб сокетоы
 class WebSocketConfig(
-    private val broadcaster: EventBroadcaster,
+    private val broadcaster: Broadcaster,
 ) : WebSocketConfigurer {
 
     @Bean
