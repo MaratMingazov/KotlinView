@@ -2,6 +2,7 @@ package mingazov.kotlinview.ws
 
 import mingazov.kotlinview.event.Event
 import mingazov.kotlinview.event.EventSink
+import mingazov.kotlinview.ws.protocol.Envelope
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component

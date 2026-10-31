@@ -6,18 +6,6 @@ import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketSession
 import org.springframework.web.socket.handler.TextWebSocketHandler
 
-data class Envelope(
-    val seq: Long,
-    val ts: Long,
-    val type: String,
-    val data: Any,
-)
-
-data class SnapshotData(
-    val protocolVersion: Int,
-    val executors: List<Any>,
-)
-
 
 class WebSocketHandler(
     private val sessionRegistry: SessionRegistry,
