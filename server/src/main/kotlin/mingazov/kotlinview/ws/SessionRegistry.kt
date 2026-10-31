@@ -2,9 +2,11 @@ package mingazov.kotlinview.ws
 
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import org.springframework.web.socket.CloseStatus
 import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketSession
 import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator
+import org.springframework.web.socket.handler.SessionLimitExceededException
 import java.util.concurrent.ConcurrentHashMap
 
 @Component
@@ -24,6 +26,9 @@ class SessionRegistry {
     private fun send(session: WebSocketSession, message: TextMessage) {
         try {
             session.sendMessage(message)
+        } catch (e: SessionLimitExceededException) {
+            log.warn("WebSocket {} is too slow, closing: {}", session.id, e.message)
+            close(session, e.status)
         } catch (e: Exception) {
             log.warn("WebSocket send failed: {}", session.id, e)
         }
@@ -31,6 +36,14 @@ class SessionRegistry {
 
     fun sendToAll(message: TextMessage) {
         sessions.values.forEach { send(it, message) }
+    }
+
+    private fun close(session: WebSocketSession, status: CloseStatus) {
+        try {
+            session.close(status)
+        } catch (e: Exception) {
+            log.debug("WebSocket close failed: {}", session.id, e)
+        }
     }
 
     private companion object {
