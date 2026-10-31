@@ -2,6 +2,7 @@ package mingazov.kotlinview.ws
 
 import org.slf4j.LoggerFactory
 import org.springframework.web.socket.CloseStatus
+import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketSession
 import org.springframework.web.socket.handler.TextWebSocketHandler
 
@@ -36,5 +37,9 @@ class EventsWebSocketHandler(
     override fun afterConnectionClosed(session: WebSocketSession, status: CloseStatus) {
         log.info("WebSocket closed: {} {}", session.id, status)
         broadcaster.unregister(session)
+    }
+
+    override fun handleTextMessage(session: WebSocketSession, message: TextMessage) {
+        log.info("from {}: {}", session.id, message.payload)
     }
 }

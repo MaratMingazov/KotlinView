@@ -1,6 +1,5 @@
 package mingazov.kotlinview.ws
 
-import mingazov.kotlinview.core.PROTOCOL_VERSION
 import mingazov.kotlinview.event.Event
 import mingazov.kotlinview.event.EventSink
 import org.slf4j.LoggerFactory
@@ -29,7 +28,6 @@ class EventBroadcaster(
     private val sessions = ConcurrentHashMap<String, WebSocketSession>()
     private var seq = 0L
 
-    @Synchronized
     override fun emit(event: Event) {
         log.info("event: {}", event)
         Thread.sleep(sleepMillis)
@@ -37,20 +35,20 @@ class EventBroadcaster(
         sessions.values.forEach { send(it, message) }
     }
 
-    /** Под тем же монитором, что и emit: клиент получает снимок, а следом — все события после него, без пропусков. */
-    @Synchronized
+
     fun register(session: WebSocketSession) {
-        val safe = ConcurrentWebSocketSessionDecorator(session, SEND_TIME_LIMIT_MS, BUFFER_SIZE_LIMIT)
-        send(safe, toMessage(seq, "SNAPSHOT", SnapshotData(PROTOCOL_VERSION, executors = emptyList())))
-        sessions[session.id] = safe
+        sessions[session.id] = ConcurrentWebSocketSessionDecorator(session, SEND_TIME_LIMIT_MS, BUFFER_SIZE_LIMIT)
     }
 
     fun unregister(session: WebSocketSession) {
         sessions.remove(session.id)
     }
 
-    private fun toMessage(seq: Long, type: String, data: Any) =
-        TextMessage(jsonMapper.writeValueAsString(Envelope(seq, System.currentTimeMillis(), type, data)))
+    private fun toMessage(seq: Long, type: String, data: Any) : TextMessage {
+        val message = jsonMapper.writeValueAsString(Envelope(seq, System.currentTimeMillis(), type, data))
+        return TextMessage(message)
+    }
+
 
     private fun send(session: WebSocketSession, message: TextMessage) {
         try {
@@ -61,7 +59,7 @@ class EventBroadcaster(
     }
 
     private companion object {
-        const val SEND_TIME_LIMIT_MS = 5_000
-        const val BUFFER_SIZE_LIMIT = 512 * 1024
+        const val SEND_TIME_LIMIT_MS = 5_000 // если текущая отправка в эту сессию длится дольше 5 секунд, то клиент считается нерабочим
+        const val BUFFER_SIZE_LIMIT = 512 * 1024 // если в очереди накопилось больше 512 KB неотправленных данных, то клиент считается нерабочим
     }
 }
