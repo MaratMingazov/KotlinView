@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>kotlin-view · ArrayList&lt;Int&gt;</title>
+  <style>
+    :root {
+      --bg: #1e1f22; --panel: #2b2d30; --border: #3c3f41; --text: #bcbec4; --dim: #6f737a;
+      --keyword: #cf8e6d; --fn: #56a8f5; --num: #2aacb8; --str: #6aab73;
+      --in: #56a8f5; --out: #6aab73; --fail: #f75464;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 13px/1.5 "JetBrains Mono", ui-monospace, Menlo, monospace;
+    }
+    header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--panel);
+    }
+    header .title b { color: var(--keyword); }
+    .on { color: var(--out); }
+    .off { color: var(--fail); }
+
+    main {
+      display: grid; grid-template-columns: minmax(360px, 1fr) 2fr; grid-template-rows: auto 1fr;
+      gap: 1px; background: var(--border); height: calc(100vh - 41px);
+    }
+    .panel { background: var(--bg); display: flex; flex-direction: column; min-height: 0; }
+    .panel > h4 {
+      margin: 0; padding: 4px 12px; font-weight: normal; color: var(--dim);
+      background: var(--panel); border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between;
+    }
+    .panel > .body { padding: 8px 12px; overflow-y: auto; flex: 1; }
+
+    /* --- console --- */
+    .cmd { display: flex; align-items: center; gap: 2px; margin: 4px 0; }
+    .cmd button {
+      background: none; border: none; padding: 0; cursor: pointer; font: inherit; color: var(--fn);
+    }
+    .cmd button:hover { text-decoration: underline; }
+    .kw { color: var(--keyword); }
+    .n { color: var(--num); }
+    .cmd input {
+      width: 44px; background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+      color: var(--num); font: inherit; padding: 0 4px;
+    }
+    .link { background: none; border: none; color: var(--dim); cursor: pointer; font: inherit; }
+    .link:hover { color: var(--text); }
+
+    .repl { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--border); }
+    #replOut div { white-space: pre-wrap; }
+    #replOut .echo { color: var(--text); }
+    #replOut .ok { color: var(--str); }
+    #replOut .err { color: var(--fail); }
+    .prompt { display: flex; gap: 6px; align-items: center; }
+    #repl { flex: 1; background: none; border: none; outline: none; color: var(--text); font: inherit; }
+    #repl::placeholder { color: var(--dim); }
+
+    .http div { white-space: pre-wrap; color: var(--dim); }
+    .http .ok { color: var(--str); }
+    .http .err { color: var(--fail); }
+
+    /* --- memory --- */
+    .empty { color: var(--dim); }
+    .card { border: 1px solid var(--border); border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; }
+    .card-head { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+    .card-head .name { color: var(--keyword); }
+    .method {
+      padding: 0 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--dim);
+      transition: background .15s;
+    }
+    .method.active { background: var(--out); border-color: var(--out); color: var(--bg); }
+    .method.failed { background: var(--fail); border-color: var(--fail); color: var(--bg); }
+
+    .cells { display: flex; gap: 4px; flex-wrap: wrap; min-height: 54px; }
+    .cell { display: flex; flex-direction: column; align-items: center; }
+    .cell .box {
+      min-width: 40px; height: 32px; padding: 0 6px; display: flex; align-items: center; justify-content: center;
+      border: 2px solid var(--border); border-radius: 3px; color: var(--num); background: var(--panel);
+      transition: border-color .3s, background .3s;
+    }
+    .cell .idx { font-size: 11px; color: var(--dim); }
+    .cell.new .box { background: color-mix(in srgb, var(--out) 30%, var(--panel)); }
+    .cell.read .box { background: color-mix(in srgb, var(--in) 30%, var(--panel)); }
+    .cell.shifted .box::after { content: " →"; color: var(--dim); }
+    .cell.ghost .box { border-style: dashed; border-color: var(--fail); color: var(--fail); background: none; }
+
+    .threads { margin-top: 6px; display: flex; gap: 10px; flex-wrap: wrap; min-height: 20px; }
+    .chip { color: var(--dim); }
+
+    /* --- events --- */
+    .events div { white-space: nowrap; padding: 1px 0; }
+    .events .seq { color: var(--dim); display: inline-block; width: 44px; }
+    .events .dt { color: var(--dim); display: inline-block; width: 64px; }
+    .badge { display: inline-block; width: 52px; text-align: center; border-radius: 3px; color: var(--bg); margin-right: 6px; }
+    .badge.IN { background: var(--in); }
+    .badge.OUT { background: var(--out); }
+    .badge.FAILED { background: var(--fail); }
+    .badge.LIFE { background: var(--keyword); }
+    .events .method-name { color: var(--fn); display: inline-block; width: 80px; }
+    .events .args { color: var(--num); }
+    .events .err { color: var(--fail); }
+    .events .elements { color: var(--dim); }
+    .events div { cursor: pointer; }
+    .events div:hover { background: var(--panel); }
+    .events div.selected { background: #2e436e; }
+
+    /* --- машина времени --- */
+    #timeStatus .paused { color: var(--keyword); }
+    #memoryPanel.paused { outline: 1px solid var(--keyword); outline-offset: -1px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="title"><b>kotlin-view</b> · ArrayList&lt;Int&gt;</span>
+  <span id="status" class="off">● ws disconnected</span>
+</header>
+
+<main>
+  <section class="panel">
+    <h4>console</h4>
+    <div class="body">
+      <div class="cmd"><span class="kw">val</span>&nbsp;list = <button id="create">ArrayList&lt;Int&gt;()</button></div>
+      <div class="cmd">list#<input id="arrayListId" type="number" value="1"></div>
+      <div class="cmd">list.<button id="add">add</button>(<input id="addElement" type="number" value="10">)</div>
+      <div class="cmd">list.<button id="addAt">add</button>(<input id="addAtIndex" type="number" value="0">, <input id="addAtElement" type="number" value="7">)</div>
+      <div class="cmd">list.<button id="get">get</button>(<input id="getIndex" type="number" value="0">)</div>
+      <div class="cmd"><button id="remove">remove</button>(list)</div>
+      <div class="repl">
+        <div id="replOut"></div>
+        <div class="prompt"><span class="kw">&gt;</span><input id="repl" autocomplete="off" spellcheck="false"
+            placeholder="list.add(0, 7) — Enter · ↑ история · help"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="memoryPanel">
+    <h4>memory <span id="timeStatus"></span></h4>
+    <div class="body" id="memory"></div>
+  </section>
+
+  <section class="panel" style="grid-column: 1; grid-row: 2;">
+    <h4>http <button class="link" id="clearHttp">clear</button></h4>
+    <div class="body http" id="http"></div>
+  </section>
+
+  <section class="panel" style="grid-column: 2; grid-row: 2;">
+    <h4>events <span><span class="empty">click / ← → — перемотка, Esc — live</span> <button class="link" id="clearEvents">clear</button></span></h4>
+    <div class="body events" id="events"></div>
+  </section>
+</main>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const base = '/api/arraylistint';
+
+  // ---------- Цвет потока: один и тот же поток везде одного цвета ----------
+
+  function threadColor(name) {
+    let hash = 0;
+    for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
+    return `hsl(${Math.abs(hash) % 360}, 65%, 62%)`;
+  }
+  const shortThread = name => name.replace(/^http-nio-\d+-/, ''); // http-nio-8080-exec-2 → exec-2
+
+  function threadSpan(name) {
+    const span = document.createElement('span');
+    span.textContent = `● ${shortThread(name)}`;
+    span.style.color = threadColor(name);
+    span.title = name;
+    return span;
+  }
+
+  // ---------- REST ----------
+
+  // Возвращает { ok, status, json }; json — тело ответа (или null, если тела нет)
+  async function call(method, url, body) {
+    const options = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body !== undefined) options.body = JSON.stringify(body);
+    const request = `${method} ${url}${body !== undefined ? ' ' + JSON.stringify(body) : ''}`;
+    const row = document.createElement('div');
+    try {
+      const res = await fetch(url, options);
+      const text = await res.text(); // у 204 тела нет
+      row.textContent = `${request} → ${res.status} ${text}`;
+      row.className = res.ok ? 'ok' : 'err';
+      $('http').prepend(row);
+      let json = null;
+      try { json = text ? JSON.parse(text) : null; } catch (e) { /* не JSON — оставляем null */ }
+      return { ok: res.ok, status: res.status, json };
+    } catch (e) {
+      row.textContent = `${request} → ${e}`;
+      row.className = 'err';
+      $('http').prepend(row);
+      return { ok: false, status: 0, json: { error: String(e) } };
+    }
+  }
+
+  const listId = () => $('arrayListId').value;
+  const num = id => Number($(id).value);
+
+  // Операции над списком — общие для кнопок и консоли
+  async function create() {
+    const res = await call('POST', base);
+    if (res.ok) $('arrayListId').value = res.json.arrayListId;
+    return res;
+  }
+  const add = (id, element) => call('POST', `${base}/${id}/add`, { value: element });
+  const addAt = (id, index, element) => call('POST', `${base}/${id}/addAt`, { index, element });
+  const get = (id, index) => call('POST', `${base}/${id}/get`, { index });
+  const remove = id => call('DELETE', `${base}/${id}`);
+
+  $('create').onclick = () => create();
+  $('add').onclick = () => add(listId(), num('addElement'));
+  $('addAt').onclick = () => addAt(listId(), num('addAtIndex'), num('addAtElement'));
+  $('get').onclick = () => get(listId(), num('getIndex'));
+  $('remove').onclick = () => remove(listId());
+
+  // ---------- REPL ----------
+
+  const HELP = [
+    'val list = ArrayList<Int>()   создать список (станет текущим)',
+    'list.add(10)                  добавить в конец',
+    'list.add(0, 7)                вставить по индексу',
+    'list.get(0)                   прочитать',
+    'remove(list)                  удалить список',
+    'list3.add(5)                  то же для списка #3; list3 — сделать #3 текущим',
+    'clear                         очистить консоль',
+  ].join('\n');
+
+  // Пробелы убираем заранее: "val list = ArrayList<Int>()" → "vallist=ArrayList<Int>()"
+  // id из команды (list3) или текущий (list)
+  const idOf = digits => digits || listId();
+  const COMMANDS = [
+    { re: /^(?:val\w+=)?ArrayList(?:<Int>)?\(\)$/, run: async () => {
+        const res = await create();
+        return res.ok ? { ...res, text: `list#${res.json.arrayListId}` } : res;
+      } },
+    { re: /^list(\d*)\.add\((-?\d+)\)$/, run: (id, e) => add(idOf(id), Number(e)) },
+    { re: /^list(\d*)\.add\((-?\d+),(-?\d+)\)$/, run: (id, i, e) => addAt(idOf(id), Number(i), Number(e)) },
+    { re: /^list(\d*)\.get\((-?\d+)\)$/, run: (id, i) => get(idOf(id), Number(i)) },
+    { re: /^remove\(list(\d*)\)$/, run: id => remove(idOf(id)) },
+    { re: /^list(\d+)$/, run: id => { $('arrayListId').value = id; return { ok: true, text: `текущий список: list#${id}` }; } },
+    { re: /^help$/, run: () => ({ ok: true, text: HELP }) },
+  ];
+
+  function replPrint(text, className) {
+    const row = document.createElement('div');
+    row.textContent = text;
+    if (className) row.className = className;
+    $('replOut').append(row);
+    row.scrollIntoView({ block: 'nearest' });
+  }
+
+  // Ответ сервера → строка результата, как в REPL: ✓ true / ✓ 10 / ✗ 400 IndexOutOfBoundsException…
+  function resultText(res) {
+    if (res.text) return `✓ ${res.text}`;
+    if (!res.ok) return `✗ ${res.status} ${res.json?.error ?? ''}`;
+    if (res.json?.result !== undefined) return `✓ ${res.json.result}`;
+    if (res.json?.value !== undefined) return `✓ ${res.json.value}`;
+    return '✓';
+  }
+
+  async function runCommand(line) {
+    replPrint(`> ${line}`, 'echo');
+    const compact = line.replace(/\s+/g, '');
+    if (compact === 'clear') { $('replOut').innerHTML = ''; return; }
+    for (const { re, run } of COMMANDS) {
+      const match = compact.match(re);
+      if (match) {
+        const res = await run(...match.slice(1));
+        replPrint(resultText(res), res.ok ? 'ok' : 'err');
+        return;
+      }
+    }
+    replPrint(`✗ не понимаю: ${line}  (help — список команд)`, 'err');
+  }
+
+  // История команд: ↑ / ↓
+  const replHistory = [];
+  let replPos = 0;
+  $('repl').addEventListener('keydown', async e => {
+    const input = $('repl');
+    if (e.key === 'Enter' && input.value.trim()) {
+      const line = input.value.trim();
+      replHistory.push(line);
+      replPos = replHistory.length;
+      input.value = '';
+      await runCommand(line);
+    } else if (e.key === 'ArrowUp' && replPos > 0) {
+      input.value = replHistory[--replPos];
+      e.preventDefault();
+    } else if (e.key === 'ArrowDown' && replPos < replHistory.length) {
+      input.value = replHistory[++replPos] ?? '';
+      e.preventDefault();
+    }
+  });
+  $('clearHttp').onclick = () => { $('http').innerHTML = ''; };
+  $('clearEvents').onclick = () => {
+    $('events').innerHTML = '';
+    eventHistory.length = 0;
+    prevTs = null;
+    goLive();
+  };
+
+  // ---------- Разбор type ----------
+
+  // Часть type → метод: ARRAY_LIST_INT_ADD_AT_IN → addAt
+  const METHOD_BY_TYPE = { ADD: 'add', ADD_AT: 'addAt', GET: 'get' };
+  const METHODS = Object.values(METHOD_BY_TYPE);
+  const PHASE_BY_TYPE = { IN: 'IN', OUT: 'OUT', OUT_FAILED: 'FAILED' };
+
+  function parseType(type) {
+    if (type === 'ARRAY_LIST_INT_CREATED') return { phase: 'LIFE', method: 'created' };
+    if (type === 'ARRAY_LIST_INT_REMOVED') return { phase: 'LIFE', method: 'removed' };
+    const match = type.match(/^ARRAY_LIST_INT_(ADD_AT|ADD|GET)_(IN|OUT|OUT_FAILED)$/);
+    if (!match) return null;
+    return { method: METHOD_BY_TYPE[match[1]], phase: PHASE_BY_TYPE[match[2]] };
+  }
+
+  function argsText(method, data) {
+    if (method === 'add') return `(${data.element})`;
+    if (method === 'addAt') return `(${data.index}, ${data.element})`;
+    if (method === 'get') return `(${data.index})`;
+    return '';
+  }
+
+  // ---------- Состояние: чистый reducer ----------
+
+  // state.lists: arrayListId → { id, elements, inside: { method: Map<thread, args> } }
+  const emptyState = () => ({ lists: new Map() });
+
+  function listOf(state, id) {
+    if (!state.lists.has(id)) {
+      state.lists.set(id, { id, elements: [], inside: Object.fromEntries(METHODS.map(m => [m, new Map()])) });
+    }
+    return state.lists.get(id);
+  }
+
+  // Меняет только state: никаких таймеров, поэтому годится и для живого режима, и для перемотки
+  function reduce(state, env, parsed) {
+    const d = env.data;
+    if (parsed.method === 'created') { listOf(state, d.arrayListId); return; }
+    if (parsed.method === 'removed') { state.lists.delete(d.arrayListId); return; }
+
+    const list = listOf(state, d.arrayListId);
+    list.elements = d.elements;
+    // Внутри метода может быть несколько потоков сразу: подсветка горит, пока не вышел последний
+    if (parsed.phase === 'IN') list.inside[parsed.method].set(d.thread, argsText(parsed.method, d));
+    else list.inside[parsed.method].delete(d.thread);
+  }
+
+  // Что изменило именно это событие: какие ячейки подсветить и какой метод покрасить красным
+  function effectOf(env, parsed) {
+    const d = env.data;
+    const { method, phase } = parsed;
+    const effect = { listId: d.arrayListId, thread: d.thread, failedMethod: null, cells: null };
+    if (phase === 'FAILED') {
+      effect.failedMethod = method;
+      // Индекс за концом массива — рисуем «призрачную» ячейку
+      if (d.index !== undefined && d.index >= d.elements.length) effect.cells = { ghost: d.index };
+    }
+    if (phase === 'OUT') {
+      // При гонке «последняя ячейка» для add — допущение, а не наблюдение
+      if (method === 'add') effect.cells = { new: d.elements.length - 1 };
+      if (method === 'addAt') effect.cells = { new: d.index, shiftedFrom: d.index + 1 };
+      if (method === 'get') effect.cells = { read: d.index };
+    }
+    return effect;
+  }
+
+  // ---------- Живой режим и история ----------
+
+  const HISTORY_LIMIT = 1000;
+  const eventHistory = [];        // [{ n, env, parsed }] — всё, что пришло, для перемотки
+  let nextN = 0;             // сквозной номер записи истории (seq сервера может начаться заново)
+  let selectedN = null;      // null — живой режим, иначе номер записи, на которой стоим
+
+  const liveState = emptyState();
+  const liveEffects = new Map(); // arrayListId → { effect, token } — гаснут по таймеру
+
+  // Подсветка гаснет через 1.5 с; token защищает новую подсветку от старого таймера
+  let effectToken = 0;
+  function showLiveEffect(effect) {
+    if (!effect.cells && !effect.failedMethod) return;
+    const token = ++effectToken;
+    liveEffects.set(effect.listId, { effect, token });
+    setTimeout(() => {
+      if (liveEffects.get(effect.listId)?.token === token) { liveEffects.delete(effect.listId); render(); }
+    }, 1500);
+  }
+
+  // Состояние сразу после записи истории с номером n: прогоняем reducer с начала истории
+  function stateAt(n) {
+    const state = emptyState();
+    for (const entry of eventHistory) {
+      if (entry.parsed) reduce(state, entry.env, entry.parsed);
+      if (entry.n === n) break;
+    }
+    return state;
+  }
+
+  function select(n) {
+    selectedN = n;
+    for (const row of $('events').children) row.classList.toggle('selected', Number(row.dataset.n) === n);
+    render();
+  }
+
+  function goLive() {
+    selectedN = null;
+    for (const row of $('events').querySelectorAll('.selected')) row.classList.remove('selected');
+    render();
+  }
+
+  // ← — назад во времени, → — вперёд; из живого режима ← встаёт на последнее событие
+  function step(delta) {
+    if (eventHistory.length === 0) return;
+    const index = selectedN === null ? eventHistory.length : eventHistory.findIndex(e => e.n === selectedN);
+    const next = Math.min(Math.max(index + delta, 0), eventHistory.length - 1);
+    select(eventHistory[next].n);
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === 'ArrowLeft' || e.key === 'j') step(-1);
+    else if (e.key === 'ArrowRight' || e.key === 'k') step(+1);
+    else if (e.key === 'Escape') goLive();
+  });
+
+  // ---------- Отрисовка memory ----------
+
+  function cell(value, index, classes, outline) {
+    const el = document.createElement('div');
+    el.className = ['cell', ...classes].join(' ');
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.textContent = value;
+    if (outline) box.style.borderColor = outline;
+    const idx = document.createElement('div');
+    idx.className = 'idx';
+    idx.textContent = index;
+    el.append(box, idx);
+    return el;
+  }
+
+  function renderTimeStatus() {
+    const status = $('timeStatus');
+    const paused = selectedN !== null;
+    $('memoryPanel').classList.toggle('paused', paused);
+    if (!paused) {
+      status.innerHTML = '<span class="on">● live</span>';
+      return;
+    }
+    const index = eventHistory.findIndex(e => e.n === selectedN);
+    status.innerHTML = `<span class="paused">⏸ #${eventHistory[index].env.seq} · ${index + 1} из ${eventHistory.length}</span> `;
+    const live = Object.assign(document.createElement('button'), { className: 'link', textContent: '▶ live' });
+    live.onclick = goLive;
+    status.append(live);
+  }
+
+  function render() {
+    renderTimeStatus();
+
+    // Что рисуем: живое состояние или состояние на выбранном событии вместе с его эффектом
+    let state, effects;
+    if (selectedN === null) {
+      state = liveState;
+      effects = new Map([...liveEffects].map(([id, { effect }]) => [id, effect]));
+    } else {
+      const entry = eventHistory.find(e => e.n === selectedN);
+      state = stateAt(selectedN);
+      effects = new Map();
+      if (entry.parsed && entry.parsed.phase !== 'LIFE') effects.set(entry.env.data.arrayListId, effectOf(entry.env, entry.parsed));
+    }
+
+    const root = $('memory');
+    root.innerHTML = '';
+    if (state.lists.size === 0) {
+      root.innerHTML = '<div class="empty">// нет списков — создайте: val list = ArrayList&lt;Int&gt;()</div>';
+      return;
+    }
+    for (const list of [...state.lists.values()].sort((a, b) => a.id - b.id)) {
+      const effect = effects.get(list.id);
+      const card = document.createElement('div');
+      card.className = 'card';
+
+      const head = document.createElement('div');
+      head.className = 'card-head';
+      head.innerHTML = `<span class="name">list#${list.id}</span><span class="empty">size=${list.elements.length}</span>`;
+      for (const method of METHODS) {
+        const threads = list.inside[method];
+        const badge = document.createElement('span');
+        badge.className = 'method' + (threads.size > 0 ? ' active' : '') + (effect?.failedMethod === method ? ' failed' : '');
+        badge.textContent = method + (threads.size > 1 ? ` ×${threads.size}` : '');
+        head.append(badge);
+      }
+
+      const cells = document.createElement('div');
+      cells.className = 'cells';
+      const m = effect?.cells;
+      const outline = m ? threadColor(effect.thread) : null;
+      list.elements.forEach((value, i) => {
+        const classes = [];
+        if (m?.new === i) classes.push('new');
+        if (m?.read === i) classes.push('read');
+        if (m?.shiftedFrom !== undefined && i >= m.shiftedFrom) classes.push('shifted');
+        const highlighted = m && (m.new === i || m.read === i);
+        cells.append(cell(value, i, classes, highlighted ? outline : null));
+      });
+      if (m?.ghost !== undefined) cells.append(cell('✗', m.ghost, ['ghost'], null));
+
+      const threadsRow = document.createElement('div');
+      threadsRow.className = 'threads';
+      for (const method of METHODS) {
+        for (const [thread, args] of list.inside[method]) {
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.append(threadSpan(thread), ` in ${method}${args}`);
+          threadsRow.append(chip);
+        }
+      }
+
+      card.append(head, cells, threadsRow);
+      root.append(card);
+    }
+  }
+
+  // ---------- Лог событий ----------
+
+  let prevTs = null;
+  function logEvent(n, env, parsed) {
+    const row = document.createElement('div');
+    row.dataset.n = n;
+    row.onclick = () => select(n);
+    const d = env.data;
+    const dt = prevTs === null ? '' : `+${env.ts - prevTs}ms`;
+    prevTs = env.ts;
+
+    const seq = Object.assign(document.createElement('span'), { className: 'seq', textContent: `#${env.seq}` });
+    const time = Object.assign(document.createElement('span'), { className: 'dt', textContent: dt });
+    time.title = new Date(env.ts).toISOString();
+    row.append(seq, time);
+
+    if (!parsed) {
+      row.append(`${env.type} ${JSON.stringify(d)}`);
+    } else {
+      const badge = Object.assign(document.createElement('span'), { className: `badge ${parsed.phase}`, textContent: parsed.phase });
+      const name = Object.assign(document.createElement('span'), { className: 'method-name', textContent: parsed.method });
+      row.append(badge, name, threadSpan(d.thread), '  ');
+      row.append(Object.assign(document.createElement('span'), { className: 'args', textContent: argsText(parsed.method, d) }));
+      if (d.element !== undefined && parsed.method === 'get') row.append(` → ${d.element}`);
+      if (d.error) row.append('  ', Object.assign(document.createElement('span'), { className: 'err', textContent: d.error }));
+      if (d.elements) row.append('  ', Object.assign(document.createElement('span'), { className: 'elements', textContent: `[${d.elements.join(', ')}]` }));
+    }
+    row.title = env.type;
+    $('events').prepend(row);
+  }
+
+  // ---------- WebSocket ----------
+
+  function onMessage(raw) {
+    let env;
+    try {
+      env = JSON.parse(raw);
+    } catch (e) {
+      const row = document.createElement('div');
+      row.className = 'err';
+      row.textContent = `не JSON: ${raw}`;
+      $('events').prepend(row);
+      return;
+    }
+    const parsed = parseType(env.type);
+    const n = nextN++;
+
+    eventHistory.push({ n, env, parsed });
+    if (eventHistory.length > HISTORY_LIMIT) {
+      const dropped = eventHistory.shift();
+      $('events').querySelector(`[data-n="${dropped.n}"]`)?.remove();
+      if (dropped.n === selectedN) selectedN = null;
+    }
+    logEvent(n, env, parsed);
+
+    // Живое состояние обновляется всегда, даже на паузе: после ▶ live картина сразу актуальна
+    if (parsed) {
+      reduce(liveState, env, parsed);
+      if (parsed.phase !== 'LIFE') showLiveEffect(effectOf(env, parsed));
+    }
+    render();
+  }
+
+  function connect() {
+    const ws = new WebSocket(`ws://${location.host}/ws/events`);
+    ws.onopen = () => { $('status').textContent = '● ws connected'; $('status').className = 'on'; };
+    ws.onclose = () => {
+      $('status').textContent = '● ws disconnected';
+      $('status').className = 'off';
+      setTimeout(connect, 1000);
+    };
+    ws.onmessage = msg => onMessage(msg.data);
+  }
+
+  render();
+  connect();
+</script>
+</body>
+</html>

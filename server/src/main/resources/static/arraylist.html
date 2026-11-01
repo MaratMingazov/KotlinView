@@ -4,23 +4,42 @@
   <meta charset="utf-8">
   <title>ArrayList&lt;Int&gt; playground</title>
   <style>
-    body { font-family: ui-monospace, Menlo, monospace; font-size: 13px; margin: 16px; }
+    /* Палитра как в arraylist-ide.html (IntelliJ Darcula) */
+    :root {
+      --bg: #1e1f22; --panel: #2b2d30; --border: #3c3f41; --text: #bcbec4; --dim: #6f737a;
+      --keyword: #cf8e6d; --fn: #56a8f5; --num: #2aacb8; --str: #6aab73;
+      --in: #56a8f5; --out: #6aab73; --fail: #f75464;
+    }
+    body {
+      font: 13px/1.5 "JetBrains Mono", ui-monospace, Menlo, monospace; margin: 16px;
+      background: var(--bg); color: var(--text);
+    }
     header { display: flex; justify-content: space-between; align-items: center; }
-    .controls { margin: 12px 0; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-    .controls input { width: 60px; }
-    .on { color: #2a2; }
-    .off { color: #c33; }
-    h3 { margin: 16px 0 4px; border-bottom: 1px solid #ccc; }
+    h2 { color: var(--keyword); font-weight: normal; }
+    .controls { margin: 12px 0; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+    .controls .command { margin-left: 24px; } /* команды списка — с отступом под list# */
+    .controls input {
+      width: 60px; background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+      color: var(--num); font: inherit; padding: 0 4px;
+    }
+    .controls button {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+      color: var(--fn); font: inherit; padding: 0 8px; cursor: pointer;
+    }
+    .controls button:hover { border-color: var(--fn); }
+    .on { color: var(--out); }
+    .off { color: var(--fail); }
+    h3 { margin: 16px 0 4px; border-bottom: 1px solid var(--border); color: var(--dim); font-weight: normal; }
     .log { max-height: 40vh; overflow-y: auto; }
-    .log div { white-space: pre-wrap; padding: 2px 0; border-bottom: 1px solid #f0f0f0; }
-    .error { color: #c33; }
-    .type { font-weight: bold; }
-    .state-row { display: flex; gap: 8px; align-items: center; padding: 3px 0; }
-    .state-row .id { width: 32px; }
-    .method { padding: 0 6px; border: 1px solid #ccc; border-radius: 3px; }
-    .method.active { background: #2a2; border-color: #2a2; color: #fff; }
-    .method.failed { background: #c33; border-color: #c33; color: #fff; }
-    .empty { color: #999; }
+    .log div { white-space: pre-wrap; padding: 2px 0; border-bottom: 1px solid var(--panel); }
+    .error { color: var(--fail); }
+    .type { font-weight: bold; color: var(--fn); }
+    .state-row { display: flex; gap: 8px; align-items: center; padding: 3px 0; color: var(--num); }
+    .state-row .id { width: 32px; color: var(--keyword); }
+    .method { padding: 0 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--dim); }
+    .method.active { background: var(--out); border-color: var(--out); color: var(--bg); }
+    .method.failed { background: var(--fail); border-color: var(--fail); color: var(--bg); }
+    .empty { color: var(--dim); }
   </style>
 </head>
 <body>
@@ -31,13 +50,14 @@
 </header>
 
 <div class="controls">
-  <button id="create">create</button>
-  <label>arrayListId <input id="arrayListId" type="number" value="1"></label>
-  <span><button id="add">add</button>(value <input id="value" type="number" value="10">)</span>
-  <span><button id="addAt">addAt</button>(index <input id="addAtIndex" type="number" value="0">, element <input id="addAtElement" type="number" value="7">)</span>
-  <span><button id="get">get</button>(index <input id="index" type="number" value="0">)</span>
-  <button id="remove">remove</button>
-  <button id="clear">clear logs</button>
+  <div><button id="create">create</button> <span class="empty">— создаст список и подставит его id ниже</span></div>
+  <!-- Над каким списком выполняются команды ниже -->
+  <div><label>list# <input id="arrayListId" type="number" value="1"></label></div>
+  <div class="command"><button id="add">add</button>(value <input id="value" type="number" value="10">)</div>
+  <div class="command"><button id="addAt">addAt</button>(index <input id="addAtIndex" type="number" value="0">, element <input id="addAtElement" type="number" value="7">)</div>
+  <div class="command"><button id="get">get</button>(index <input id="index" type="number" value="0">)</div>
+  <div class="command"><button id="remove">remove</button>()</div>
+  <div><button id="clear">clear logs</button></div>
 </div>
 
 <h3>State</h3>
