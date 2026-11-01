@@ -15,6 +15,12 @@
     .log div { white-space: pre-wrap; padding: 2px 0; border-bottom: 1px solid #f0f0f0; }
     .error { color: #c33; }
     .type { font-weight: bold; }
+    .state-row { display: flex; gap: 8px; align-items: center; padding: 3px 0; }
+    .state-row .id { width: 32px; }
+    .method { padding: 0 6px; border: 1px solid #ccc; border-radius: 3px; }
+    .method.active { background: #2a2; border-color: #2a2; color: #fff; }
+    .method.failed { background: #c33; border-color: #c33; color: #fff; }
+    .empty { color: #999; }
   </style>
 </head>
 <body>
@@ -27,11 +33,14 @@
 <div class="controls">
   <button id="create">create</button>
   <label>arrayListId <input id="arrayListId" type="number" value="1"></label>
-  <span><label>value <input id="value" type="number" value="10"></label> <button id="add">add</button></span>
-  <span><label>index <input id="index" type="number" value="0"></label> <button id="get">get</button></span>
+  <span><button id="add">add</button>(value <input id="value" type="number" value="10">)</span>
+  <span><button id="get">get</button>(index <input id="index" type="number" value="0">)</span>
   <button id="remove">remove</button>
-  <button id="clear">clear</button>
+  <button id="clear">clear logs</button>
 </div>
+
+<h3>State</h3>
+<div id="state"></div>
 
 <h3>HTTP</h3>
 <div id="http" class="log"></div>
@@ -80,22 +89,94 @@
   $('remove').onclick = () => call('DELETE', `${base}/${listId()}`);
   $('clear').onclick = () => { $('http').innerHTML = ''; $('ws').innerHTML = ''; };
 
+  // ---------- State ----------
+
+  const METHODS = ['add', 'get'];
+  const lists = new Map(); // arrayListId → { id, elements, inside: { add: Set<thread>, get: Set<thread> }, failed: { add, get } }
+
+  // Список создаётся и по CREATED, и по любому другому событию: страницу могли открыть уже после CREATED
+  function listOf(id) {
+    if (!lists.has(id)) {
+      lists.set(id, { id, elements: [], inside: { add: new Set(), get: new Set() }, failed: { add: false, get: false } });
+    }
+    return lists.get(id);
+  }
+
+  function apply(env) {
+    if (env.type === 'ARRAY_LIST_INT_CREATED') { listOf(env.data.arrayListId); return; }
+    if (env.type === 'ARRAY_LIST_INT_REMOVED') { lists.delete(env.data.arrayListId); return; }
+
+    // ARRAY_LIST_INT_ADD_IN, ARRAY_LIST_INT_GET_OUT_FAILED, ...
+    const match = env.type.match(/^ARRAY_LIST_INT_(ADD|GET)_(IN|OUT|OUT_FAILED)$/);
+    if (!match) return;
+    const method = match[1].toLowerCase();
+    const phase = match[2];
+    const list = listOf(env.data.arrayListId);
+    list.elements = env.data.elements;
+
+    // Внутри метода может быть несколько потоков сразу: подсветка горит, пока не вышел последний
+    if (phase === 'IN') list.inside[method].add(env.data.thread);
+    else list.inside[method].delete(env.data.thread);
+
+    if (phase === 'OUT_FAILED') {
+      list.failed[method] = true;
+      setTimeout(() => { list.failed[method] = false; render(); }, 1000);
+    }
+  }
+
+  function render() {
+    const root = $('state');
+    root.innerHTML = '';
+    if (lists.size === 0) {
+      root.innerHTML = '<div class="empty">нет списков</div>';
+      return;
+    }
+    for (const list of [...lists.values()].sort((a, b) => a.id - b.id)) {
+      const row = document.createElement('div');
+      row.className = 'state-row';
+
+      const id = document.createElement('span');
+      id.className = 'id';
+      id.textContent = `#${list.id}`;
+      row.append(id);
+
+      for (const method of METHODS) {
+        const threads = list.inside[method];
+        const el = document.createElement('span');
+        el.className = 'method' + (threads.size > 0 ? ' active' : '') + (list.failed[method] ? ' failed' : '');
+        el.textContent = method + (threads.size > 1 ? ` ×${threads.size}` : '');
+        el.title = threads.size > 0 ? [...threads].join('\n') : '';
+        row.append(el);
+      }
+
+      row.append(`[${list.elements.join(', ')}]`);
+      root.append(row);
+    }
+  }
+
   // ---------- WebSocket ----------
 
-  function showEnvelope(raw) {
+  function showEnvelope(env) {
     const row = document.createElement('div');
-    try {
-      const env = JSON.parse(raw);
-      const type = document.createElement('span');
-      type.className = 'type';
-      type.textContent = env.type;
-      row.append(`#${env.seq} `, type, ` ${JSON.stringify(env.data)}`);
-      if (env.type.endsWith('_FAILED')) row.className = 'error';
-    } catch (e) {
-      row.textContent = `не JSON: ${raw}`;
-      row.className = 'error';
-    }
+    const type = document.createElement('span');
+    type.className = 'type';
+    type.textContent = env.type;
+    row.append(`#${env.seq} `, type, ` ${JSON.stringify(env.data)}`);
+    if (env.type.endsWith('_FAILED')) row.className = 'error';
     $('ws').prepend(row);
+  }
+
+  function onMessage(raw) {
+    let env;
+    try {
+      env = JSON.parse(raw);
+    } catch (e) {
+      prepend('ws', `не JSON: ${raw}`, true);
+      return;
+    }
+    showEnvelope(env);
+    apply(env);
+    render();
   }
 
   function connect() {
@@ -109,9 +190,10 @@
       $('status').className = 'off';
       setTimeout(connect, 1000);
     };
-    ws.onmessage = msg => showEnvelope(msg.data);
+    ws.onmessage = msg => onMessage(msg.data);
   }
 
+  render();
   connect();
 </script>
 </body>
