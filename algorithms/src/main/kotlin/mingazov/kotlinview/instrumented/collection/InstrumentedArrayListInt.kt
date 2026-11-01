@@ -15,14 +15,14 @@ class InstrumentedArrayListInt(
     private val delegate = ArrayList<Int>()
     val size: Int get() = delegate.size
 
-    fun add(value: Int): Boolean {
-        sink.emit(ArrayListIntAddIn(id, threadName(), value, snapshot()))
+    fun add(element: Int): Boolean {
+        sink.emit(ArrayListIntAddIn(id, threadName(), element, snapshot()))
         try {
-            val result = delegate.add(value)
-            sink.emit(ArrayListIntAddOut(id, threadName(), value, snapshot()))
+            val result = delegate.add(element)
+            sink.emit(ArrayListIntAddOut(id, threadName(), element, snapshot()))
             return result
         } catch (e: Exception) {
-            sink.emit(ArrayListIntAddOutFailed(id, threadName(), value, e.toString(), snapshot()))
+            sink.emit(ArrayListIntAddOutFailed(id, threadName(), element, e.toString(), snapshot()))
             throw e
         }
     }

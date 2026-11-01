@@ -9,19 +9,19 @@ data class ArrayListIntCreatedData(val arrayListId: Long, val thread: String) : 
 data class ArrayListIntRemovedData(val arrayListId: Long, val thread: String) : Payload
 
 @JsonTypeName("ARRAY_LIST_INT_ADD_IN")
-data class ArrayListIntAddInData(val arrayListId: Long, val thread: String, val value: Int, val elements: List<Int>) : Payload
+data class ArrayListIntAddInData(val arrayListId: Long, val thread: String, val element: Int, val elements: List<Int>) : Payload
 
 @JsonTypeName("ARRAY_LIST_INT_ADD_OUT")
-data class ArrayListIntAddOutData(val arrayListId: Long, val thread: String, val value: Int, val elements: List<Int>) : Payload
+data class ArrayListIntAddOutData(val arrayListId: Long, val thread: String, val element: Int, val elements: List<Int>) : Payload
 
 @JsonTypeName("ARRAY_LIST_INT_ADD_OUT_FAILED")
-data class ArrayListIntAddOutFailedData(val arrayListId: Long, val thread: String, val value: Int, val error: String, val elements: List<Int>) : Payload
+data class ArrayListIntAddOutFailedData(val arrayListId: Long, val thread: String, val element: Int, val error: String, val elements: List<Int>) : Payload
 
 @JsonTypeName("ARRAY_LIST_INT_GET_IN")
 data class ArrayListIntGetInData(val arrayListId: Long, val thread: String, val index: Int, val elements: List<Int>) : Payload
 
 @JsonTypeName("ARRAY_LIST_INT_GET_OUT")
-data class ArrayListIntGetOutData(val arrayListId: Long, val thread: String, val index: Int, val value: Int, val elements: List<Int>) : Payload
+data class ArrayListIntGetOutData(val arrayListId: Long, val thread: String, val index: Int, val element: Int, val elements: List<Int>) : Payload
 
 @JsonTypeName("ARRAY_LIST_INT_GET_OUT_FAILED")
 data class ArrayListIntGetOutFailedData(val arrayListId: Long, val thread: String, val index: Int, val error: String, val elements: List<Int>) : Payload

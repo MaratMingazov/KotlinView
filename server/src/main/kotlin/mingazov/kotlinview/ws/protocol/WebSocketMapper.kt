@@ -24,11 +24,11 @@ object WebSocketMapper {
     private fun arrayListInt(e: ArrayListIntEvent): Payload = when (e) {
         is ArrayListIntCreated -> ArrayListIntCreatedData(e.arrayListId, e.thread)
         is ArrayListIntRemoved -> ArrayListIntRemovedData(e.arrayListId, e.thread)
-        is ArrayListIntAddIn -> ArrayListIntAddInData(e.arrayListId, e.thread, e.value, e.elements)
-        is ArrayListIntAddOut -> ArrayListIntAddOutData(e.arrayListId, e.thread, e.value, e.elements)
-        is ArrayListIntAddOutFailed -> ArrayListIntAddOutFailedData(e.arrayListId, e.thread, e.value, e.error, e.elements)
+        is ArrayListIntAddIn -> ArrayListIntAddInData(e.arrayListId, e.thread, e.element, e.elements)
+        is ArrayListIntAddOut -> ArrayListIntAddOutData(e.arrayListId, e.thread, e.element, e.elements)
+        is ArrayListIntAddOutFailed -> ArrayListIntAddOutFailedData(e.arrayListId, e.thread, e.element, e.error, e.elements)
         is ArrayListIntGetIn -> ArrayListIntGetInData(e.arrayListId, e.thread, e.index, e.elements)
-        is ArrayListIntGetOut -> ArrayListIntGetOutData(e.arrayListId, e.thread, e.index, e.value, e.elements)
+        is ArrayListIntGetOut -> ArrayListIntGetOutData(e.arrayListId, e.thread, e.index, e.element, e.elements)
         is ArrayListIntGetOutFailed -> ArrayListIntGetOutFailedData(e.arrayListId, e.thread, e.index, e.error, e.elements)
     }
 }
