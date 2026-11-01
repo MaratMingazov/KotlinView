@@ -161,7 +161,8 @@
     const type = document.createElement('span');
     type.className = 'type';
     type.textContent = env.type;
-    row.append(`#${env.seq} `, type, ` ${JSON.stringify(env.data)}`);
+    const time = new Date(env.ts).toISOString().slice(11, 23); // HH:MM:SS.mmm, UTC
+    row.append(`#${env.seq}  ${time}  `, type, `  ${JSON.stringify(env.data)}`);
     if (env.type.endsWith('_FAILED')) row.className = 'error';
     $('ws').prepend(row);
   }

@@ -24,14 +24,15 @@ class Broadcaster(
 
     override fun emit(event: Event) {
         log.info("event: {}", event)
+        val time = System.currentTimeMillis()
         val payload = WebSocketMapper.toPayload(event) ?: return // событие не входит в протокол
-        //Thread.sleep(sleepMillis)
-        val message = toMessage(++seq, payload)
+        val message = toMessage(++seq, payload, time)
+        Thread.sleep(sleepMillis)
         sessionRegistry.sendToAll(message)
     }
 
-    private fun toMessage(seq: Long, data: Payload) : TextMessage {
-        val message = jsonMapper.writeValueAsString(Envelope(seq, System.currentTimeMillis(), data))
+    private fun toMessage(seq: Long, data: Payload, time: Long) : TextMessage {
+        val message = jsonMapper.writeValueAsString(Envelope(seq, time, data))
         return TextMessage(message)
     }
 }
