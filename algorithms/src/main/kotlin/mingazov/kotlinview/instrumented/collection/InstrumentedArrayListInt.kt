@@ -1,5 +1,8 @@
 package mingazov.kotlinview.instrumented.collection
 
+import mingazov.kotlinview.event.ArrayListIntAddAtIn
+import mingazov.kotlinview.event.ArrayListIntAddAtOut
+import mingazov.kotlinview.event.ArrayListIntAddAtOutFailed
 import mingazov.kotlinview.event.ArrayListIntAddIn
 import mingazov.kotlinview.event.ArrayListIntAddOut
 import mingazov.kotlinview.event.ArrayListIntAddOutFailed
@@ -23,6 +26,17 @@ class InstrumentedArrayListInt(
             return result
         } catch (e: Exception) {
             sink.emit(ArrayListIntAddOutFailed(id, threadName(), element, e.toString(), snapshot()))
+            throw e
+        }
+    }
+
+    fun add(index: Int, element: Int) {
+        sink.emit(ArrayListIntAddAtIn(id, threadName(), index, element, snapshot()))
+        try {
+            delegate.add(index, element)
+            sink.emit(ArrayListIntAddAtOut(id, threadName(), index, element, snapshot()))
+        } catch (e: Exception) {
+            sink.emit(ArrayListIntAddAtOutFailed(id, threadName(), index, element, e.toString(), snapshot()))
             throw e
         }
     }

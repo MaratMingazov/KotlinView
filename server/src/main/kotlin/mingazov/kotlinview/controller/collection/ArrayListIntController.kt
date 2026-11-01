@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController
 data class CreateArrayListIntResponse(val arrayListId: Long)
 data class AddRequest(val value: Int)
 data class AddResponse(val result: Boolean)
+data class AddAtRequest(val index: Int, val element: Int)
 data class GetRequest(val index: Int)
 data class GetResponse(val value: Int)
 data class ErrorResponse(val error: String)
@@ -38,6 +39,12 @@ class ArrayListIntController(
         val result = arrayListIntService.get(arrayListId).add(request.value)
         val response = AddResponse(result)
         return response
+    }
+
+    @PostMapping("/{arrayListId}/addAt")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun addAt(@PathVariable arrayListId: Long, @RequestBody request: AddAtRequest) {
+        arrayListIntService.get(arrayListId).add(request.index, request.element)
     }
 
     @PostMapping("/{arrayListId}/get")

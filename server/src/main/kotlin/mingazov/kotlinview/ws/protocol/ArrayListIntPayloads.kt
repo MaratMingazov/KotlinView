@@ -17,6 +17,15 @@ data class ArrayListIntAddOutData(val arrayListId: Long, val thread: String, val
 @JsonTypeName("ARRAY_LIST_INT_ADD_OUT_FAILED")
 data class ArrayListIntAddOutFailedData(val arrayListId: Long, val thread: String, val element: Int, val error: String, val elements: List<Int>) : Payload
 
+@JsonTypeName("ARRAY_LIST_INT_ADD_AT_IN")
+data class ArrayListIntAddAtInData(val arrayListId: Long, val thread: String, val index: Int, val element: Int, val elements: List<Int>) : Payload
+
+@JsonTypeName("ARRAY_LIST_INT_ADD_AT_OUT")
+data class ArrayListIntAddAtOutData(val arrayListId: Long, val thread: String, val index: Int, val element: Int, val elements: List<Int>) : Payload
+
+@JsonTypeName("ARRAY_LIST_INT_ADD_AT_OUT_FAILED")
+data class ArrayListIntAddAtOutFailedData(val arrayListId: Long, val thread: String, val index: Int, val element: Int, val error: String, val elements: List<Int>) : Payload
+
 @JsonTypeName("ARRAY_LIST_INT_GET_IN")
 data class ArrayListIntGetInData(val arrayListId: Long, val thread: String, val index: Int, val elements: List<Int>) : Payload
 

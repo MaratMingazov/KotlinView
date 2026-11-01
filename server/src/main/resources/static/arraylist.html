@@ -34,6 +34,7 @@
   <button id="create">create</button>
   <label>arrayListId <input id="arrayListId" type="number" value="1"></label>
   <span><button id="add">add</button>(value <input id="value" type="number" value="10">)</span>
+  <span><button id="addAt">addAt</button>(index <input id="addAtIndex" type="number" value="0">, element <input id="addAtElement" type="number" value="7">)</span>
   <span><button id="get">get</button>(index <input id="index" type="number" value="0">)</span>
   <button id="remove">remove</button>
   <button id="clear">clear logs</button>
@@ -85,19 +86,24 @@
     if (response) $('arrayListId').value = response.arrayListId;
   };
   $('add').onclick = () => call('POST', `${base}/${listId()}/add`, { value: num('value') });
+  $('addAt').onclick = () => call('POST', `${base}/${listId()}/addAt`, { index: num('addAtIndex'), element: num('addAtElement') });
   $('get').onclick = () => call('POST', `${base}/${listId()}/get`, { index: num('index') });
   $('remove').onclick = () => call('DELETE', `${base}/${listId()}`);
   $('clear').onclick = () => { $('http').innerHTML = ''; $('ws').innerHTML = ''; };
 
   // ---------- State ----------
 
-  const METHODS = ['add', 'get'];
-  const lists = new Map(); // arrayListId → { id, elements, inside: { add: Set<thread>, get: Set<thread> }, failed: { add, get } }
+  // Часть type → метод в строке состояния: ARRAY_LIST_INT_ADD_AT_IN → addAt
+  const METHOD_BY_TYPE = { ADD: 'add', ADD_AT: 'addAt', GET: 'get' };
+  const METHODS = Object.values(METHOD_BY_TYPE);
+  const lists = new Map(); // arrayListId → { id, elements, inside: { method: Set<thread> }, failed: { method: boolean } }
 
   // Список создаётся и по CREATED, и по любому другому событию: страницу могли открыть уже после CREATED
   function listOf(id) {
     if (!lists.has(id)) {
-      lists.set(id, { id, elements: [], inside: { add: new Set(), get: new Set() }, failed: { add: false, get: false } });
+      const inside = Object.fromEntries(METHODS.map(m => [m, new Set()]));
+      const failed = Object.fromEntries(METHODS.map(m => [m, false]));
+      lists.set(id, { id, elements: [], inside, failed });
     }
     return lists.get(id);
   }
@@ -107,9 +113,9 @@
     if (env.type === 'ARRAY_LIST_INT_REMOVED') { lists.delete(env.data.arrayListId); return; }
 
     // ARRAY_LIST_INT_ADD_IN, ARRAY_LIST_INT_GET_OUT_FAILED, ...
-    const match = env.type.match(/^ARRAY_LIST_INT_(ADD|GET)_(IN|OUT|OUT_FAILED)$/);
+    const match = env.type.match(/^ARRAY_LIST_INT_(ADD_AT|ADD|GET)_(IN|OUT|OUT_FAILED)$/);
     if (!match) return;
-    const method = match[1].toLowerCase();
+    const method = METHOD_BY_TYPE[match[1]];
     const phase = match[2];
     const list = listOf(env.data.arrayListId);
     list.elements = env.data.elements;

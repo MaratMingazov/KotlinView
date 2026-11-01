@@ -1,5 +1,8 @@
 package mingazov.kotlinview.ws.protocol
 
+import mingazov.kotlinview.event.ArrayListIntAddAtIn
+import mingazov.kotlinview.event.ArrayListIntAddAtOut
+import mingazov.kotlinview.event.ArrayListIntAddAtOutFailed
 import mingazov.kotlinview.event.ArrayListIntAddIn
 import mingazov.kotlinview.event.ArrayListIntAddOut
 import mingazov.kotlinview.event.ArrayListIntAddOutFailed
@@ -27,6 +30,9 @@ object WebSocketMapper {
         is ArrayListIntAddIn -> ArrayListIntAddInData(e.arrayListId, e.thread, e.element, e.elements)
         is ArrayListIntAddOut -> ArrayListIntAddOutData(e.arrayListId, e.thread, e.element, e.elements)
         is ArrayListIntAddOutFailed -> ArrayListIntAddOutFailedData(e.arrayListId, e.thread, e.element, e.error, e.elements)
+        is ArrayListIntAddAtIn -> ArrayListIntAddAtInData(e.arrayListId, e.thread, e.index, e.element, e.elements)
+        is ArrayListIntAddAtOut -> ArrayListIntAddAtOutData(e.arrayListId, e.thread, e.index, e.element, e.elements)
+        is ArrayListIntAddAtOutFailed -> ArrayListIntAddAtOutFailedData(e.arrayListId, e.thread, e.index, e.element, e.error, e.elements)
         is ArrayListIntGetIn -> ArrayListIntGetInData(e.arrayListId, e.thread, e.index, e.elements)
         is ArrayListIntGetOut -> ArrayListIntGetOutData(e.arrayListId, e.thread, e.index, e.element, e.elements)
         is ArrayListIntGetOutFailed -> ArrayListIntGetOutFailedData(e.arrayListId, e.thread, e.index, e.error, e.elements)
