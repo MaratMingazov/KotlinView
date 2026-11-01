@@ -1,5 +1,7 @@
 package mingazov.kotlinview.ws.protocol
 
+import com.fasterxml.jackson.annotation.JsonTypeInfo
+
 /**
  * seq
  * Монотонно возрастающий порядковый номер события.
@@ -9,14 +11,16 @@ package mingazov.kotlinview.ws.protocol
  * 3. Связь со снимком. Если пришел Snapshot с номером 5, значит следующее событие должно быть 6.
  *
  * ts - Время на сервере, когда произошло событие
- * type - что за данные пришли в data и как это обработать
+ * type - что за данные пришли в data и как это обработать.
+ *   Отдельного поля нет: Jackson сам пишет "type" рядом с data, беря его из @JsonTypeName класса payload'а.
+ *   Поэтому type и data не могут разойтись.
  *
  */
 data class Envelope(
     val seq: Long,
     val ts: Long,
-    val type: String,
-    val data: Any,
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXTERNAL_PROPERTY, property = "type")
+    val data: Payload,
 )
 
 /**
@@ -25,4 +29,5 @@ data class Envelope(
  */
 const val PROTOCOL_VERSION = 1
 
+/** Всё, что может лежать в Envelope.data. У каждого наследника @JsonTypeName — это и есть type в протоколе. */
 sealed interface Payload

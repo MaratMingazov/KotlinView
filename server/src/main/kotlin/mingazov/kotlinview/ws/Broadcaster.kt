@@ -3,6 +3,7 @@ package mingazov.kotlinview.ws
 import mingazov.kotlinview.event.Event
 import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.ws.protocol.Envelope
+import mingazov.kotlinview.ws.protocol.Payload
 import mingazov.kotlinview.ws.protocol.WebSocketMapper
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -23,13 +24,14 @@ class Broadcaster(
 
     override fun emit(event: Event) {
         log.info("event: {}", event)
-        Thread.sleep(sleepMillis)
-        val message = toMessage(++seq, WebSocketMapper.type(event), event)
+        val payload = WebSocketMapper.toPayload(event) ?: return // событие не входит в протокол
+        //Thread.sleep(sleepMillis)
+        val message = toMessage(++seq, payload)
         sessionRegistry.sendToAll(message)
     }
 
-    private fun toMessage(seq: Long, type: String, data: Any) : TextMessage {
-        val message = jsonMapper.writeValueAsString(Envelope(seq, System.currentTimeMillis(), type, data))
+    private fun toMessage(seq: Long, data: Payload) : TextMessage {
+        val message = jsonMapper.writeValueAsString(Envelope(seq, System.currentTimeMillis(), data))
         return TextMessage(message)
     }
 }

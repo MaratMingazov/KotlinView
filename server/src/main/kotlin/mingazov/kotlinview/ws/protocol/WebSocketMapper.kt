@@ -11,21 +11,24 @@ import mingazov.kotlinview.event.ArrayListIntGetOutFailed
 import mingazov.kotlinview.event.ArrayListIntRemoved
 import mingazov.kotlinview.event.Event
 
+/** Переводит доменные события в payload'ы протокола. Строки type здесь нет — они на классах payload'ов. */
 object WebSocketMapper {
 
-    fun type(event: Event): String = when (event) {
-        is ArrayListIntEvent -> arrayListIntType(event)
-        else -> event::class.simpleName!! // TODO: очередь, пул, фабрика потоков ещё не переведены на явные type
+    /** null — событие пока не входит в протокол, клиенту не отправляется. */
+    fun toPayload(event: Event): Payload? = when (event) {
+        is ArrayListIntEvent -> arrayListInt(event)
+        else -> null // TODO: очередь, пул, фабрика потоков ещё не переведены на payload'ы
     }
 
-    private fun arrayListIntType(event: ArrayListIntEvent): String = when (event) {
-        is ArrayListIntCreated -> "ARRAY_LIST_INT_CREATED"
-        is ArrayListIntAddIn -> "ARRAY_LIST_INT_ADD_IN"
-        is ArrayListIntAddOut -> "ARRAY_LIST_INT_ADD_OUT"
-        is ArrayListIntAddOutFailed -> "ARRAY_LIST_INT_ADD_OUT_FAILED"
-        is ArrayListIntGetIn -> "ARRAY_LIST_INT_GET_IN"
-        is ArrayListIntGetOut -> "ARRAY_LIST_INT_GET_OUT"
-        is ArrayListIntGetOutFailed -> "ARRAY_LIST_INT_GET_OUT_FAILED"
-        is ArrayListIntRemoved -> "ARRAY_LIST_INT_REMOVED"
+
+    private fun arrayListInt(e: ArrayListIntEvent): Payload = when (e) {
+        is ArrayListIntCreated -> ArrayListIntCreatedData(e.arrayListId, e.thread)
+        is ArrayListIntRemoved -> ArrayListIntRemovedData(e.arrayListId, e.thread)
+        is ArrayListIntAddIn -> ArrayListIntAddInData(e.arrayListId, e.thread, e.value, e.elements)
+        is ArrayListIntAddOut -> ArrayListIntAddOutData(e.arrayListId, e.thread, e.value, e.elements)
+        is ArrayListIntAddOutFailed -> ArrayListIntAddOutFailedData(e.arrayListId, e.thread, e.value, e.error, e.elements)
+        is ArrayListIntGetIn -> ArrayListIntGetInData(e.arrayListId, e.thread, e.index, e.elements)
+        is ArrayListIntGetOut -> ArrayListIntGetOutData(e.arrayListId, e.thread, e.index, e.value, e.elements)
+        is ArrayListIntGetOutFailed -> ArrayListIntGetOutFailedData(e.arrayListId, e.thread, e.index, e.error, e.elements)
     }
 }
