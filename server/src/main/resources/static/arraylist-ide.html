@@ -205,10 +205,10 @@
   // Операции над списком — общие для кнопок и консоли
   async function create() {
     const res = await call('POST', base);
-    if (res.ok) $('arrayListId').value = res.json.arrayListId;
+    if (res.ok) $('arrayListId').value = res.json.objectId;
     return res;
   }
-  const add = (id, element) => call('POST', `${base}/${id}/add`, { value: element });
+  const add = (id, element) => call('POST', `${base}/${id}/add`, { element });
   const addAt = (id, index, element) => call('POST', `${base}/${id}/addAt`, { index, element });
   const get = (id, index) => call('POST', `${base}/${id}/get`, { index });
   const remove = id => call('DELETE', `${base}/${id}`);
@@ -237,7 +237,7 @@
   const COMMANDS = [
     { re: /^(?:val\w+=)?ArrayList(?:<Int>)?\(\)$/, run: async () => {
         const res = await create();
-        return res.ok ? { ...res, text: `list#${res.json.arrayListId}` } : res;
+        return res.ok ? { ...res, text: `list#${res.json.objectId}` } : res;
       } },
     { re: /^list(\d*)\.add\((-?\d+)\)$/, run: (id, e) => add(idOf(id), Number(e)) },
     { re: /^list(\d*)\.add\((-?\d+),(-?\d+)\)$/, run: (id, i, e) => addAt(idOf(id), Number(i), Number(e)) },
@@ -260,7 +260,6 @@
     if (res.text) return `✓ ${res.text}`;
     if (!res.ok) return `✗ ${res.status} ${res.json?.error ?? ''}`;
     if (res.json?.result !== undefined) return `✓ ${res.json.result}`;
-    if (res.json?.value !== undefined) return `✓ ${res.json.value}`;
     return '✓';
   }
 

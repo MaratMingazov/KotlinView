@@ -217,7 +217,7 @@
 
   // Операции пульта: имя, поля (placeholder + значение по умолчанию), как собрать запрос
   const OPERATIONS = [
-    { name: 'add', fields: [['value', 10]], request: id => [`${base}/${id}/add`, v => ({ value: v.value })] },
+    { name: 'add', fields: [['element', 10]], request: id => [`${base}/${id}/add`, v => ({ element: v.element })] },
     { name: 'addAt', fields: [['index', 0], ['element', 7]], request: id => [`${base}/${id}/addAt`, v => ({ index: v.index, element: v.element })] },
     { name: 'get', fields: [['index', 0]], request: id => [`${base}/${id}/get`, v => ({ index: v.index })] },
   ];
@@ -340,7 +340,7 @@
 
   // ---------- Синхронизация карточек с состоянием ----------
 
-  const cards = new Map(); // arrayListId → { card, state }
+  const cards = new Map(); // objectId → { card, state }
 
   function render() {
     const root = $('lists');

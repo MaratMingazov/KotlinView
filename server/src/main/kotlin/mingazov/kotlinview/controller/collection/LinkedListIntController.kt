@@ -12,19 +12,6 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
-data class CreateLinkedListIntResponse(val linkedListId: Long)
-data class LinkedListIntAddRequest(val element: Int)
-data class LinkedListIntAddResponse(val result: Boolean)
-data class LinkedListIntOfferRequest(val element: Int)
-data class LinkedListIntOfferResponse(val result: Boolean)
-data class LinkedListIntOfferFirstRequest(val element: Int)
-data class LinkedListIntOfferFirstResponse(val result: Boolean)
-data class LinkedListIntOfferLastRequest(val element: Int)
-data class LinkedListIntOfferLastResponse(val result: Boolean)
-data class LinkedListIntPollResponse(val element: Int?) // null — список был пуст
-data class LinkedListIntPopResponse(val element: Int)
-data class LinkedListIntErrorResponse(val error: String)
-
 @RestController
 @RequestMapping("/api/linkedlistint")
 class LinkedListIntController(
@@ -33,51 +20,52 @@ class LinkedListIntController(
 
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
-    fun create(): CreateLinkedListIntResponse {
+    fun create(): CreatedResponse {
         val linkedListInt = linkedListIntService.create()
-        val response = CreateLinkedListIntResponse(linkedListInt.id)
+        val response = CreatedResponse(linkedListInt.id)
         return response
     }
 
     @PostMapping("/{linkedListId}/add")
-    fun add(@PathVariable linkedListId: Long, @RequestBody request: LinkedListIntAddRequest): LinkedListIntAddResponse {
+    fun add(@PathVariable linkedListId: Long, @RequestBody request: ElementRequest): ResultResponse<Boolean> {
         val result = linkedListIntService.get(linkedListId).add(request.element)
-        val response = LinkedListIntAddResponse(result)
+        val response = ResultResponse(result)
         return response
     }
 
     @PostMapping("/{linkedListId}/offer")
-    fun offer(@PathVariable linkedListId: Long, @RequestBody request: LinkedListIntOfferRequest): LinkedListIntOfferResponse {
+    fun offer(@PathVariable linkedListId: Long, @RequestBody request: ElementRequest): ResultResponse<Boolean> {
         val result = linkedListIntService.get(linkedListId).offer(request.element)
-        val response = LinkedListIntOfferResponse(result)
+        val response = ResultResponse(result)
         return response
     }
 
     @PostMapping("/{linkedListId}/offerFirst")
-    fun offerFirst(@PathVariable linkedListId: Long, @RequestBody request: LinkedListIntOfferFirstRequest): LinkedListIntOfferFirstResponse {
+    fun offerFirst(@PathVariable linkedListId: Long, @RequestBody request: ElementRequest): ResultResponse<Boolean> {
         val result = linkedListIntService.get(linkedListId).offerFirst(request.element)
-        val response = LinkedListIntOfferFirstResponse(result)
+        val response = ResultResponse(result)
         return response
     }
 
     @PostMapping("/{linkedListId}/offerLast")
-    fun offerLast(@PathVariable linkedListId: Long, @RequestBody request: LinkedListIntOfferLastRequest): LinkedListIntOfferLastResponse {
+    fun offerLast(@PathVariable linkedListId: Long, @RequestBody request: ElementRequest): ResultResponse<Boolean> {
         val result = linkedListIntService.get(linkedListId).offerLast(request.element)
-        val response = LinkedListIntOfferLastResponse(result)
+        val response = ResultResponse(result)
         return response
     }
 
+    /** result == null — список был пуст. */
     @PostMapping("/{linkedListId}/poll")
-    fun poll(@PathVariable linkedListId: Long): LinkedListIntPollResponse {
-        val element = linkedListIntService.get(linkedListId).poll()
-        val response = LinkedListIntPollResponse(element)
+    fun poll(@PathVariable linkedListId: Long): ResultResponse<Int?> {
+        val result = linkedListIntService.get(linkedListId).poll()
+        val response = ResultResponse(result)
         return response
     }
 
     @PostMapping("/{linkedListId}/pop")
-    fun pop(@PathVariable linkedListId: Long): LinkedListIntPopResponse {
-        val element = linkedListIntService.get(linkedListId).pop()
-        val response = LinkedListIntPopResponse(element)
+    fun pop(@PathVariable linkedListId: Long): ResultResponse<Int> {
+        val result = linkedListIntService.get(linkedListId).pop()
+        val response = ResultResponse(result)
         return response
     }
 
@@ -87,11 +75,11 @@ class LinkedListIntController(
 
     @ExceptionHandler(LinkedListIntNotFoundException::class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
-    fun handleNotFound(e: LinkedListIntNotFoundException) = LinkedListIntErrorResponse(e.toString())
+    fun handleNotFound(e: LinkedListIntNotFoundException) = ErrorResponse(e.toString())
 
     // pop() на пустом списке. LinkedListIntNotFoundException — тоже NoSuchElementException,
     // но Spring выбирает самый точный обработчик, поэтому «списка нет» по-прежнему уходит в 404 выше
     @ExceptionHandler(NoSuchElementException::class)
     @ResponseStatus(HttpStatus.CONFLICT)
-    fun handleEmpty(e: NoSuchElementException) = LinkedListIntErrorResponse(e.toString())
+    fun handleEmpty(e: NoSuchElementException) = ErrorResponse(e.toString())
 }
