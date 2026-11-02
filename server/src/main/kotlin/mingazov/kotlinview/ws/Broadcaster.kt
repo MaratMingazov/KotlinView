@@ -16,7 +16,7 @@ import tools.jackson.databind.json.JsonMapper
 class Broadcaster(
     private val jsonMapper: JsonMapper,
     private val sessionRegistry: SessionRegistry,
-    @Value("\${kotlinview.events.sleep-millis:1000}") private val sleepMillis: Long,
+    @Value("\${kotlinview.events.sleep-millis:0}") private val sleepMillis: Long,
 ) : EventSink {
 
     private val log = LoggerFactory.getLogger(javaClass)
