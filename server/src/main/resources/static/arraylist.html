@@ -48,6 +48,28 @@
       to { background: transparent; border-color: var(--border); color: var(--dim); }
     }
     .empty { color: var(--dim); }
+
+    /* Список в виде ячеек с индексами, как в arraylist-ide.html */
+    .list-card { padding: 4px 0 8px; border-bottom: 1px solid var(--panel); }
+    .cells { display: flex; gap: 4px; flex-wrap: wrap; margin: 6px 0 0 40px; min-height: 50px; }
+    .cell { display: flex; flex-direction: column; align-items: center; }
+    .cell .box {
+      min-width: 40px; height: 32px; padding: 0 6px; display: flex; align-items: center; justify-content: center;
+      border: 2px solid var(--border); border-radius: 3px; color: var(--num); background: var(--panel);
+    }
+    .cell .idx { font-size: 11px; color: var(--dim); }
+    .cell .arrow { color: var(--dim); margin-left: 2px; }
+    .cell.ghost .box { border-style: dashed; border-color: var(--fail); color: var(--fail); background: none; }
+    /* Подсветка ячеек тоже затухает, а не снимается рывком */
+    @keyframes cell-new {
+      from { background: color-mix(in srgb, var(--out) 45%, var(--panel)); border-color: var(--out); }
+      to { background: var(--panel); border-color: var(--border); }
+    }
+    @keyframes cell-read {
+      from { background: color-mix(in srgb, var(--in) 45%, var(--panel)); border-color: var(--in); }
+      to { background: var(--panel); border-color: var(--border); }
+    }
+    @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
   </style>
 </head>
 <body>
@@ -125,6 +147,7 @@
   const METHOD_BY_TYPE = { ADD: 'add', ADD_AT: 'addAt', GET: 'get' };
   const METHODS = Object.values(METHOD_BY_TYPE);
   const FADE_MS = 800; // сколько затухает бейдж после выхода последнего потока — подбирается на глаз
+  const CELL_FADE_MS = 1500; // сколько затухает подсветка ячеек — дольше, чтобы успеть рассмотреть
 
   // arrayListId → { id, elements, inside: { method: Set<thread> }, fade: { method: { start, failed } } }
   // fade.start — когда вышел последний поток (null — не затухает); fade.failed — гаснуть красным
@@ -135,7 +158,7 @@
     if (!lists.has(id)) {
       const inside = Object.fromEntries(METHODS.map(m => [m, new Set()]));
       const fade = Object.fromEntries(METHODS.map(m => [m, { start: null, failed: false }]));
-      lists.set(id, { id, elements: [], inside, fade });
+      lists.set(id, { id, elements: [], inside, fade, cellEffect: null });
     }
     return lists.get(id);
   }
@@ -163,6 +186,74 @@
       fade.failed ||= phase === 'OUT_FAILED'; // ошибку запоминаем, даже если внутри ещё есть потоки
       if (inside.size === 0) fade.start = performance.now();
     }
+
+    const cells = cellEffectOf(method, phase, env.data);
+    if (cells) {
+      list.cellEffect = { ...cells, start: performance.now() };
+      setTimeout(render, CELL_FADE_MS); // убрать «призрачную» ячейку, когда она догорит
+    }
+  }
+
+  // Какие ячейки подсветить после этого события (null — ничего)
+  function cellEffectOf(method, phase, data) {
+    if (phase === 'OUT_FAILED') {
+      // Индекс за концом массива — «призрачная» ячейка
+      return data.index !== undefined && data.index >= data.elements.length ? { ghost: data.index } : null;
+    }
+    if (phase !== 'OUT') return null;
+    // При гонке «последняя ячейка» для add — допущение, а не наблюдение
+    if (method === 'add') return { new: data.elements.length - 1 };
+    if (method === 'addAt') return { new: data.index, shiftedFrom: data.index + 1 };
+    if (method === 'get') return { read: data.index };
+    return null;
+  }
+
+  // Ячейка массива: значение и индекс под ним
+  function cell(value, index) {
+    const el = document.createElement('div');
+    el.className = 'cell';
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.textContent = value;
+    const idx = document.createElement('div');
+    idx.className = 'idx';
+    idx.textContent = index;
+    el.append(box, idx);
+    return el;
+  }
+
+  // Анимация, продолженная с того места, где она была до пересоздания элемента
+  const glow = (name, elapsed) => `${name} ${CELL_FADE_MS}ms ease-out ${-elapsed}ms forwards`;
+
+  function renderCells(list) {
+    const cells = document.createElement('div');
+    cells.className = 'cells';
+    const effect = list.cellEffect;
+    const elapsed = effect ? performance.now() - effect.start : Infinity;
+    const active = elapsed < CELL_FADE_MS;
+
+    list.elements.forEach((value, i) => {
+      const el = cell(value, i);
+      if (active) {
+        const box = el.querySelector('.box');
+        if (effect.new === i) box.style.animation = glow('cell-new', elapsed);
+        if (effect.read === i) box.style.animation = glow('cell-read', elapsed);
+        if (effect.shiftedFrom !== undefined && i >= effect.shiftedFrom) {
+          const arrow = Object.assign(document.createElement('span'), { className: 'arrow', textContent: '→' });
+          arrow.style.animation = glow('fade-out', elapsed);
+          box.append(arrow);
+        }
+      }
+      cells.append(el);
+    });
+
+    if (active && effect.ghost !== undefined) {
+      const ghost = cell('✗', effect.ghost);
+      ghost.classList.add('ghost');
+      ghost.style.animation = glow('fade-out', elapsed);
+      cells.append(ghost);
+    }
+    return cells;
   }
 
   function render() {
@@ -173,6 +264,8 @@
       return;
     }
     for (const list of [...lists.values()].sort((a, b) => a.id - b.id)) {
+      const card = document.createElement('div');
+      card.className = 'list-card';
       const row = document.createElement('div');
       row.className = 'state-row';
 
@@ -197,8 +290,8 @@
         row.append(el);
       }
 
-      row.append(`[${list.elements.join(', ')}]`);
-      root.append(row);
+      card.append(row, renderCells(list));
+      root.append(card);
     }
   }
 
