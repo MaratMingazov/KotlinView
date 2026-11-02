@@ -150,13 +150,12 @@
 
   // ---------- State ----------
 
-  // Часть type → метод в бейджах: LINKED_LIST_INT_OFFER_FIRST_IN → offerFirst
-  const METHOD_BY_TYPE = { ADD: 'add', OFFER: 'offer', OFFER_FIRST: 'offerFirst', OFFER_LAST: 'offerLast', POLL: 'poll', POP: 'pop' };
-  const METHODS = Object.values(METHOD_BY_TYPE);
+  const METHODS = ['add', 'offer', 'offerFirst', 'offerLast', 'poll', 'pop'];
+  const PHASE_BY_TYPE = { METHOD_IN: 'IN', METHOD_OUT: 'OUT', METHOD_OUT_FAILED: 'OUT_FAILED' };
   const FADE_MS = 800; // сколько затухает бейдж после выхода последнего потока — подбирается на глаз
   const NODE_FADE_MS = 1500; // сколько затухает подсветка узлов — дольше, чтобы успеть рассмотреть
 
-  // linkedListId → { id, elements, inside: { method: Set<thread> }, fade: { method: { start, failed } }, nodeEffect }
+  // objectId → { id, elements, inside: { method: Set<thread> }, fade: { method: { start, failed } }, nodeEffect }
   // fade.start — когда вышел последний поток (null — не затухает); fade.failed — гаснуть красным
   const lists = new Map();
 
@@ -174,13 +173,11 @@
     if (env.type === 'OBJECT_CREATED') { if (env.data.objectType === 'LINKED_LIST_INT') listOf(env.data.objectId); return; }
     if (env.type === 'OBJECT_REMOVED') { if (env.data.objectType === 'LINKED_LIST_INT') lists.delete(env.data.objectId); return; }
 
-    // LINKED_LIST_INT_ADD_IN, LINKED_LIST_INT_POP_OUT_FAILED, ...
-    const match = env.type.match(/^LINKED_LIST_INT_(OFFER_FIRST|OFFER_LAST|OFFER|ADD|POLL|POP)_(IN|OUT|OUT_FAILED)$/);
-    if (!match) return;
-    const method = METHOD_BY_TYPE[match[1]];
-    const phase = match[2];
-    const list = listOf(env.data.linkedListId);
-    list.elements = env.data.elements;
+    const phase = PHASE_BY_TYPE[env.type];
+    if (!phase || env.data.objectType !== 'LINKED_LIST_INT' || !METHODS.includes(env.data.method)) return;
+    const method = env.data.method;
+    const list = listOf(env.data.objectId);
+    list.elements = env.data.state;
 
     // Внутри метода может быть несколько потоков сразу: горит, пока не вышел последний, потом затухает
     const inside = list.inside[method];
@@ -209,11 +206,11 @@
     }
     if (phase !== 'OUT') return null;
     // При гонке «последний узел» для add/offer — допущение, а не наблюдение
-    if (method === 'add' || method === 'offer' || method === 'offerLast') return { new: data.elements.length - 1 };
+    if (method === 'add' || method === 'offer' || method === 'offerLast') return { new: data.state.length - 1 };
     if (method === 'offerFirst') return { new: 0 };
-    // Снятого узла в elements уже нет — его значение берём из element
+    // Снятого узла в state уже нет — его значение берём из result
     if (method === 'poll' || method === 'pop') {
-      return data.element === null ? { ghost: 'null', kind: 'null' } : { ghost: data.element, kind: 'removed' };
+      return data.result == null ? { ghost: 'null', kind: 'null' } : { ghost: data.result, kind: 'removed' };
     }
     return null;
   }
