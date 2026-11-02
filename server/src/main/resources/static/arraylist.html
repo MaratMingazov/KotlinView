@@ -169,19 +169,7 @@
     return lists.get(id);
   }
 
-  // Временно: старые ARRAY_LIST_INT_ADD*/ADD_AT* → формат METHOD_*. Удалить, когда add/addAt переедут на сервере
-  function normalize(env) {
-    const match = env.type.match(/^ARRAY_LIST_INT_(ADD_AT|ADD)_(IN|OUT|OUT_FAILED)$/);
-    if (!match) return env;
-    const { arrayListId, thread, index, element, error, elements } = env.data;
-    const type = { IN: 'METHOD_IN', OUT: 'METHOD_OUT', OUT_FAILED: 'METHOD_OUT_FAILED' }[match[2]];
-    const method = match[1] === 'ADD_AT' ? 'addAt' : 'add';
-    const args = method === 'addAt' ? { index, element } : { element };
-    return { ...env, type, data: { objectType: 'ARRAY_LIST_INT', objectId: arrayListId, thread, method, args, error, state: elements } };
-  }
-
   function apply(env) {
-    env = normalize(env);
     if (env.type === 'OBJECT_CREATED') { if (env.data.objectType === 'ARRAY_LIST_INT') listOf(env.data.objectId); return; }
     if (env.type === 'OBJECT_REMOVED') { if (env.data.objectType === 'ARRAY_LIST_INT') lists.delete(env.data.objectId); return; }
 

@@ -1,11 +1,5 @@
 package mingazov.kotlinview.instrumented.collection
 
-import mingazov.kotlinview.event.ArrayListIntAddAtIn
-import mingazov.kotlinview.event.ArrayListIntAddAtOut
-import mingazov.kotlinview.event.ArrayListIntAddAtOutFailed
-import mingazov.kotlinview.event.ArrayListIntAddIn
-import mingazov.kotlinview.event.ArrayListIntAddOut
-import mingazov.kotlinview.event.ArrayListIntAddOutFailed
 import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.event.MethodIn
 import mingazov.kotlinview.event.MethodOut
@@ -20,24 +14,27 @@ class InstrumentedArrayListInt(
     val size: Int get() = delegate.size
 
     fun add(element: Int): Boolean {
-        sink.emit(ArrayListIntAddIn(id, threadName(), element, snapshot()))
+        val args = mapOf("element" to element)
+        sink.emit(MethodIn(ObjectType.ARRAY_LIST_INT, id, threadName(), "add", args, snapshot()))
         try {
             val result = delegate.add(element)
-            sink.emit(ArrayListIntAddOut(id, threadName(), element, snapshot()))
+            sink.emit(MethodOut(ObjectType.ARRAY_LIST_INT, id, threadName(), "add", args, result, snapshot()))
             return result
         } catch (e: Exception) {
-            sink.emit(ArrayListIntAddOutFailed(id, threadName(), element, e.toString(), snapshot()))
+            sink.emit(MethodOutFailed(ObjectType.ARRAY_LIST_INT, id, threadName(), "add", args, e.toString(), snapshot()))
             throw e
         }
     }
 
+    // В протоколе "addAt", а не "add": клиенту нужно отличать перегрузки
     fun add(index: Int, element: Int) {
-        sink.emit(ArrayListIntAddAtIn(id, threadName(), index, element, snapshot()))
+        val args = mapOf("index" to index, "element" to element)
+        sink.emit(MethodIn(ObjectType.ARRAY_LIST_INT, id, threadName(), "addAt", args, snapshot()))
         try {
             delegate.add(index, element)
-            sink.emit(ArrayListIntAddAtOut(id, threadName(), index, element, snapshot()))
+            sink.emit(MethodOut(ObjectType.ARRAY_LIST_INT, id, threadName(), "addAt", args, null, snapshot()))
         } catch (e: Exception) {
-            sink.emit(ArrayListIntAddAtOutFailed(id, threadName(), index, element, e.toString(), snapshot()))
+            sink.emit(MethodOutFailed(ObjectType.ARRAY_LIST_INT, id, threadName(), "addAt", args, e.toString(), snapshot()))
             throw e
         }
     }

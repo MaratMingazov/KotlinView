@@ -311,17 +311,6 @@
   const METHODS = ['add', 'addAt', 'get'];
   const PHASE_BY_TYPE = { METHOD_IN: 'IN', METHOD_OUT: 'OUT', METHOD_OUT_FAILED: 'FAILED' };
 
-  // Временно: старые ARRAY_LIST_INT_ADD*/ADD_AT* → формат METHOD_*. Удалить, когда add/addAt переедут на сервере
-  function normalize(env) {
-    const match = env.type.match(/^ARRAY_LIST_INT_(ADD_AT|ADD)_(IN|OUT|OUT_FAILED)$/);
-    if (!match) return env;
-    const { arrayListId, thread, index, element, error, elements } = env.data;
-    const type = { IN: 'METHOD_IN', OUT: 'METHOD_OUT', OUT_FAILED: 'METHOD_OUT_FAILED' }[match[2]];
-    const method = match[1] === 'ADD_AT' ? 'addAt' : 'add';
-    const args = method === 'addAt' ? { index, element } : { element };
-    return { ...env, type, data: { objectType: 'ARRAY_LIST_INT', objectId: arrayListId, thread, method, args, error, state: elements } };
-  }
-
   function parseType(env) {
     if (env.type === 'OBJECT_CREATED') return env.data.objectType === 'ARRAY_LIST_INT' ? { phase: 'LIFE', method: 'created' } : null;
     if (env.type === 'OBJECT_REMOVED') return env.data.objectType === 'ARRAY_LIST_INT' ? { phase: 'LIFE', method: 'removed' } : null;
@@ -570,7 +559,7 @@
   function onMessage(raw) {
     let env;
     try {
-      env = normalize(JSON.parse(raw));
+      env = JSON.parse(raw);
     } catch (e) {
       const row = document.createElement('div');
       row.className = 'err';

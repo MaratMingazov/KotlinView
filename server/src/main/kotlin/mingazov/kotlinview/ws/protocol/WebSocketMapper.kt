@@ -1,12 +1,5 @@
 package mingazov.kotlinview.ws.protocol
 
-import mingazov.kotlinview.event.ArrayListIntAddAtIn
-import mingazov.kotlinview.event.ArrayListIntAddAtOut
-import mingazov.kotlinview.event.ArrayListIntAddAtOutFailed
-import mingazov.kotlinview.event.ArrayListIntAddIn
-import mingazov.kotlinview.event.ArrayListIntAddOut
-import mingazov.kotlinview.event.ArrayListIntAddOutFailed
-import mingazov.kotlinview.event.ArrayListIntEvent
 import mingazov.kotlinview.event.Event
 import mingazov.kotlinview.event.LinkedListIntAddIn
 import mingazov.kotlinview.event.LinkedListIntAddOut
@@ -43,20 +36,10 @@ object WebSocketMapper {
         is MethodIn -> MethodInData(event.objectType.name, event.objectId, event.thread, event.method, event.args, event.state)
         is MethodOut -> MethodOutData(event.objectType.name, event.objectId, event.thread, event.method, event.args, event.result, event.state)
         is MethodOutFailed -> MethodOutFailedData(event.objectType.name, event.objectId, event.thread, event.method, event.args, event.error, event.state)
-        is ArrayListIntEvent -> arrayListInt(event)
         is LinkedListIntEvent -> linkedListInt(event)
         else -> null // TODO: очередь, пул, фабрика потоков ещё не переведены на payload'ы
     }
 
-
-    private fun arrayListInt(e: ArrayListIntEvent): Payload = when (e) {
-        is ArrayListIntAddIn -> ArrayListIntAddInData(e.arrayListId, e.thread, e.element, e.elements)
-        is ArrayListIntAddOut -> ArrayListIntAddOutData(e.arrayListId, e.thread, e.element, e.elements)
-        is ArrayListIntAddOutFailed -> ArrayListIntAddOutFailedData(e.arrayListId, e.thread, e.element, e.error, e.elements)
-        is ArrayListIntAddAtIn -> ArrayListIntAddAtInData(e.arrayListId, e.thread, e.index, e.element, e.elements)
-        is ArrayListIntAddAtOut -> ArrayListIntAddAtOutData(e.arrayListId, e.thread, e.index, e.element, e.elements)
-        is ArrayListIntAddAtOutFailed -> ArrayListIntAddAtOutFailedData(e.arrayListId, e.thread, e.index, e.element, e.error, e.elements)
-    }
 
     private fun linkedListInt(e: LinkedListIntEvent): Payload = when (e) {
         is LinkedListIntAddIn -> LinkedListIntAddInData(e.linkedListId, e.thread, e.element, e.elements)
