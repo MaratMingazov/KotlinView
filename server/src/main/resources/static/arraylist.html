@@ -38,7 +38,15 @@
     .state-row .id { width: 32px; color: var(--keyword); }
     .method { padding: 0 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--dim); }
     .method.active { background: var(--out); border-color: var(--out); color: var(--bg); }
-    .method.failed { background: var(--fail); border-color: var(--fail); color: var(--bg); }
+    /* Послесвечение: после OUT бейдж не гаснет мгновенно, а затухает, как лампа накаливания */
+    @keyframes afterglow {
+      from { background: var(--out); border-color: var(--out); color: var(--bg); }
+      to { background: transparent; border-color: var(--border); color: var(--dim); }
+    }
+    @keyframes afterglow-failed {
+      from { background: var(--fail); border-color: var(--fail); color: var(--bg); }
+      to { background: transparent; border-color: var(--border); color: var(--dim); }
+    }
     .empty { color: var(--dim); }
   </style>
 </head>
@@ -116,14 +124,18 @@
   // Часть type → метод в строке состояния: ARRAY_LIST_INT_ADD_AT_IN → addAt
   const METHOD_BY_TYPE = { ADD: 'add', ADD_AT: 'addAt', GET: 'get' };
   const METHODS = Object.values(METHOD_BY_TYPE);
-  const lists = new Map(); // arrayListId → { id, elements, inside: { method: Set<thread> }, failed: { method: boolean } }
+  const FADE_MS = 800; // сколько затухает бейдж после выхода последнего потока — подбирается на глаз
+
+  // arrayListId → { id, elements, inside: { method: Set<thread> }, fade: { method: { start, failed } } }
+  // fade.start — когда вышел последний поток (null — не затухает); fade.failed — гаснуть красным
+  const lists = new Map();
 
   // Список создаётся и по CREATED, и по любому другому событию: страницу могли открыть уже после CREATED
   function listOf(id) {
     if (!lists.has(id)) {
       const inside = Object.fromEntries(METHODS.map(m => [m, new Set()]));
-      const failed = Object.fromEntries(METHODS.map(m => [m, false]));
-      lists.set(id, { id, elements: [], inside, failed });
+      const fade = Object.fromEntries(METHODS.map(m => [m, { start: null, failed: false }]));
+      lists.set(id, { id, elements: [], inside, fade });
     }
     return lists.get(id);
   }
@@ -140,13 +152,16 @@
     const list = listOf(env.data.arrayListId);
     list.elements = env.data.elements;
 
-    // Внутри метода может быть несколько потоков сразу: подсветка горит, пока не вышел последний
-    if (phase === 'IN') list.inside[method].add(env.data.thread);
-    else list.inside[method].delete(env.data.thread);
-
-    if (phase === 'OUT_FAILED') {
-      list.failed[method] = true;
-      setTimeout(() => { list.failed[method] = false; render(); }, 1000);
+    // Внутри метода может быть несколько потоков сразу: горит, пока не вышел последний, потом затухает
+    const inside = list.inside[method];
+    const fade = list.fade[method];
+    if (phase === 'IN') {
+      if (inside.size === 0) list.fade[method] = { start: null, failed: false }; // зажгли заново
+      inside.add(env.data.thread);
+    } else {
+      inside.delete(env.data.thread);
+      fade.failed ||= phase === 'OUT_FAILED'; // ошибку запоминаем, даже если внутри ещё есть потоки
+      if (inside.size === 0) fade.start = performance.now();
     }
   }
 
@@ -169,7 +184,14 @@
       for (const method of METHODS) {
         const threads = list.inside[method];
         const el = document.createElement('span');
-        el.className = 'method' + (threads.size > 0 ? ' active' : '') + (list.failed[method] ? ' failed' : '');
+        el.className = 'method' + (threads.size > 0 ? ' active' : '');
+        // Бейдж пересоздаётся на каждый render. Отрицательная задержка продолжает затухание
+        // с того места, где оно было, — без неё анимация начиналась бы заново и бейдж дёргался
+        const { start, failed } = list.fade[method];
+        const elapsed = start === null ? Infinity : performance.now() - start;
+        if (threads.size === 0 && elapsed < FADE_MS) {
+          el.style.animation = `${failed ? 'afterglow-failed' : 'afterglow'} ${FADE_MS}ms ease-out ${-elapsed}ms forwards`;
+        }
         el.textContent = method + (threads.size > 1 ? ` ×${threads.size}` : '');
         el.title = threads.size > 0 ? [...threads].join('\n') : '';
         row.append(el);

@@ -4,7 +4,13 @@ import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.event.LinkedListIntAddIn
 import mingazov.kotlinview.event.LinkedListIntAddOut
 import mingazov.kotlinview.event.LinkedListIntAddOutFailed
+import mingazov.kotlinview.event.LinkedListIntOfferFirstIn
+import mingazov.kotlinview.event.LinkedListIntOfferFirstOut
+import mingazov.kotlinview.event.LinkedListIntOfferFirstOutFailed
 import mingazov.kotlinview.event.LinkedListIntOfferIn
+import mingazov.kotlinview.event.LinkedListIntOfferLastIn
+import mingazov.kotlinview.event.LinkedListIntOfferLastOut
+import mingazov.kotlinview.event.LinkedListIntOfferLastOutFailed
 import mingazov.kotlinview.event.LinkedListIntOfferOut
 import mingazov.kotlinview.event.LinkedListIntOfferOutFailed
 import java.util.LinkedList
@@ -38,6 +44,30 @@ class InstrumentedLinkedListInt (
             return result
         } catch (e: Exception) {
             sink.emit(LinkedListIntOfferOutFailed(id, threadName(), element, e.toString(), snapshot()))
+            throw e
+        }
+    }
+
+    fun offerFirst(element: Int): Boolean {
+        sink.emit(LinkedListIntOfferFirstIn(id, threadName(), element, snapshot()))
+        try {
+            val result = delegate.offerFirst(element)
+            sink.emit(LinkedListIntOfferFirstOut(id, threadName(), element, snapshot()))
+            return result
+        } catch (e: Exception) {
+            sink.emit(LinkedListIntOfferFirstOutFailed(id, threadName(), element, e.toString(), snapshot()))
+            throw e
+        }
+    }
+
+    fun offerLast(element: Int): Boolean {
+        sink.emit(LinkedListIntOfferLastIn(id, threadName(), element, snapshot()))
+        try {
+            val result = delegate.offerLast(element)
+            sink.emit(LinkedListIntOfferLastOut(id, threadName(), element, snapshot()))
+            return result
+        } catch (e: Exception) {
+            sink.emit(LinkedListIntOfferLastOutFailed(id, threadName(), element, e.toString(), snapshot()))
             throw e
         }
     }

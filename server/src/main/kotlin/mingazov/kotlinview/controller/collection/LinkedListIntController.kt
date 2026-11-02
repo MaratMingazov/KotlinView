@@ -17,6 +17,10 @@ data class LinkedListIntAddRequest(val element: Int)
 data class LinkedListIntAddResponse(val result: Boolean)
 data class LinkedListIntOfferRequest(val element: Int)
 data class LinkedListIntOfferResponse(val result: Boolean)
+data class LinkedListIntOfferFirstRequest(val element: Int)
+data class LinkedListIntOfferFirstResponse(val result: Boolean)
+data class LinkedListIntOfferLastRequest(val element: Int)
+data class LinkedListIntOfferLastResponse(val result: Boolean)
 data class LinkedListIntErrorResponse(val error: String)
 
 @RestController
@@ -44,6 +48,20 @@ class LinkedListIntController(
     fun offer(@PathVariable linkedListId: Long, @RequestBody request: LinkedListIntOfferRequest): LinkedListIntOfferResponse {
         val result = linkedListIntService.get(linkedListId).offer(request.element)
         val response = LinkedListIntOfferResponse(result)
+        return response
+    }
+
+    @PostMapping("/{linkedListId}/offerFirst")
+    fun offerFirst(@PathVariable linkedListId: Long, @RequestBody request: LinkedListIntOfferFirstRequest): LinkedListIntOfferFirstResponse {
+        val result = linkedListIntService.get(linkedListId).offerFirst(request.element)
+        val response = LinkedListIntOfferFirstResponse(result)
+        return response
+    }
+
+    @PostMapping("/{linkedListId}/offerLast")
+    fun offerLast(@PathVariable linkedListId: Long, @RequestBody request: LinkedListIntOfferLastRequest): LinkedListIntOfferLastResponse {
+        val result = linkedListIntService.get(linkedListId).offerLast(request.element)
+        val response = LinkedListIntOfferLastResponse(result)
         return response
     }
 
