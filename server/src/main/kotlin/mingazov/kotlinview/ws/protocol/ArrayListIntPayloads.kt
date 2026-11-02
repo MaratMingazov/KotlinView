@@ -2,12 +2,6 @@ package mingazov.kotlinview.ws.protocol
 
 import com.fasterxml.jackson.annotation.JsonTypeName
 
-@JsonTypeName("ARRAY_LIST_INT_CREATED")
-data class ArrayListIntCreatedData(val arrayListId: Long, val thread: String) : Payload
-
-@JsonTypeName("ARRAY_LIST_INT_REMOVED")
-data class ArrayListIntRemovedData(val arrayListId: Long, val thread: String) : Payload
-
 @JsonTypeName("ARRAY_LIST_INT_ADD_IN")
 data class ArrayListIntAddInData(val arrayListId: Long, val thread: String, val element: Int, val elements: List<Int>) : Payload
 

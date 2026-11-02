@@ -171,8 +171,8 @@
   }
 
   function apply(env) {
-    if (env.type === 'ARRAY_LIST_INT_CREATED') { listOf(env.data.arrayListId); return; }
-    if (env.type === 'ARRAY_LIST_INT_REMOVED') { lists.delete(env.data.arrayListId); return; }
+    if (env.type === 'OBJECT_CREATED') { if (env.data.objectType === 'ARRAY_LIST_INT') listOf(env.data.objectId); return; }
+    if (env.type === 'OBJECT_REMOVED') { if (env.data.objectType === 'ARRAY_LIST_INT') lists.delete(env.data.objectId); return; }
 
     // ARRAY_LIST_INT_ADD_IN, ARRAY_LIST_INT_GET_OUT_FAILED, ...
     const match = env.type.match(/^ARRAY_LIST_INT_(ADD_AT|ADD|GET)_(IN|OUT|OUT_FAILED)$/);

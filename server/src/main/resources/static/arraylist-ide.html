@@ -313,10 +313,10 @@
   const METHODS = Object.values(METHOD_BY_TYPE);
   const PHASE_BY_TYPE = { IN: 'IN', OUT: 'OUT', OUT_FAILED: 'FAILED' };
 
-  function parseType(type) {
-    if (type === 'ARRAY_LIST_INT_CREATED') return { phase: 'LIFE', method: 'created' };
-    if (type === 'ARRAY_LIST_INT_REMOVED') return { phase: 'LIFE', method: 'removed' };
-    const match = type.match(/^ARRAY_LIST_INT_(ADD_AT|ADD|GET)_(IN|OUT|OUT_FAILED)$/);
+  function parseType(env) {
+    if (env.type === 'OBJECT_CREATED') return env.data.objectType === 'ARRAY_LIST_INT' ? { phase: 'LIFE', method: 'created' } : null;
+    if (env.type === 'OBJECT_REMOVED') return env.data.objectType === 'ARRAY_LIST_INT' ? { phase: 'LIFE', method: 'removed' } : null;
+    const match = env.type.match(/^ARRAY_LIST_INT_(ADD_AT|ADD|GET)_(IN|OUT|OUT_FAILED)$/);
     if (!match) return null;
     return { method: METHOD_BY_TYPE[match[1]], phase: PHASE_BY_TYPE[match[2]] };
   }
@@ -343,8 +343,8 @@
   // Меняет только state: никаких таймеров, поэтому годится и для живого режима, и для перемотки
   function reduce(state, env, parsed) {
     const d = env.data;
-    if (parsed.method === 'created') { listOf(state, d.arrayListId); return; }
-    if (parsed.method === 'removed') { state.lists.delete(d.arrayListId); return; }
+    if (parsed.method === 'created') { listOf(state, d.objectId); return; }
+    if (parsed.method === 'removed') { state.lists.delete(d.objectId); return; }
 
     const list = listOf(state, d.arrayListId);
     list.elements = d.elements;
@@ -572,7 +572,7 @@
       $('events').prepend(row);
       return;
     }
-    const parsed = parseType(env.type);
+    const parsed = parseType(env);
     const n = nextN++;
 
     eventHistory.push({ n, env, parsed });

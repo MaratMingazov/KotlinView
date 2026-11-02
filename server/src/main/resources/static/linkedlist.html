@@ -171,8 +171,8 @@
   }
 
   function apply(env) {
-    if (env.type === 'LINKED_LIST_INT_CREATED') { listOf(env.data.linkedListId); return; }
-    if (env.type === 'LINKED_LIST_INT_REMOVED') { lists.delete(env.data.linkedListId); return; }
+    if (env.type === 'OBJECT_CREATED') { if (env.data.objectType === 'LINKED_LIST_INT') listOf(env.data.objectId); return; }
+    if (env.type === 'OBJECT_REMOVED') { if (env.data.objectType === 'LINKED_LIST_INT') lists.delete(env.data.objectId); return; }
 
     // LINKED_LIST_INT_ADD_IN, LINKED_LIST_INT_POP_OUT_FAILED, ...
     const match = env.type.match(/^LINKED_LIST_INT_(OFFER_FIRST|OFFER_LAST|OFFER|ADD|POLL|POP)_(IN|OUT|OUT_FAILED)$/);

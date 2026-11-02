@@ -1,8 +1,9 @@
 package mingazov.kotlinview.instrumented.collection
 
-import mingazov.kotlinview.event.ArrayListIntCreated
-import mingazov.kotlinview.event.ArrayListIntRemoved
 import mingazov.kotlinview.event.EventSink
+import mingazov.kotlinview.event.ObjectCreated
+import mingazov.kotlinview.event.ObjectRemoved
+import mingazov.kotlinview.event.ObjectType
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
@@ -14,7 +15,7 @@ class InstrumentedArrayListIntRegistry(private val sink: EventSink) {
     fun create(): InstrumentedArrayListInt {
         val list = InstrumentedArrayListInt(ids.incrementAndGet(), sink)
         lists[list.id] = list
-        sink.emit(ArrayListIntCreated(list.id, Thread.currentThread().name))
+        sink.emit(ObjectCreated(ObjectType.ARRAY_LIST_INT, list.id, Thread.currentThread().name))
         return list
     }
 
@@ -23,7 +24,7 @@ class InstrumentedArrayListIntRegistry(private val sink: EventSink) {
 
     fun remove(id: Long) {
         lists.remove(id) ?: throw ArrayListIntNotFoundException(id)
-        sink.emit(ArrayListIntRemoved(id, Thread.currentThread().name))
+        sink.emit(ObjectRemoved(ObjectType.ARRAY_LIST_INT, id, Thread.currentThread().name))
     }
 
     fun all(): Collection<InstrumentedArrayListInt> = lists.values

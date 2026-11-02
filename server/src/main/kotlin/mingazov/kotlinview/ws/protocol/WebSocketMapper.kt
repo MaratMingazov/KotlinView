@@ -6,17 +6,14 @@ import mingazov.kotlinview.event.ArrayListIntAddAtOutFailed
 import mingazov.kotlinview.event.ArrayListIntAddIn
 import mingazov.kotlinview.event.ArrayListIntAddOut
 import mingazov.kotlinview.event.ArrayListIntAddOutFailed
-import mingazov.kotlinview.event.ArrayListIntCreated
 import mingazov.kotlinview.event.ArrayListIntEvent
 import mingazov.kotlinview.event.ArrayListIntGetIn
 import mingazov.kotlinview.event.ArrayListIntGetOut
 import mingazov.kotlinview.event.ArrayListIntGetOutFailed
-import mingazov.kotlinview.event.ArrayListIntRemoved
 import mingazov.kotlinview.event.Event
 import mingazov.kotlinview.event.LinkedListIntAddIn
 import mingazov.kotlinview.event.LinkedListIntAddOut
 import mingazov.kotlinview.event.LinkedListIntAddOutFailed
-import mingazov.kotlinview.event.LinkedListIntCreated
 import mingazov.kotlinview.event.LinkedListIntEvent
 import mingazov.kotlinview.event.LinkedListIntOfferFirstIn
 import mingazov.kotlinview.event.LinkedListIntOfferFirstOut
@@ -33,13 +30,16 @@ import mingazov.kotlinview.event.LinkedListIntPopOut
 import mingazov.kotlinview.event.LinkedListIntPopOutFailed
 import mingazov.kotlinview.event.LinkedListIntOfferOut
 import mingazov.kotlinview.event.LinkedListIntOfferOutFailed
-import mingazov.kotlinview.event.LinkedListIntRemoved
+import mingazov.kotlinview.event.ObjectCreated
+import mingazov.kotlinview.event.ObjectRemoved
 
 /** Переводит доменные события в payload'ы протокола. Строки type здесь нет — они на классах payload'ов. */
 object WebSocketMapper {
 
     /** null — событие пока не входит в протокол, клиенту не отправляется. */
     fun toPayload(event: Event): Payload? = when (event) {
+        is ObjectCreated -> ObjectCreatedData(event.objectType.name, event.objectId, event.thread)
+        is ObjectRemoved -> ObjectRemovedData(event.objectType.name, event.objectId, event.thread)
         is ArrayListIntEvent -> arrayListInt(event)
         is LinkedListIntEvent -> linkedListInt(event)
         else -> null // TODO: очередь, пул, фабрика потоков ещё не переведены на payload'ы
@@ -47,8 +47,6 @@ object WebSocketMapper {
 
 
     private fun arrayListInt(e: ArrayListIntEvent): Payload = when (e) {
-        is ArrayListIntCreated -> ArrayListIntCreatedData(e.arrayListId, e.thread)
-        is ArrayListIntRemoved -> ArrayListIntRemovedData(e.arrayListId, e.thread)
         is ArrayListIntAddIn -> ArrayListIntAddInData(e.arrayListId, e.thread, e.element, e.elements)
         is ArrayListIntAddOut -> ArrayListIntAddOutData(e.arrayListId, e.thread, e.element, e.elements)
         is ArrayListIntAddOutFailed -> ArrayListIntAddOutFailedData(e.arrayListId, e.thread, e.element, e.error, e.elements)
@@ -61,8 +59,6 @@ object WebSocketMapper {
     }
 
     private fun linkedListInt(e: LinkedListIntEvent): Payload = when (e) {
-        is LinkedListIntCreated -> LinkedListIntCreatedData(e.linkedListId, e.thread)
-        is LinkedListIntRemoved -> LinkedListIntRemovedData(e.linkedListId, e.thread)
         is LinkedListIntAddIn -> LinkedListIntAddInData(e.linkedListId, e.thread, e.element, e.elements)
         is LinkedListIntAddOut -> LinkedListIntAddOutData(e.linkedListId, e.thread, e.element, e.elements)
         is LinkedListIntAddOutFailed -> LinkedListIntAddOutFailedData(e.linkedListId, e.thread, e.element, e.error, e.elements)
