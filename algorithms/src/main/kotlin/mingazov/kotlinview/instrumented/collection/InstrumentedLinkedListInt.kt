@@ -11,6 +11,12 @@ import mingazov.kotlinview.event.LinkedListIntOfferIn
 import mingazov.kotlinview.event.LinkedListIntOfferLastIn
 import mingazov.kotlinview.event.LinkedListIntOfferLastOut
 import mingazov.kotlinview.event.LinkedListIntOfferLastOutFailed
+import mingazov.kotlinview.event.LinkedListIntPollIn
+import mingazov.kotlinview.event.LinkedListIntPollOut
+import mingazov.kotlinview.event.LinkedListIntPollOutFailed
+import mingazov.kotlinview.event.LinkedListIntPopIn
+import mingazov.kotlinview.event.LinkedListIntPopOut
+import mingazov.kotlinview.event.LinkedListIntPopOutFailed
 import mingazov.kotlinview.event.LinkedListIntOfferOut
 import mingazov.kotlinview.event.LinkedListIntOfferOutFailed
 import java.util.LinkedList
@@ -68,6 +74,32 @@ class InstrumentedLinkedListInt (
             return result
         } catch (e: Exception) {
             sink.emit(LinkedListIntOfferLastOutFailed(id, threadName(), element, e.toString(), snapshot()))
+            throw e
+        }
+    }
+
+    /** Забирает голову. Пустой список — null. */
+    fun poll(): Int? {
+        sink.emit(LinkedListIntPollIn(id, threadName(), snapshot()))
+        try {
+            val result: Int? = delegate.poll()
+            sink.emit(LinkedListIntPollOut(id, threadName(), result, snapshot()))
+            return result
+        } catch (e: Exception) {
+            sink.emit(LinkedListIntPollOutFailed(id, threadName(), e.toString(), snapshot()))
+            throw e
+        }
+    }
+
+    /** Забирает голову. Пустой список — NoSuchElementException. */
+    fun pop(): Int {
+        sink.emit(LinkedListIntPopIn(id, threadName(), snapshot()))
+        try {
+            val result = delegate.pop()
+            sink.emit(LinkedListIntPopOut(id, threadName(), result, snapshot()))
+            return result
+        } catch (e: Exception) {
+            sink.emit(LinkedListIntPopOutFailed(id, threadName(), e.toString(), snapshot()))
             throw e
         }
     }

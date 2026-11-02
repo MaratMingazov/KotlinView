@@ -25,6 +25,12 @@ import mingazov.kotlinview.event.LinkedListIntOfferIn
 import mingazov.kotlinview.event.LinkedListIntOfferLastIn
 import mingazov.kotlinview.event.LinkedListIntOfferLastOut
 import mingazov.kotlinview.event.LinkedListIntOfferLastOutFailed
+import mingazov.kotlinview.event.LinkedListIntPollIn
+import mingazov.kotlinview.event.LinkedListIntPollOut
+import mingazov.kotlinview.event.LinkedListIntPollOutFailed
+import mingazov.kotlinview.event.LinkedListIntPopIn
+import mingazov.kotlinview.event.LinkedListIntPopOut
+import mingazov.kotlinview.event.LinkedListIntPopOutFailed
 import mingazov.kotlinview.event.LinkedListIntOfferOut
 import mingazov.kotlinview.event.LinkedListIntOfferOutFailed
 import mingazov.kotlinview.event.LinkedListIntRemoved
@@ -69,5 +75,11 @@ object WebSocketMapper {
         is LinkedListIntOfferLastIn -> LinkedListIntOfferLastInData(e.linkedListId, e.thread, e.element, e.elements)
         is LinkedListIntOfferLastOut -> LinkedListIntOfferLastOutData(e.linkedListId, e.thread, e.element, e.elements)
         is LinkedListIntOfferLastOutFailed -> LinkedListIntOfferLastOutFailedData(e.linkedListId, e.thread, e.element, e.error, e.elements)
+        is LinkedListIntPollIn -> LinkedListIntPollInData(e.linkedListId, e.thread, e.elements)
+        is LinkedListIntPollOut -> LinkedListIntPollOutData(e.linkedListId, e.thread, e.element, e.elements)
+        is LinkedListIntPollOutFailed -> LinkedListIntPollOutFailedData(e.linkedListId, e.thread, e.error, e.elements)
+        is LinkedListIntPopIn -> LinkedListIntPopInData(e.linkedListId, e.thread, e.elements)
+        is LinkedListIntPopOut -> LinkedListIntPopOutData(e.linkedListId, e.thread, e.element, e.elements)
+        is LinkedListIntPopOutFailed -> LinkedListIntPopOutFailedData(e.linkedListId, e.thread, e.error, e.elements)
     }
 }

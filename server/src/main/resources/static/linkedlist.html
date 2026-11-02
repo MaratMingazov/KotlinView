@@ -65,6 +65,8 @@
   <div class="command"><button id="offer">offer</button>(element <input id="offerElement" type="number" value="20">)</div>
   <div class="command"><button id="offerFirst">offerFirst</button>(element <input id="offerFirstElement" type="number" value="5">)</div>
   <div class="command"><button id="offerLast">offerLast</button>(element <input id="offerLastElement" type="number" value="30">)</div>
+  <div class="command"><button id="poll">poll</button>() <span class="empty">— голова или null, если пусто</span></div>
+  <div class="command"><button id="pop">pop</button>() <span class="empty">— голова или NoSuchElementException, если пусто</span></div>
   <div class="command"><button id="remove">remove</button>()</div>
   <div><button id="clear">clear logs</button></div>
 </div>
@@ -118,13 +120,15 @@
   $('offer').onclick = () => call('POST', `${base}/${listId()}/offer`, { element: num('offerElement') });
   $('offerFirst').onclick = () => call('POST', `${base}/${listId()}/offerFirst`, { element: num('offerFirstElement') });
   $('offerLast').onclick = () => call('POST', `${base}/${listId()}/offerLast`, { element: num('offerLastElement') });
+  $('poll').onclick = () => call('POST', `${base}/${listId()}/poll`);
+  $('pop').onclick = () => call('POST', `${base}/${listId()}/pop`);
   $('remove').onclick = () => call('DELETE', `${base}/${listId()}`);
   $('clear').onclick = () => { $('http').innerHTML = ''; $('ws').innerHTML = ''; };
 
   // ---------- State ----------
 
   // Часть type → метод в строке состояния: LINKED_LIST_INT_ADD_IN → add
-  const METHOD_BY_TYPE = { ADD: 'add', OFFER: 'offer', OFFER_FIRST: 'offerFirst', OFFER_LAST: 'offerLast' };
+  const METHOD_BY_TYPE = { ADD: 'add', OFFER: 'offer', OFFER_FIRST: 'offerFirst', OFFER_LAST: 'offerLast', POLL: 'poll', POP: 'pop' };
   const METHODS = Object.values(METHOD_BY_TYPE);
   const FADE_MS = 800; // сколько затухает бейдж после выхода последнего потока — подбирается на глаз
 
@@ -147,7 +151,7 @@
     if (env.type === 'LINKED_LIST_INT_REMOVED') { lists.delete(env.data.linkedListId); return; }
 
     // LINKED_LIST_INT_ADD_IN, LINKED_LIST_INT_ADD_OUT_FAILED, ...
-    const match = env.type.match(/^LINKED_LIST_INT_(OFFER_FIRST|OFFER_LAST|OFFER|ADD)_(IN|OUT|OUT_FAILED)$/);
+    const match = env.type.match(/^LINKED_LIST_INT_(OFFER_FIRST|OFFER_LAST|OFFER|ADD|POLL|POP)_(IN|OUT|OUT_FAILED)$/);
     if (!match) return;
     const method = METHOD_BY_TYPE[match[1]];
     const phase = match[2];

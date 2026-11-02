@@ -43,3 +43,22 @@ data class LinkedListIntOfferLastOutData(val linkedListId: Long, val thread: Str
 
 @JsonTypeName("LINKED_LIST_INT_OFFER_LAST_OUT_FAILED")
 data class LinkedListIntOfferLastOutFailedData(val linkedListId: Long, val thread: String, val element: Int, val error: String, val elements: List<Int>) : Payload
+
+@JsonTypeName("LINKED_LIST_INT_POLL_IN")
+data class LinkedListIntPollInData(val linkedListId: Long, val thread: String, val elements: List<Int>) : Payload
+
+/** element == null — список был пуст. */
+@JsonTypeName("LINKED_LIST_INT_POLL_OUT")
+data class LinkedListIntPollOutData(val linkedListId: Long, val thread: String, val element: Int?, val elements: List<Int>) : Payload
+
+@JsonTypeName("LINKED_LIST_INT_POLL_OUT_FAILED")
+data class LinkedListIntPollOutFailedData(val linkedListId: Long, val thread: String, val error: String, val elements: List<Int>) : Payload
+
+@JsonTypeName("LINKED_LIST_INT_POP_IN")
+data class LinkedListIntPopInData(val linkedListId: Long, val thread: String, val elements: List<Int>) : Payload
+
+@JsonTypeName("LINKED_LIST_INT_POP_OUT")
+data class LinkedListIntPopOutData(val linkedListId: Long, val thread: String, val element: Int, val elements: List<Int>) : Payload
+
+@JsonTypeName("LINKED_LIST_INT_POP_OUT_FAILED")
+data class LinkedListIntPopOutFailedData(val linkedListId: Long, val thread: String, val error: String, val elements: List<Int>) : Payload

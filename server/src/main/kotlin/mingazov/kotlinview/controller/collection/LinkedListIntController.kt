@@ -21,6 +21,8 @@ data class LinkedListIntOfferFirstRequest(val element: Int)
 data class LinkedListIntOfferFirstResponse(val result: Boolean)
 data class LinkedListIntOfferLastRequest(val element: Int)
 data class LinkedListIntOfferLastResponse(val result: Boolean)
+data class LinkedListIntPollResponse(val element: Int?) // null — список был пуст
+data class LinkedListIntPopResponse(val element: Int)
 data class LinkedListIntErrorResponse(val error: String)
 
 @RestController
@@ -65,6 +67,20 @@ class LinkedListIntController(
         return response
     }
 
+    @PostMapping("/{linkedListId}/poll")
+    fun poll(@PathVariable linkedListId: Long): LinkedListIntPollResponse {
+        val element = linkedListIntService.get(linkedListId).poll()
+        val response = LinkedListIntPollResponse(element)
+        return response
+    }
+
+    @PostMapping("/{linkedListId}/pop")
+    fun pop(@PathVariable linkedListId: Long): LinkedListIntPopResponse {
+        val element = linkedListIntService.get(linkedListId).pop()
+        val response = LinkedListIntPopResponse(element)
+        return response
+    }
+
     @DeleteMapping("/{linkedListId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun remove(@PathVariable linkedListId: Long) = linkedListIntService.remove(linkedListId)
@@ -72,4 +88,10 @@ class LinkedListIntController(
     @ExceptionHandler(LinkedListIntNotFoundException::class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
     fun handleNotFound(e: LinkedListIntNotFoundException) = LinkedListIntErrorResponse(e.toString())
+
+    // pop() на пустом списке. LinkedListIntNotFoundException — тоже NoSuchElementException,
+    // но Spring выбирает самый точный обработчик, поэтому «списка нет» по-прежнему уходит в 404 выше
+    @ExceptionHandler(NoSuchElementException::class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    fun handleEmpty(e: NoSuchElementException) = LinkedListIntErrorResponse(e.toString())
 }
