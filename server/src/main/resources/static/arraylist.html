@@ -16,29 +16,46 @@
     }
     header { display: flex; justify-content: space-between; align-items: center; }
     h2 { color: var(--keyword); font-weight: normal; }
-    /* Две колонки: слева управление, справа состояние; на узком экране — друг под другом */
-    .workspace { display: grid; grid-template-columns: minmax(320px, 1fr) 2fr; gap: 24px; align-items: start; }
-    @media (max-width: 800px) { .workspace { grid-template-columns: 1fr; } }
-    .controls { margin: 8px 0; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-    .controls .command { margin-left: 24px; } /* команды списка — с отступом под list# */
-    .controls input {
-      width: 60px; background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
-      color: var(--num); font: inherit; padding: 0 4px;
+    h3 {
+      margin: 16px 0 4px; border-bottom: 1px solid var(--border); color: var(--dim); font-weight: normal;
+      display: flex; justify-content: space-between; align-items: baseline;
     }
-    .controls button {
+    .on { color: var(--out); }
+    .off { color: var(--fail); }
+    .empty { color: var(--dim); }
+
+    /* --- кнопки и поля --- */
+    button {
       background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
       color: var(--fn); font: inherit; padding: 0 8px; cursor: pointer;
     }
-    .controls button:hover { border-color: var(--fn); }
-    .on { color: var(--out); }
-    .off { color: var(--fail); }
-    h3 { margin: 16px 0 4px; border-bottom: 1px solid var(--border); color: var(--dim); font-weight: normal; }
-    .log { max-height: 40vh; overflow-y: auto; }
-    .log div { white-space: pre-wrap; padding: 2px 0; border-bottom: 1px solid var(--panel); }
-    .error { color: var(--fail); }
-    .type { font-weight: bold; color: var(--fn); }
-    .state-row { display: flex; gap: 8px; align-items: center; padding: 3px 0; color: var(--num); }
-    .state-row .id { width: 32px; color: var(--keyword); }
+    button:hover { border-color: currentColor; }
+    button.primary { color: var(--out); padding: 2px 12px; }
+    button.run { color: var(--out); }
+    button.danger { color: var(--fail); }
+    button.link { background: none; border: none; color: var(--dim); padding: 0; }
+    button.link:hover { color: var(--text); }
+    input {
+      width: 64px; background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+      color: var(--num); font: inherit; padding: 0 4px;
+    }
+    input::placeholder { color: var(--dim); }
+
+    /* --- карточка списка: слева его пульт, справа его состояние --- */
+    .list-card {
+      display: grid; grid-template-columns: minmax(300px, 1fr) 2fr; gap: 24px; align-items: start;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    @media (max-width: 800px) { .list-card { grid-template-columns: 1fr; } }
+    .card-title { color: var(--keyword); margin-bottom: 6px; }
+    /* Сетка пульта: метод | поля | ▶ — кнопки запуска выровнены в столбик */
+    .ops { display: grid; grid-template-columns: max-content max-content max-content; gap: 6px 10px; align-items: center; }
+    .ops .name { color: var(--fn); }
+    .ops .args { display: flex; gap: 4px; }
+    .card-controls .danger { margin-top: 10px; }
+
+    /* --- состояние: бейджи методов --- */
+    .badges { display: flex; gap: 8px; align-items: center; min-height: 22px; }
     .method { padding: 0 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--dim); }
     .method.active { background: var(--out); border-color: var(--out); color: var(--bg); }
     /* Послесвечение: после OUT бейдж не гаснет мгновенно, а затухает, как лампа накаливания */
@@ -50,11 +67,9 @@
       from { background: var(--fail); border-color: var(--fail); color: var(--bg); }
       to { background: transparent; border-color: var(--border); color: var(--dim); }
     }
-    .empty { color: var(--dim); }
 
-    /* Список в виде ячеек с индексами, как в arraylist-ide.html */
-    .list-card { padding: 4px 0 8px; border-bottom: 1px solid var(--panel); }
-    .cells { display: flex; gap: 4px; flex-wrap: wrap; margin: 6px 0 0 40px; min-height: 50px; }
+    /* --- состояние: ячейки с индексами --- */
+    .cells { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; min-height: 50px; }
     .cell { display: flex; flex-direction: column; align-items: center; }
     .cell .box {
       min-width: 40px; height: 32px; padding: 0 6px; display: flex; align-items: center; justify-content: center;
@@ -73,6 +88,12 @@
       to { background: var(--panel); border-color: var(--border); }
     }
     @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+
+    /* --- логи --- */
+    .log { max-height: 40vh; overflow-y: auto; }
+    .log div { white-space: pre-wrap; padding: 2px 0; border-bottom: 1px solid var(--panel); }
+    .error { color: var(--fail); }
+    .type { font-weight: bold; color: var(--fn); }
   </style>
 </head>
 <body>
@@ -82,32 +103,15 @@
   <span id="status" class="off">● ws disconnected</span>
 </header>
 
-<!-- Слева управляем, справа смотрим результат -->
-<div class="workspace">
-  <section>
-    <h3>Controls</h3>
-    <div class="controls">
-      <div><button id="create">create</button> <span class="empty">— создаст список и подставит его id ниже</span></div>
-      <!-- Над каким списком выполняются команды ниже -->
-      <div><label>list# <input id="arrayListId" type="number" value="1"></label></div>
-      <div class="command"><button id="add">add</button>(value <input id="value" type="number" value="10">)</div>
-      <div class="command"><button id="addAt">addAt</button>(index <input id="addAtIndex" type="number" value="0">, element <input id="addAtElement" type="number" value="7">)</div>
-      <div class="command"><button id="get">get</button>(index <input id="index" type="number" value="0">)</div>
-      <div class="command"><button id="remove">remove</button>()</div>
-      <div><button id="clear">clear logs</button></div>
-    </div>
-  </section>
+<button id="create" class="primary" title="POST /api/arraylistint — создать ArrayList&lt;Int&gt;; карточка появится по событию CREATED">+ new list</button>
 
-  <section>
-    <h3>State</h3>
-    <div id="state"></div>
-  </section>
-</div>
+<!-- Карточка на каждый список: слева управляем им, справа смотрим результат -->
+<div id="lists"></div>
 
-<h3>HTTP</h3>
+<h3>HTTP <button class="link" id="clearHttp">clear</button></h3>
 <div id="http" class="log"></div>
 
-<h3>WebSocket</h3>
+<h3>WebSocket <button class="link" id="clearWs">clear</button></h3>
 <div id="ws" class="log"></div>
 
 <script>
@@ -139,28 +143,20 @@
     }
   }
 
-  const listId = () => $('arrayListId').value;
-  const num = id => Number($(id).value);
-
-  $('create').onclick = async () => {
-    const response = await call('POST', base);
-    if (response) $('arrayListId').value = response.arrayListId;
-  };
-  $('add').onclick = () => call('POST', `${base}/${listId()}/add`, { value: num('value') });
-  $('addAt').onclick = () => call('POST', `${base}/${listId()}/addAt`, { index: num('addAtIndex'), element: num('addAtElement') });
-  $('get').onclick = () => call('POST', `${base}/${listId()}/get`, { index: num('index') });
-  $('remove').onclick = () => call('DELETE', `${base}/${listId()}`);
-  $('clear').onclick = () => { $('http').innerHTML = ''; $('ws').innerHTML = ''; };
+  // Карточку создаёт не ответ на create, а событие CREATED — так же, как для списков, созданных извне
+  $('create').onclick = () => call('POST', base);
+  $('clearHttp').onclick = () => { $('http').innerHTML = ''; };
+  $('clearWs').onclick = () => { $('ws').innerHTML = ''; };
 
   // ---------- State ----------
 
-  // Часть type → метод в строке состояния: ARRAY_LIST_INT_ADD_AT_IN → addAt
+  // Часть type → метод в бейджах: ARRAY_LIST_INT_ADD_AT_IN → addAt
   const METHOD_BY_TYPE = { ADD: 'add', ADD_AT: 'addAt', GET: 'get' };
   const METHODS = Object.values(METHOD_BY_TYPE);
   const FADE_MS = 800; // сколько затухает бейдж после выхода последнего потока — подбирается на глаз
   const CELL_FADE_MS = 1500; // сколько затухает подсветка ячеек — дольше, чтобы успеть рассмотреть
 
-  // arrayListId → { id, elements, inside: { method: Set<thread> }, fade: { method: { start, failed } } }
+  // arrayListId → { id, elements, inside: { method: Set<thread> }, fade: { method: { start, failed } }, cellEffect }
   // fade.start — когда вышел последний поток (null — не затухает); fade.failed — гаснуть красным
   const lists = new Map();
 
@@ -219,6 +215,62 @@
     return null;
   }
 
+  // ---------- Карточка списка: пульт слева ----------
+
+  // Операции пульта: имя, поля (placeholder + значение по умолчанию), как собрать запрос
+  const OPERATIONS = [
+    { name: 'add', fields: [['value', 10]], request: id => [`${base}/${id}/add`, v => ({ value: v.value })] },
+    { name: 'addAt', fields: [['index', 0], ['element', 7]], request: id => [`${base}/${id}/addAt`, v => ({ index: v.index, element: v.element })] },
+    { name: 'get', fields: [['index', 0]], request: id => [`${base}/${id}/get`, v => ({ index: v.index })] },
+  ];
+
+  // Карточка создаётся один раз: поля пульта не пересоздаются, поэтому введённое значение и фокус не теряются
+  function createCard(id) {
+    const card = document.createElement('div');
+    card.className = 'list-card';
+    card.dataset.id = id;
+
+    const controls = document.createElement('div');
+    controls.className = 'card-controls';
+    controls.innerHTML = `<div class="card-title">list #${id}</div>`;
+
+    const ops = document.createElement('div');
+    ops.className = 'ops';
+    for (const op of OPERATIONS) {
+      const name = Object.assign(document.createElement('span'), { className: 'name', textContent: op.name });
+      const args = Object.assign(document.createElement('span'), { className: 'args' });
+      const inputs = {};
+      for (const [field, defaultValue] of op.fields) {
+        const input = Object.assign(document.createElement('input'), { type: 'number', value: defaultValue, placeholder: field, title: field });
+        input.setAttribute('aria-label', field);
+        inputs[field] = input;
+        args.append(input);
+      }
+      const run = Object.assign(document.createElement('button'), { className: 'run', textContent: '▶', title: `${op.name} у списка #${id}` });
+      run.onclick = () => {
+        const values = Object.fromEntries(Object.entries(inputs).map(([f, input]) => [f, Number(input.value)]));
+        const [url, body] = op.request(id);
+        call('POST', url, body(values));
+      };
+      // Enter в любом поле строки — то же, что ▶
+      for (const input of Object.values(inputs)) input.addEventListener('keydown', e => { if (e.key === 'Enter') run.click(); });
+      ops.append(name, args, run);
+    }
+
+    const remove = Object.assign(document.createElement('button'), { className: 'danger', textContent: 'remove list' });
+    remove.onclick = () => call('DELETE', `${base}/${id}`);
+
+    controls.append(ops, remove);
+
+    const state = document.createElement('div');
+    state.className = 'card-state';
+
+    card.append(controls, state);
+    return { card, state };
+  }
+
+  // ---------- Карточка списка: состояние справа ----------
+
   // Ячейка массива: значение и индекс под ним
   function cell(value, index) {
     const el = document.createElement('div');
@@ -235,6 +287,27 @@
 
   // Анимация, продолженная с того места, где она была до пересоздания элемента
   const glow = (name, elapsed) => `${name} ${CELL_FADE_MS}ms ease-out ${-elapsed}ms forwards`;
+
+  function renderBadges(list) {
+    const badges = document.createElement('div');
+    badges.className = 'badges';
+    for (const method of METHODS) {
+      const threads = list.inside[method];
+      const el = document.createElement('span');
+      el.className = 'method' + (threads.size > 0 ? ' active' : '');
+      // Бейдж пересоздаётся на каждый render. Отрицательная задержка продолжает затухание
+      // с того места, где оно было, — без неё анимация начиналась бы заново и бейдж дёргался
+      const { start, failed } = list.fade[method];
+      const elapsed = start === null ? Infinity : performance.now() - start;
+      if (threads.size === 0 && elapsed < FADE_MS) {
+        el.style.animation = `${failed ? 'afterglow-failed' : 'afterglow'} ${FADE_MS}ms ease-out ${-elapsed}ms forwards`;
+      }
+      el.textContent = method + (threads.size > 1 ? ` ×${threads.size}` : '');
+      el.title = threads.size > 0 ? [...threads].join('\n') : '';
+      badges.append(el);
+    }
+    return badges;
+  }
 
   function renderCells(list) {
     const cells = document.createElement('div');
@@ -267,42 +340,36 @@
     return cells;
   }
 
+  // ---------- Синхронизация карточек с состоянием ----------
+
+  const cards = new Map(); // arrayListId → { card, state }
+
   function render() {
-    const root = $('state');
-    root.innerHTML = '';
-    if (lists.size === 0) {
-      root.innerHTML = '<div class="empty">нет списков</div>';
-      return;
+    const root = $('lists');
+
+    // Удалить карточки исчезнувших списков
+    for (const [id, { card }] of cards) {
+      if (!lists.has(id)) { card.remove(); cards.delete(id); }
     }
+
+    // Создать карточки новых списков — по порядку id
     for (const list of [...lists.values()].sort((a, b) => a.id - b.id)) {
-      const card = document.createElement('div');
-      card.className = 'list-card';
-      const row = document.createElement('div');
-      row.className = 'state-row';
-
-      const id = document.createElement('span');
-      id.className = 'id';
-      id.textContent = `#${list.id}`;
-      row.append(id);
-
-      for (const method of METHODS) {
-        const threads = list.inside[method];
-        const el = document.createElement('span');
-        el.className = 'method' + (threads.size > 0 ? ' active' : '');
-        // Бейдж пересоздаётся на каждый render. Отрицательная задержка продолжает затухание
-        // с того места, где оно было, — без неё анимация начиналась бы заново и бейдж дёргался
-        const { start, failed } = list.fade[method];
-        const elapsed = start === null ? Infinity : performance.now() - start;
-        if (threads.size === 0 && elapsed < FADE_MS) {
-          el.style.animation = `${failed ? 'afterglow-failed' : 'afterglow'} ${FADE_MS}ms ease-out ${-elapsed}ms forwards`;
-        }
-        el.textContent = method + (threads.size > 1 ? ` ×${threads.size}` : '');
-        el.title = threads.size > 0 ? [...threads].join('\n') : '';
-        row.append(el);
+      if (!cards.has(list.id)) {
+        const created = createCard(list.id);
+        cards.set(list.id, created);
+        const next = [...root.querySelectorAll('.list-card')].find(c => Number(c.dataset.id) > list.id);
+        root.insertBefore(created.card, next ?? null);
       }
+      // Пульт не трогаем — перерисовываем только правую часть
+      const { state } = cards.get(list.id);
+      state.replaceChildren(renderBadges(list), renderCells(list));
+    }
 
-      card.append(row, renderCells(list));
-      root.append(card);
+    const placeholder = root.querySelector('.empty');
+    if (lists.size === 0 && !placeholder) {
+      root.innerHTML = '<div class="empty">нет списков — нажмите «+ new list»</div>';
+    } else if (lists.size > 0 && placeholder) {
+      placeholder.remove();
     }
   }
 

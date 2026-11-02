@@ -16,26 +16,46 @@
     }
     header { display: flex; justify-content: space-between; align-items: center; }
     h2 { color: var(--keyword); font-weight: normal; }
-    .controls { margin: 12px 0; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-    .controls .command { margin-left: 24px; } /* команды списка — с отступом под list# */
-    .controls input {
-      width: 60px; background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
-      color: var(--num); font: inherit; padding: 0 4px;
+    h3 {
+      margin: 16px 0 4px; border-bottom: 1px solid var(--border); color: var(--dim); font-weight: normal;
+      display: flex; justify-content: space-between; align-items: baseline;
     }
-    .controls button {
+    .on { color: var(--out); }
+    .off { color: var(--fail); }
+    .empty { color: var(--dim); }
+
+    /* --- кнопки и поля --- */
+    button {
       background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
       color: var(--fn); font: inherit; padding: 0 8px; cursor: pointer;
     }
-    .controls button:hover { border-color: var(--fn); }
-    .on { color: var(--out); }
-    .off { color: var(--fail); }
-    h3 { margin: 16px 0 4px; border-bottom: 1px solid var(--border); color: var(--dim); font-weight: normal; }
-    .log { max-height: 40vh; overflow-y: auto; }
-    .log div { white-space: pre-wrap; padding: 2px 0; border-bottom: 1px solid var(--panel); }
-    .error { color: var(--fail); }
-    .type { font-weight: bold; color: var(--fn); }
-    .state-row { display: flex; gap: 8px; align-items: center; padding: 3px 0; color: var(--num); }
-    .state-row .id { width: 32px; color: var(--keyword); }
+    button:hover { border-color: currentColor; }
+    button.primary { color: var(--out); padding: 2px 12px; }
+    button.run { color: var(--out); }
+    button.danger { color: var(--fail); }
+    button.link { background: none; border: none; color: var(--dim); padding: 0; }
+    button.link:hover { color: var(--text); }
+    input {
+      width: 64px; background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+      color: var(--num); font: inherit; padding: 0 4px;
+    }
+    input::placeholder { color: var(--dim); }
+
+    /* --- карточка списка: слева его пульт, справа его состояние --- */
+    .list-card {
+      display: grid; grid-template-columns: minmax(300px, 1fr) 2fr; gap: 24px; align-items: start;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    @media (max-width: 800px) { .list-card { grid-template-columns: 1fr; } }
+    .card-title { color: var(--keyword); margin-bottom: 6px; }
+    /* Сетка пульта: метод | поля | ▶ — кнопки запуска выровнены в столбик */
+    .ops { display: grid; grid-template-columns: max-content max-content max-content; gap: 6px 10px; align-items: center; }
+    .ops .name { color: var(--fn); }
+    .ops .args { display: flex; gap: 4px; }
+    .card-controls .danger { margin-top: 10px; }
+
+    /* --- состояние: бейджи методов --- */
+    .badges { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-height: 22px; }
     .method { padding: 0 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--dim); }
     .method.active { background: var(--out); border-color: var(--out); color: var(--bg); }
     /* Послесвечение: после OUT бейдж не гаснет мгновенно, а затухает, как лампа накаливания */
@@ -47,7 +67,33 @@
       from { background: var(--fail); border-color: var(--fail); color: var(--bg); }
       to { background: transparent; border-color: var(--border); color: var(--dim); }
     }
-    .empty { color: var(--dim); }
+
+    /* --- состояние: цепочка узлов head ⇄ … ⇄ tail --- */
+    .chain { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 0; margin-top: 8px; min-height: 66px; }
+    .node { display: flex; flex-direction: column; align-items: center; }
+    .node .label { font-size: 11px; color: var(--keyword); height: 16px; }
+    .node .box {
+      min-width: 40px; height: 32px; padding: 0 6px; display: flex; align-items: center; justify-content: center;
+      border: 2px solid var(--border); border-radius: 16px; color: var(--num); background: var(--panel);
+    }
+    .node .idx { font-size: 11px; color: var(--dim); height: 16px; }
+    .link-arrow { color: var(--dim); padding: 0 6px; margin-bottom: 0; }
+    /* Призрак снятого узла (poll/pop) и «ничего не снято» */
+    .node.removed .box { border-style: dashed; border-color: var(--dim); color: var(--text); background: none; }
+    .node.null .box { border-style: dashed; border-color: var(--border); color: var(--dim); background: none; }
+    .node.failed .box { border-style: dashed; border-color: var(--fail); color: var(--fail); background: none; }
+    /* Подсветка тоже затухает, а не снимается рывком */
+    @keyframes node-new {
+      from { background: color-mix(in srgb, var(--out) 45%, var(--panel)); border-color: var(--out); }
+      to { background: var(--panel); border-color: var(--border); }
+    }
+    @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+
+    /* --- логи --- */
+    .log { max-height: 40vh; overflow-y: auto; }
+    .log div { white-space: pre-wrap; padding: 2px 0; border-bottom: 1px solid var(--panel); }
+    .error { color: var(--fail); }
+    .type { font-weight: bold; color: var(--fn); }
   </style>
 </head>
 <body>
@@ -57,27 +103,15 @@
   <span id="status" class="off">● ws disconnected</span>
 </header>
 
-<div class="controls">
-  <div><button id="create">create</button> <span class="empty">— создаст список и подставит его id ниже</span></div>
-  <!-- Над каким списком выполняются команды ниже -->
-  <div><label>list# <input id="linkedListId" type="number" value="1"></label></div>
-  <div class="command"><button id="add">add</button>(element <input id="element" type="number" value="10">)</div>
-  <div class="command"><button id="offer">offer</button>(element <input id="offerElement" type="number" value="20">)</div>
-  <div class="command"><button id="offerFirst">offerFirst</button>(element <input id="offerFirstElement" type="number" value="5">)</div>
-  <div class="command"><button id="offerLast">offerLast</button>(element <input id="offerLastElement" type="number" value="30">)</div>
-  <div class="command"><button id="poll">poll</button>() <span class="empty">— голова или null, если пусто</span></div>
-  <div class="command"><button id="pop">pop</button>() <span class="empty">— голова или NoSuchElementException, если пусто</span></div>
-  <div class="command"><button id="remove">remove</button>()</div>
-  <div><button id="clear">clear logs</button></div>
-</div>
+<button id="create" class="primary" title="POST /api/linkedlistint — создать LinkedList&lt;Int&gt;; карточка появится по событию CREATED">+ new list</button>
 
-<h3>State</h3>
-<div id="state"></div>
+<!-- Карточка на каждый список: слева управляем им, справа смотрим результат -->
+<div id="lists"></div>
 
-<h3>HTTP</h3>
+<h3>HTTP <button class="link" id="clearHttp">clear</button></h3>
 <div id="http" class="log"></div>
 
-<h3>WebSocket</h3>
+<h3>WebSocket <button class="link" id="clearWs">clear</button></h3>
 <div id="ws" class="log"></div>
 
 <script>
@@ -109,30 +143,20 @@
     }
   }
 
-  const listId = () => $('linkedListId').value;
-  const num = id => Number($(id).value);
-
-  $('create').onclick = async () => {
-    const response = await call('POST', base);
-    if (response) $('linkedListId').value = response.linkedListId;
-  };
-  $('add').onclick = () => call('POST', `${base}/${listId()}/add`, { element: num('element') });
-  $('offer').onclick = () => call('POST', `${base}/${listId()}/offer`, { element: num('offerElement') });
-  $('offerFirst').onclick = () => call('POST', `${base}/${listId()}/offerFirst`, { element: num('offerFirstElement') });
-  $('offerLast').onclick = () => call('POST', `${base}/${listId()}/offerLast`, { element: num('offerLastElement') });
-  $('poll').onclick = () => call('POST', `${base}/${listId()}/poll`);
-  $('pop').onclick = () => call('POST', `${base}/${listId()}/pop`);
-  $('remove').onclick = () => call('DELETE', `${base}/${listId()}`);
-  $('clear').onclick = () => { $('http').innerHTML = ''; $('ws').innerHTML = ''; };
+  // Карточку создаёт не ответ на create, а событие CREATED — так же, как для списков, созданных извне
+  $('create').onclick = () => call('POST', base);
+  $('clearHttp').onclick = () => { $('http').innerHTML = ''; };
+  $('clearWs').onclick = () => { $('ws').innerHTML = ''; };
 
   // ---------- State ----------
 
-  // Часть type → метод в строке состояния: LINKED_LIST_INT_ADD_IN → add
+  // Часть type → метод в бейджах: LINKED_LIST_INT_OFFER_FIRST_IN → offerFirst
   const METHOD_BY_TYPE = { ADD: 'add', OFFER: 'offer', OFFER_FIRST: 'offerFirst', OFFER_LAST: 'offerLast', POLL: 'poll', POP: 'pop' };
   const METHODS = Object.values(METHOD_BY_TYPE);
   const FADE_MS = 800; // сколько затухает бейдж после выхода последнего потока — подбирается на глаз
+  const NODE_FADE_MS = 1500; // сколько затухает подсветка узлов — дольше, чтобы успеть рассмотреть
 
-  // linkedListId → { id, elements, inside: { method: Set<thread> }, fade: { method: { start, failed } } }
+  // linkedListId → { id, elements, inside: { method: Set<thread> }, fade: { method: { start, failed } }, nodeEffect }
   // fade.start — когда вышел последний поток (null — не затухает); fade.failed — гаснуть красным
   const lists = new Map();
 
@@ -141,7 +165,7 @@
     if (!lists.has(id)) {
       const inside = Object.fromEntries(METHODS.map(m => [m, new Set()]));
       const fade = Object.fromEntries(METHODS.map(m => [m, { start: null, failed: false }]));
-      lists.set(id, { id, elements: [], inside, fade });
+      lists.set(id, { id, elements: [], inside, fade, nodeEffect: null });
     }
     return lists.get(id);
   }
@@ -150,7 +174,7 @@
     if (env.type === 'LINKED_LIST_INT_CREATED') { listOf(env.data.linkedListId); return; }
     if (env.type === 'LINKED_LIST_INT_REMOVED') { lists.delete(env.data.linkedListId); return; }
 
-    // LINKED_LIST_INT_ADD_IN, LINKED_LIST_INT_ADD_OUT_FAILED, ...
+    // LINKED_LIST_INT_ADD_IN, LINKED_LIST_INT_POP_OUT_FAILED, ...
     const match = env.type.match(/^LINKED_LIST_INT_(OFFER_FIRST|OFFER_LAST|OFFER|ADD|POLL|POP)_(IN|OUT|OUT_FAILED)$/);
     if (!match) return;
     const method = METHOD_BY_TYPE[match[1]];
@@ -169,42 +193,193 @@
       fade.failed ||= phase === 'OUT_FAILED'; // ошибку запоминаем, даже если внутри ещё есть потоки
       if (inside.size === 0) fade.start = performance.now();
     }
+
+    const effect = nodeEffectOf(method, phase, env.data);
+    if (effect) {
+      list.nodeEffect = { ...effect, start: performance.now() };
+      setTimeout(render, NODE_FADE_MS); // убрать призрак, когда он догорит
+    }
   }
 
-  function render() {
-    const root = $('state');
-    root.innerHTML = '';
-    if (lists.size === 0) {
-      root.innerHTML = '<div class="empty">нет списков</div>';
-      return;
+  // Что подсветить после этого события (null — ничего).
+  // В отличие от ArrayList.add(0, e) здесь нет сдвига: offerFirst просто прицепляет новый узел к голове
+  function nodeEffectOf(method, phase, data) {
+    if (phase === 'OUT_FAILED') {
+      return method === 'poll' || method === 'pop' ? { ghost: '✗', kind: 'failed' } : null;
     }
-    for (const list of [...lists.values()].sort((a, b) => a.id - b.id)) {
-      const row = document.createElement('div');
-      row.className = 'state-row';
+    if (phase !== 'OUT') return null;
+    // При гонке «последний узел» для add/offer — допущение, а не наблюдение
+    if (method === 'add' || method === 'offer' || method === 'offerLast') return { new: data.elements.length - 1 };
+    if (method === 'offerFirst') return { new: 0 };
+    // Снятого узла в elements уже нет — его значение берём из element
+    if (method === 'poll' || method === 'pop') {
+      return data.element === null ? { ghost: 'null', kind: 'null' } : { ghost: data.element, kind: 'removed' };
+    }
+    return null;
+  }
 
-      const id = document.createElement('span');
-      id.className = 'id';
-      id.textContent = `#${list.id}`;
-      row.append(id);
+  // ---------- Карточка списка: пульт слева ----------
 
-      for (const method of METHODS) {
-        const threads = list.inside[method];
-        const el = document.createElement('span');
-        el.className = 'method' + (threads.size > 0 ? ' active' : '');
-        // Бейдж пересоздаётся на каждый render. Отрицательная задержка продолжает затухание
-        // с того места, где оно было, — без неё анимация начиналась бы заново и бейдж дёргался
-        const { start, failed } = list.fade[method];
-        const elapsed = start === null ? Infinity : performance.now() - start;
-        if (threads.size === 0 && elapsed < FADE_MS) {
-          el.style.animation = `${failed ? 'afterglow-failed' : 'afterglow'} ${FADE_MS}ms ease-out ${-elapsed}ms forwards`;
-        }
-        el.textContent = method + (threads.size > 1 ? ` ×${threads.size}` : '');
-        el.title = threads.size > 0 ? [...threads].join('\n') : '';
-        row.append(el);
+  // Операции пульта: имя, поля (placeholder + значение по умолчанию). У всех с аргументом тело {element}
+  const OPERATIONS = [
+    { name: 'add', fields: [['element', 10]] },
+    { name: 'offer', fields: [['element', 20]] },
+    { name: 'offerFirst', fields: [['element', 5]] },
+    { name: 'offerLast', fields: [['element', 30]] },
+    { name: 'poll', fields: [] },
+    { name: 'pop', fields: [] },
+  ];
+
+  // Карточка создаётся один раз: поля пульта не пересоздаются, поэтому введённое значение и фокус не теряются
+  function createCard(id) {
+    const card = document.createElement('div');
+    card.className = 'list-card';
+    card.dataset.id = id;
+
+    const controls = document.createElement('div');
+    controls.className = 'card-controls';
+    controls.innerHTML = `<div class="card-title">list #${id}</div>`;
+
+    const ops = document.createElement('div');
+    ops.className = 'ops';
+    for (const op of OPERATIONS) {
+      const name = Object.assign(document.createElement('span'), { className: 'name', textContent: op.name });
+      const args = Object.assign(document.createElement('span'), { className: 'args' });
+      const inputs = {};
+      for (const [field, defaultValue] of op.fields) {
+        const input = Object.assign(document.createElement('input'), { type: 'number', value: defaultValue, placeholder: field, title: field });
+        input.setAttribute('aria-label', field);
+        inputs[field] = input;
+        args.append(input);
       }
+      const run = Object.assign(document.createElement('button'), { className: 'run', textContent: '▶', title: `${op.name} у списка #${id}` });
+      run.onclick = () => {
+        const url = `${base}/${id}/${op.name}`;
+        const body = op.fields.length ? { element: Number(inputs.element.value) } : undefined;
+        call('POST', url, body);
+      };
+      // Enter в поле строки — то же, что ▶
+      for (const input of Object.values(inputs)) input.addEventListener('keydown', e => { if (e.key === 'Enter') run.click(); });
+      ops.append(name, args, run);
+    }
 
-      row.append(`[${list.elements.join(', ')}]`);
-      root.append(row);
+    const remove = Object.assign(document.createElement('button'), { className: 'danger', textContent: 'remove list' });
+    remove.onclick = () => call('DELETE', `${base}/${id}`);
+
+    controls.append(ops, remove);
+
+    const state = document.createElement('div');
+    state.className = 'card-state';
+
+    card.append(controls, state);
+    return { card, state };
+  }
+
+  // ---------- Карточка списка: состояние справа ----------
+
+  // Узел цепочки: метка (head/tail), значение, позиция
+  function node(value, label, index) {
+    const el = document.createElement('div');
+    el.className = 'node';
+    el.append(
+      Object.assign(document.createElement('div'), { className: 'label', textContent: label }),
+      Object.assign(document.createElement('div'), { className: 'box', textContent: value }),
+      Object.assign(document.createElement('div'), { className: 'idx', textContent: index }),
+    );
+    return el;
+  }
+
+  const linkArrow = () => Object.assign(document.createElement('span'), { className: 'link-arrow', textContent: '⇄' });
+
+  // Анимация, продолженная с того места, где она была до пересоздания элемента
+  const glow = (name, elapsed) => `${name} ${NODE_FADE_MS}ms ease-out ${-elapsed}ms forwards`;
+
+  function renderBadges(list) {
+    const badges = document.createElement('div');
+    badges.className = 'badges';
+    for (const method of METHODS) {
+      const threads = list.inside[method];
+      const el = document.createElement('span');
+      el.className = 'method' + (threads.size > 0 ? ' active' : '');
+      // Бейдж пересоздаётся на каждый render. Отрицательная задержка продолжает затухание
+      // с того места, где оно было, — без неё анимация начиналась бы заново и бейдж дёргался
+      const { start, failed } = list.fade[method];
+      const elapsed = start === null ? Infinity : performance.now() - start;
+      if (threads.size === 0 && elapsed < FADE_MS) {
+        el.style.animation = `${failed ? 'afterglow-failed' : 'afterglow'} ${FADE_MS}ms ease-out ${-elapsed}ms forwards`;
+      }
+      el.textContent = method + (threads.size > 1 ? ` ×${threads.size}` : '');
+      el.title = threads.size > 0 ? [...threads].join('\n') : '';
+      badges.append(el);
+    }
+    return badges;
+  }
+
+  function renderChain(list) {
+    const chain = document.createElement('div');
+    chain.className = 'chain';
+    const effect = list.nodeEffect;
+    const elapsed = effect ? performance.now() - effect.start : Infinity;
+    const active = elapsed < NODE_FADE_MS;
+
+    // Призрак снятого узла тает слева от головы
+    if (active && effect.ghost !== undefined) {
+      const ghost = node(effect.ghost, '', '');
+      ghost.classList.add(effect.kind);
+      ghost.style.animation = glow('fade-out', elapsed);
+      chain.append(ghost);
+      if (list.elements.length > 0) {
+        const arrow = linkArrow();
+        arrow.style.animation = glow('fade-out', elapsed);
+        chain.append(arrow);
+      }
+    }
+
+    const last = list.elements.length - 1;
+    list.elements.forEach((value, i) => {
+      if (i > 0) chain.append(linkArrow());
+      const label = i === 0 && i === last ? 'head·tail' : i === 0 ? 'head' : i === last ? 'tail' : '';
+      const el = node(value, label, i);
+      if (active && effect.new === i) el.querySelector('.box').style.animation = glow('node-new', elapsed);
+      chain.append(el);
+    });
+
+    if (list.elements.length === 0 && !(active && effect.ghost !== undefined)) {
+      chain.append(Object.assign(document.createElement('span'), { className: 'empty', textContent: 'head = tail = null' }));
+    }
+    return chain;
+  }
+
+  // ---------- Синхронизация карточек с состоянием ----------
+
+  const cards = new Map(); // linkedListId → { card, state }
+
+  function render() {
+    const root = $('lists');
+
+    // Удалить карточки исчезнувших списков
+    for (const [id, { card }] of cards) {
+      if (!lists.has(id)) { card.remove(); cards.delete(id); }
+    }
+
+    // Создать карточки новых списков — по порядку id
+    for (const list of [...lists.values()].sort((a, b) => a.id - b.id)) {
+      if (!cards.has(list.id)) {
+        const created = createCard(list.id);
+        cards.set(list.id, created);
+        const next = [...root.querySelectorAll('.list-card')].find(c => Number(c.dataset.id) > list.id);
+        root.insertBefore(created.card, next ?? null);
+      }
+      // Пульт не трогаем — перерисовываем только правую часть
+      const { state } = cards.get(list.id);
+      state.replaceChildren(renderBadges(list), renderChain(list));
+    }
+
+    const placeholder = root.querySelector('.empty-lists');
+    if (lists.size === 0 && !placeholder) {
+      root.innerHTML = '<div class="empty empty-lists">нет списков — нажмите «+ new list»</div>';
+    } else if (lists.size > 0 && placeholder) {
+      placeholder.remove();
     }
   }
 
