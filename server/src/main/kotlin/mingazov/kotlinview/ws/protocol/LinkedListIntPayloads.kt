@@ -16,3 +16,12 @@ data class LinkedListIntAddOutData(val linkedListId: Long, val thread: String, v
 
 @JsonTypeName("LINKED_LIST_INT_ADD_OUT_FAILED")
 data class LinkedListIntAddOutFailedData(val linkedListId: Long, val thread: String, val element: Int, val error: String, val elements: List<Int>) : Payload
+
+@JsonTypeName("LINKED_LIST_INT_OFFER_IN")
+data class LinkedListIntOfferInData(val linkedListId: Long, val thread: String, val element: Int, val elements: List<Int>) : Payload
+
+@JsonTypeName("LINKED_LIST_INT_OFFER_OUT")
+data class LinkedListIntOfferOutData(val linkedListId: Long, val thread: String, val element: Int, val elements: List<Int>) : Payload
+
+@JsonTypeName("LINKED_LIST_INT_OFFER_OUT_FAILED")
+data class LinkedListIntOfferOutFailedData(val linkedListId: Long, val thread: String, val element: Int, val error: String, val elements: List<Int>) : Payload

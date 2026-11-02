@@ -10,3 +10,7 @@ data class LinkedListIntRemoved(override val linkedListId: Long, override val th
 data class LinkedListIntAddIn(override val linkedListId: Long, override val thread: String, val element: Int, val elements: List<Int>) : LinkedListIntEvent
 data class LinkedListIntAddOut(override val linkedListId: Long, override val thread: String, val element: Int, val elements: List<Int>) : LinkedListIntEvent
 data class LinkedListIntAddOutFailed(override val linkedListId: Long, override val thread: String, val element: Int, val error: String, val elements: List<Int>) : LinkedListIntEvent
+
+data class LinkedListIntOfferIn(override val linkedListId: Long, override val thread: String, val element: Int, val elements: List<Int>) : LinkedListIntEvent
+data class LinkedListIntOfferOut(override val linkedListId: Long, override val thread: String, val element: Int, val elements: List<Int>) : LinkedListIntEvent
+data class LinkedListIntOfferOutFailed(override val linkedListId: Long, override val thread: String, val element: Int, val error: String, val elements: List<Int>) : LinkedListIntEvent

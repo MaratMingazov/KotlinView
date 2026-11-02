@@ -18,6 +18,9 @@ import mingazov.kotlinview.event.LinkedListIntAddOut
 import mingazov.kotlinview.event.LinkedListIntAddOutFailed
 import mingazov.kotlinview.event.LinkedListIntCreated
 import mingazov.kotlinview.event.LinkedListIntEvent
+import mingazov.kotlinview.event.LinkedListIntOfferIn
+import mingazov.kotlinview.event.LinkedListIntOfferOut
+import mingazov.kotlinview.event.LinkedListIntOfferOutFailed
 import mingazov.kotlinview.event.LinkedListIntRemoved
 
 /** Переводит доменные события в payload'ы протокола. Строки type здесь нет — они на классах payload'ов. */
@@ -51,5 +54,8 @@ object WebSocketMapper {
         is LinkedListIntAddIn -> LinkedListIntAddInData(e.linkedListId, e.thread, e.element, e.elements)
         is LinkedListIntAddOut -> LinkedListIntAddOutData(e.linkedListId, e.thread, e.element, e.elements)
         is LinkedListIntAddOutFailed -> LinkedListIntAddOutFailedData(e.linkedListId, e.thread, e.element, e.error, e.elements)
+        is LinkedListIntOfferIn -> LinkedListIntOfferInData(e.linkedListId, e.thread, e.element, e.elements)
+        is LinkedListIntOfferOut -> LinkedListIntOfferOutData(e.linkedListId, e.thread, e.element, e.elements)
+        is LinkedListIntOfferOutFailed -> LinkedListIntOfferOutFailedData(e.linkedListId, e.thread, e.element, e.error, e.elements)
     }
 }

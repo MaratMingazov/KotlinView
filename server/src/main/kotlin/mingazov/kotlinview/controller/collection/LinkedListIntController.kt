@@ -14,6 +14,10 @@ import org.springframework.web.bind.annotation.RestController
 
 data class CreateLinkedListIntResponse(val linkedListId: Long)
 data class LinkedListIntAddRequest(val element: Int)
+data class LinkedListIntAddResponse(val result: Boolean)
+data class LinkedListIntOfferRequest(val element: Int)
+data class LinkedListIntOfferResponse(val result: Boolean)
+data class LinkedListIntErrorResponse(val error: String)
 
 @RestController
 @RequestMapping("/api/linkedlistint")
@@ -30,9 +34,16 @@ class LinkedListIntController(
     }
 
     @PostMapping("/{linkedListId}/add")
-    fun add(@PathVariable linkedListId: Long, @RequestBody request: LinkedListIntAddRequest): AddResponse {
+    fun add(@PathVariable linkedListId: Long, @RequestBody request: LinkedListIntAddRequest): LinkedListIntAddResponse {
         val result = linkedListIntService.get(linkedListId).add(request.element)
-        val response = AddResponse(result)
+        val response = LinkedListIntAddResponse(result)
+        return response
+    }
+
+    @PostMapping("/{linkedListId}/offer")
+    fun offer(@PathVariable linkedListId: Long, @RequestBody request: LinkedListIntOfferRequest): LinkedListIntOfferResponse {
+        val result = linkedListIntService.get(linkedListId).offer(request.element)
+        val response = LinkedListIntOfferResponse(result)
         return response
     }
 
@@ -42,5 +53,5 @@ class LinkedListIntController(
 
     @ExceptionHandler(LinkedListIntNotFoundException::class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
-    fun handleNotFound(e: LinkedListIntNotFoundException) = ErrorResponse(e.toString())
+    fun handleNotFound(e: LinkedListIntNotFoundException) = LinkedListIntErrorResponse(e.toString())
 }

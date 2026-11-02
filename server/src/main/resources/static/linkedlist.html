@@ -54,6 +54,7 @@
   <!-- Над каким списком выполняются команды ниже -->
   <div><label>list# <input id="linkedListId" type="number" value="1"></label></div>
   <div class="command"><button id="add">add</button>(element <input id="element" type="number" value="10">)</div>
+  <div class="command"><button id="offer">offer</button>(element <input id="offerElement" type="number" value="20">)</div>
   <div class="command"><button id="remove">remove</button>()</div>
   <div><button id="clear">clear logs</button></div>
 </div>
@@ -104,13 +105,14 @@
     if (response) $('linkedListId').value = response.linkedListId;
   };
   $('add').onclick = () => call('POST', `${base}/${listId()}/add`, { element: num('element') });
+  $('offer').onclick = () => call('POST', `${base}/${listId()}/offer`, { element: num('offerElement') });
   $('remove').onclick = () => call('DELETE', `${base}/${listId()}`);
   $('clear').onclick = () => { $('http').innerHTML = ''; $('ws').innerHTML = ''; };
 
   // ---------- State ----------
 
   // Часть type → метод в строке состояния: LINKED_LIST_INT_ADD_IN → add
-  const METHOD_BY_TYPE = { ADD: 'add' };
+  const METHOD_BY_TYPE = { ADD: 'add', OFFER: 'offer' };
   const METHODS = Object.values(METHOD_BY_TYPE);
   const lists = new Map(); // linkedListId → { id, elements, inside: { method: Set<thread> }, failed: { method: boolean } }
 
@@ -129,7 +131,7 @@
     if (env.type === 'LINKED_LIST_INT_REMOVED') { lists.delete(env.data.linkedListId); return; }
 
     // LINKED_LIST_INT_ADD_IN, LINKED_LIST_INT_ADD_OUT_FAILED, ...
-    const match = env.type.match(/^LINKED_LIST_INT_(ADD)_(IN|OUT|OUT_FAILED)$/);
+    const match = env.type.match(/^LINKED_LIST_INT_(ADD|OFFER)_(IN|OUT|OUT_FAILED)$/);
     if (!match) return;
     const method = METHOD_BY_TYPE[match[1]];
     const phase = match[2];

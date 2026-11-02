@@ -4,6 +4,9 @@ import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.event.LinkedListIntAddIn
 import mingazov.kotlinview.event.LinkedListIntAddOut
 import mingazov.kotlinview.event.LinkedListIntAddOutFailed
+import mingazov.kotlinview.event.LinkedListIntOfferIn
+import mingazov.kotlinview.event.LinkedListIntOfferOut
+import mingazov.kotlinview.event.LinkedListIntOfferOutFailed
 import java.util.LinkedList
 
 class InstrumentedLinkedListInt (
@@ -22,6 +25,19 @@ class InstrumentedLinkedListInt (
             return result
         } catch (e: Exception) {
             sink.emit(LinkedListIntAddOutFailed(id, threadName(), element, e.toString(), snapshot()))
+            throw e
+        }
+    }
+
+    // Пока напрямую через delegate.offer — без вызова нашего add, поэтому вложенных ADD_* событий нет
+    fun offer(element: Int): Boolean {
+        sink.emit(LinkedListIntOfferIn(id, threadName(), element, snapshot()))
+        try {
+            val result = delegate.offer(element)
+            sink.emit(LinkedListIntOfferOut(id, threadName(), element, snapshot()))
+            return result
+        } catch (e: Exception) {
+            sink.emit(LinkedListIntOfferOutFailed(id, threadName(), element, e.toString(), snapshot()))
             throw e
         }
     }
