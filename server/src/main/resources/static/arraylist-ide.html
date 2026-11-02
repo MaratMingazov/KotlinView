@@ -308,29 +308,34 @@
 
   // ---------- Разбор type ----------
 
-  // Часть type → метод: ARRAY_LIST_INT_ADD_AT_IN → addAt
-  const METHOD_BY_TYPE = { ADD: 'add', ADD_AT: 'addAt', GET: 'get' };
-  const METHODS = Object.values(METHOD_BY_TYPE);
-  const PHASE_BY_TYPE = { IN: 'IN', OUT: 'OUT', OUT_FAILED: 'FAILED' };
+  const METHODS = ['add', 'addAt', 'get'];
+  const PHASE_BY_TYPE = { METHOD_IN: 'IN', METHOD_OUT: 'OUT', METHOD_OUT_FAILED: 'FAILED' };
+
+  // Временно: старые ARRAY_LIST_INT_ADD*/ADD_AT* → формат METHOD_*. Удалить, когда add/addAt переедут на сервере
+  function normalize(env) {
+    const match = env.type.match(/^ARRAY_LIST_INT_(ADD_AT|ADD)_(IN|OUT|OUT_FAILED)$/);
+    if (!match) return env;
+    const { arrayListId, thread, index, element, error, elements } = env.data;
+    const type = { IN: 'METHOD_IN', OUT: 'METHOD_OUT', OUT_FAILED: 'METHOD_OUT_FAILED' }[match[2]];
+    const method = match[1] === 'ADD_AT' ? 'addAt' : 'add';
+    const args = method === 'addAt' ? { index, element } : { element };
+    return { ...env, type, data: { objectType: 'ARRAY_LIST_INT', objectId: arrayListId, thread, method, args, error, state: elements } };
+  }
 
   function parseType(env) {
     if (env.type === 'OBJECT_CREATED') return env.data.objectType === 'ARRAY_LIST_INT' ? { phase: 'LIFE', method: 'created' } : null;
     if (env.type === 'OBJECT_REMOVED') return env.data.objectType === 'ARRAY_LIST_INT' ? { phase: 'LIFE', method: 'removed' } : null;
-    const match = env.type.match(/^ARRAY_LIST_INT_(ADD_AT|ADD|GET)_(IN|OUT|OUT_FAILED)$/);
-    if (!match) return null;
-    return { method: METHOD_BY_TYPE[match[1]], phase: PHASE_BY_TYPE[match[2]] };
+    const phase = PHASE_BY_TYPE[env.type];
+    if (!phase || env.data.objectType !== 'ARRAY_LIST_INT' || !METHODS.includes(env.data.method)) return null;
+    return { method: env.data.method, phase };
   }
 
-  function argsText(method, data) {
-    if (method === 'add') return `(${data.element})`;
-    if (method === 'addAt') return `(${data.index}, ${data.element})`;
-    if (method === 'get') return `(${data.index})`;
-    return '';
-  }
+  // Аргументы в порядке объявления: { index: 2, element: 5 } → (2, 5)
+  const argsText = d => d.args ? `(${Object.values(d.args).join(', ')})` : '';
 
   // ---------- Состояние: чистый reducer ----------
 
-  // state.lists: arrayListId → { id, elements, inside: { method: Map<thread, args> } }
+  // state.lists: objectId → { id, elements, inside: { method: Map<thread, args> } }
   const emptyState = () => ({ lists: new Map() });
 
   function listOf(state, id) {
@@ -346,10 +351,10 @@
     if (parsed.method === 'created') { listOf(state, d.objectId); return; }
     if (parsed.method === 'removed') { state.lists.delete(d.objectId); return; }
 
-    const list = listOf(state, d.arrayListId);
-    list.elements = d.elements;
+    const list = listOf(state, d.objectId);
+    list.elements = d.state;
     // Внутри метода может быть несколько потоков сразу: подсветка горит, пока не вышел последний
-    if (parsed.phase === 'IN') list.inside[parsed.method].set(d.thread, argsText(parsed.method, d));
+    if (parsed.phase === 'IN') list.inside[parsed.method].set(d.thread, argsText(d));
     else list.inside[parsed.method].delete(d.thread);
   }
 
@@ -357,17 +362,18 @@
   function effectOf(env, parsed) {
     const d = env.data;
     const { method, phase } = parsed;
-    const effect = { listId: d.arrayListId, thread: d.thread, failedMethod: null, cells: null };
+    const effect = { listId: d.objectId, thread: d.thread, failedMethod: null, cells: null };
+    const index = d.args.index;
     if (phase === 'FAILED') {
       effect.failedMethod = method;
       // Индекс за концом массива — рисуем «призрачную» ячейку
-      if (d.index !== undefined && d.index >= d.elements.length) effect.cells = { ghost: d.index };
+      if (index !== undefined && index >= d.state.length) effect.cells = { ghost: index };
     }
     if (phase === 'OUT') {
       // При гонке «последняя ячейка» для add — допущение, а не наблюдение
-      if (method === 'add') effect.cells = { new: d.elements.length - 1 };
-      if (method === 'addAt') effect.cells = { new: d.index, shiftedFrom: d.index + 1 };
-      if (method === 'get') effect.cells = { read: d.index };
+      if (method === 'add') effect.cells = { new: d.state.length - 1 };
+      if (method === 'addAt') effect.cells = { new: index, shiftedFrom: index + 1 };
+      if (method === 'get') effect.cells = { read: index };
     }
     return effect;
   }
@@ -473,7 +479,7 @@
       const entry = eventHistory.find(e => e.n === selectedN);
       state = stateAt(selectedN);
       effects = new Map();
-      if (entry.parsed && entry.parsed.phase !== 'LIFE') effects.set(entry.env.data.arrayListId, effectOf(entry.env, entry.parsed));
+      if (entry.parsed && entry.parsed.phase !== 'LIFE') effects.set(entry.env.data.objectId, effectOf(entry.env, entry.parsed));
     }
 
     const root = $('memory');
@@ -550,10 +556,10 @@
       const badge = Object.assign(document.createElement('span'), { className: `badge ${parsed.phase}`, textContent: parsed.phase });
       const name = Object.assign(document.createElement('span'), { className: 'method-name', textContent: parsed.method });
       row.append(badge, name, threadSpan(d.thread), '  ');
-      row.append(Object.assign(document.createElement('span'), { className: 'args', textContent: argsText(parsed.method, d) }));
-      if (d.element !== undefined && parsed.method === 'get') row.append(` → ${d.element}`);
+      row.append(Object.assign(document.createElement('span'), { className: 'args', textContent: argsText(d) }));
+      if (d.result !== undefined && parsed.method === 'get') row.append(` → ${d.result}`);
       if (d.error) row.append('  ', Object.assign(document.createElement('span'), { className: 'err', textContent: d.error }));
-      if (d.elements) row.append('  ', Object.assign(document.createElement('span'), { className: 'elements', textContent: `[${d.elements.join(', ')}]` }));
+      if (Array.isArray(d.state)) row.append('  ', Object.assign(document.createElement('span'), { className: 'elements', textContent: `[${d.state.join(', ')}]` }));
     }
     row.title = env.type;
     $('events').prepend(row);
@@ -564,7 +570,7 @@
   function onMessage(raw) {
     let env;
     try {
-      env = JSON.parse(raw);
+      env = normalize(JSON.parse(raw));
     } catch (e) {
       const row = document.createElement('div');
       row.className = 'err';

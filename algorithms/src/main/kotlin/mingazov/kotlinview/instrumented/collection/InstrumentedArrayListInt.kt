@@ -6,10 +6,11 @@ import mingazov.kotlinview.event.ArrayListIntAddAtOutFailed
 import mingazov.kotlinview.event.ArrayListIntAddIn
 import mingazov.kotlinview.event.ArrayListIntAddOut
 import mingazov.kotlinview.event.ArrayListIntAddOutFailed
-import mingazov.kotlinview.event.ArrayListIntGetIn
-import mingazov.kotlinview.event.ArrayListIntGetOut
-import mingazov.kotlinview.event.ArrayListIntGetOutFailed
 import mingazov.kotlinview.event.EventSink
+import mingazov.kotlinview.event.MethodIn
+import mingazov.kotlinview.event.MethodOut
+import mingazov.kotlinview.event.MethodOutFailed
+import mingazov.kotlinview.event.ObjectType
 
 class InstrumentedArrayListInt(
     val id: Long,
@@ -42,13 +43,14 @@ class InstrumentedArrayListInt(
     }
 
     fun get(index: Int): Int {
-        sink.emit(ArrayListIntGetIn(id, threadName(), index, snapshot()))
+        val args = mapOf("index" to index)
+        sink.emit(MethodIn(ObjectType.ARRAY_LIST_INT, id, threadName(), "get", args, snapshot()))
         try {
             val value = delegate[index]
-            sink.emit(ArrayListIntGetOut(id, threadName(), index, value, snapshot()))
+            sink.emit(MethodOut(ObjectType.ARRAY_LIST_INT, id, threadName(), "get", args, value, snapshot()))
             return value
         } catch (e: Exception) {
-            sink.emit(ArrayListIntGetOutFailed(id, threadName(), index, e.toString(), snapshot()))
+            sink.emit(MethodOutFailed(ObjectType.ARRAY_LIST_INT, id, threadName(), "get", args, e.toString(), snapshot()))
             throw e
         }
     }

@@ -150,13 +150,12 @@
 
   // ---------- State ----------
 
-  // Часть type → метод в бейджах: ARRAY_LIST_INT_ADD_AT_IN → addAt
-  const METHOD_BY_TYPE = { ADD: 'add', ADD_AT: 'addAt', GET: 'get' };
-  const METHODS = Object.values(METHOD_BY_TYPE);
+  const METHODS = ['add', 'addAt', 'get'];
+  const PHASE_BY_TYPE = { METHOD_IN: 'IN', METHOD_OUT: 'OUT', METHOD_OUT_FAILED: 'OUT_FAILED' };
   const FADE_MS = 800; // сколько затухает бейдж после выхода последнего потока — подбирается на глаз
   const CELL_FADE_MS = 1500; // сколько затухает подсветка ячеек — дольше, чтобы успеть рассмотреть
 
-  // arrayListId → { id, elements, inside: { method: Set<thread> }, fade: { method: { start, failed } }, cellEffect }
+  // objectId → { id, elements, inside: { method: Set<thread> }, fade: { method: { start, failed } }, cellEffect }
   // fade.start — когда вышел последний поток (null — не затухает); fade.failed — гаснуть красным
   const lists = new Map();
 
@@ -170,17 +169,27 @@
     return lists.get(id);
   }
 
+  // Временно: старые ARRAY_LIST_INT_ADD*/ADD_AT* → формат METHOD_*. Удалить, когда add/addAt переедут на сервере
+  function normalize(env) {
+    const match = env.type.match(/^ARRAY_LIST_INT_(ADD_AT|ADD)_(IN|OUT|OUT_FAILED)$/);
+    if (!match) return env;
+    const { arrayListId, thread, index, element, error, elements } = env.data;
+    const type = { IN: 'METHOD_IN', OUT: 'METHOD_OUT', OUT_FAILED: 'METHOD_OUT_FAILED' }[match[2]];
+    const method = match[1] === 'ADD_AT' ? 'addAt' : 'add';
+    const args = method === 'addAt' ? { index, element } : { element };
+    return { ...env, type, data: { objectType: 'ARRAY_LIST_INT', objectId: arrayListId, thread, method, args, error, state: elements } };
+  }
+
   function apply(env) {
+    env = normalize(env);
     if (env.type === 'OBJECT_CREATED') { if (env.data.objectType === 'ARRAY_LIST_INT') listOf(env.data.objectId); return; }
     if (env.type === 'OBJECT_REMOVED') { if (env.data.objectType === 'ARRAY_LIST_INT') lists.delete(env.data.objectId); return; }
 
-    // ARRAY_LIST_INT_ADD_IN, ARRAY_LIST_INT_GET_OUT_FAILED, ...
-    const match = env.type.match(/^ARRAY_LIST_INT_(ADD_AT|ADD|GET)_(IN|OUT|OUT_FAILED)$/);
-    if (!match) return;
-    const method = METHOD_BY_TYPE[match[1]];
-    const phase = match[2];
-    const list = listOf(env.data.arrayListId);
-    list.elements = env.data.elements;
+    const phase = PHASE_BY_TYPE[env.type];
+    if (!phase || env.data.objectType !== 'ARRAY_LIST_INT' || !METHODS.includes(env.data.method)) return;
+    const method = env.data.method;
+    const list = listOf(env.data.objectId);
+    list.elements = env.data.state;
 
     // Внутри метода может быть несколько потоков сразу: горит, пока не вышел последний, потом затухает
     const inside = list.inside[method];
@@ -205,13 +214,14 @@
   function cellEffectOf(method, phase, data) {
     if (phase === 'OUT_FAILED') {
       // Индекс за концом массива — «призрачная» ячейка
-      return data.index !== undefined && data.index >= data.elements.length ? { ghost: data.index } : null;
+      const index = data.args.index;
+      return index !== undefined && index >= data.state.length ? { ghost: index } : null;
     }
     if (phase !== 'OUT') return null;
     // При гонке «последняя ячейка» для add — допущение, а не наблюдение
-    if (method === 'add') return { new: data.elements.length - 1 };
-    if (method === 'addAt') return { new: data.index, shiftedFrom: data.index + 1 };
-    if (method === 'get') return { read: data.index };
+    if (method === 'add') return { new: data.state.length - 1 };
+    if (method === 'addAt') return { new: data.args.index, shiftedFrom: data.args.index + 1 };
+    if (method === 'get') return { read: data.args.index };
     return null;
   }
 

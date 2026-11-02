@@ -7,9 +7,6 @@ import mingazov.kotlinview.event.ArrayListIntAddIn
 import mingazov.kotlinview.event.ArrayListIntAddOut
 import mingazov.kotlinview.event.ArrayListIntAddOutFailed
 import mingazov.kotlinview.event.ArrayListIntEvent
-import mingazov.kotlinview.event.ArrayListIntGetIn
-import mingazov.kotlinview.event.ArrayListIntGetOut
-import mingazov.kotlinview.event.ArrayListIntGetOutFailed
 import mingazov.kotlinview.event.Event
 import mingazov.kotlinview.event.LinkedListIntAddIn
 import mingazov.kotlinview.event.LinkedListIntAddOut
@@ -30,6 +27,9 @@ import mingazov.kotlinview.event.LinkedListIntPopOut
 import mingazov.kotlinview.event.LinkedListIntPopOutFailed
 import mingazov.kotlinview.event.LinkedListIntOfferOut
 import mingazov.kotlinview.event.LinkedListIntOfferOutFailed
+import mingazov.kotlinview.event.MethodIn
+import mingazov.kotlinview.event.MethodOut
+import mingazov.kotlinview.event.MethodOutFailed
 import mingazov.kotlinview.event.ObjectCreated
 import mingazov.kotlinview.event.ObjectRemoved
 
@@ -40,6 +40,9 @@ object WebSocketMapper {
     fun toPayload(event: Event): Payload? = when (event) {
         is ObjectCreated -> ObjectCreatedData(event.objectType.name, event.objectId, event.thread)
         is ObjectRemoved -> ObjectRemovedData(event.objectType.name, event.objectId, event.thread)
+        is MethodIn -> MethodInData(event.objectType.name, event.objectId, event.thread, event.method, event.args, event.state)
+        is MethodOut -> MethodOutData(event.objectType.name, event.objectId, event.thread, event.method, event.args, event.result, event.state)
+        is MethodOutFailed -> MethodOutFailedData(event.objectType.name, event.objectId, event.thread, event.method, event.args, event.error, event.state)
         is ArrayListIntEvent -> arrayListInt(event)
         is LinkedListIntEvent -> linkedListInt(event)
         else -> null // TODO: очередь, пул, фабрика потоков ещё не переведены на payload'ы
@@ -53,9 +56,6 @@ object WebSocketMapper {
         is ArrayListIntAddAtIn -> ArrayListIntAddAtInData(e.arrayListId, e.thread, e.index, e.element, e.elements)
         is ArrayListIntAddAtOut -> ArrayListIntAddAtOutData(e.arrayListId, e.thread, e.index, e.element, e.elements)
         is ArrayListIntAddAtOutFailed -> ArrayListIntAddAtOutFailedData(e.arrayListId, e.thread, e.index, e.element, e.error, e.elements)
-        is ArrayListIntGetIn -> ArrayListIntGetInData(e.arrayListId, e.thread, e.index, e.elements)
-        is ArrayListIntGetOut -> ArrayListIntGetOutData(e.arrayListId, e.thread, e.index, e.element, e.elements)
-        is ArrayListIntGetOutFailed -> ArrayListIntGetOutFailedData(e.arrayListId, e.thread, e.index, e.error, e.elements)
     }
 
     private fun linkedListInt(e: LinkedListIntEvent): Payload = when (e) {
