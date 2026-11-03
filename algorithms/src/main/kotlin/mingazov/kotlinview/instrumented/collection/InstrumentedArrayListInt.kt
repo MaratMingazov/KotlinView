@@ -5,6 +5,9 @@ import mingazov.kotlinview.event.MethodIn
 import mingazov.kotlinview.event.MethodOut
 import mingazov.kotlinview.event.MethodOutFailed
 import mingazov.kotlinview.event.ObjectType
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 
 class InstrumentedArrayListInt(
     val id: Long,
@@ -13,11 +16,17 @@ class InstrumentedArrayListInt(
     private val delegate = ArrayList<Int>()
     val size: Int get() = delegate.size
 
+    // Перевёрнутый RW-lock: операции над delegate берут read lock — несколько потоков могут быть внутри одновременно,
+    // поэтому гонки ArrayList сохраняются. Снимок берёт write lock — читает, только когда внутри delegate никого нет,
+    // поэтому в снимке только то, что реально было, а не артефакт чтения посреди записи.
+    // Правило: snapshot() нельзя вызывать под read lock — read lock нельзя повысить до write, будет deadlock.
+    private val lock = ReentrantReadWriteLock()
+
     fun add(element: Int): Boolean {
         val args = mapOf("element" to element)
         sink.emit(MethodIn(ObjectType.ARRAY_LIST_INT, id, threadName(), "add", args, snapshot()))
         try {
-            val result = delegate.add(element)
+            val result = lock.read { delegate.add(element) }
             sink.emit(MethodOut(ObjectType.ARRAY_LIST_INT, id, threadName(), "add", args, result, snapshot()))
             return result
         } catch (e: Exception) {
@@ -31,7 +40,7 @@ class InstrumentedArrayListInt(
         val args = mapOf("index" to index, "element" to element)
         sink.emit(MethodIn(ObjectType.ARRAY_LIST_INT, id, threadName(), "addAt", args, snapshot()))
         try {
-            delegate.add(index, element)
+            lock.read { delegate.add(index, element) }
             sink.emit(MethodOut(ObjectType.ARRAY_LIST_INT, id, threadName(), "addAt", args, null, snapshot()))
         } catch (e: Exception) {
             sink.emit(MethodOutFailed(ObjectType.ARRAY_LIST_INT, id, threadName(), "addAt", args, e.toString(), snapshot()))
@@ -43,7 +52,7 @@ class InstrumentedArrayListInt(
         val args = mapOf("index" to index)
         sink.emit(MethodIn(ObjectType.ARRAY_LIST_INT, id, threadName(), "get", args, snapshot()))
         try {
-            val value = delegate[index]
+            val value = lock.read { delegate[index] }
             sink.emit(MethodOut(ObjectType.ARRAY_LIST_INT, id, threadName(), "get", args, value, snapshot()))
             return value
         } catch (e: Exception) {
@@ -52,14 +61,15 @@ class InstrumentedArrayListInt(
         }
     }
 
-    // Снимок читает delegate, пока другие потоки могут его менять, или уже испорченный гонкой.
+    // Под write lock внутри delegate никого нет, но прошлая гонка могла оставить его испорченным.
     // Исключение отсюда не должно ронять метод пользователя: null — «состояние прочитать не удалось»
-    private fun snapshot(): List<Int>? =
+    private fun snapshot(): List<Int>? = lock.write {
         try {
             delegate.toList()
         } catch (e: Exception) {
             null
         }
+    }
 
     private fun threadName() = Thread.currentThread().name
 }
