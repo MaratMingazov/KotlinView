@@ -164,7 +164,7 @@
     if (!lists.has(id)) {
       const inside = Object.fromEntries(METHODS.map(m => [m, new Set()]));
       const fade = Object.fromEntries(METHODS.map(m => [m, { start: null, failed: false }]));
-      lists.set(id, { id, elements: [], inside, fade, cellEffect: null });
+      lists.set(id, { id, elements: [], unreadable: false, inside, fade, cellEffect: null });
     }
     return lists.get(id);
   }
@@ -177,7 +177,9 @@
     if (!phase || env.data.objectType !== 'ARRAY_LIST_INT' || !METHODS.includes(env.data.method)) return;
     const method = env.data.method;
     const list = listOf(env.data.objectId);
-    list.elements = env.data.state;
+    // state == null — сервер не смог прочитать список (гонка): оставляем прошлые элементы и помечаем карточку
+    list.unreadable = !Array.isArray(env.data.state);
+    if (!list.unreadable) list.elements = env.data.state;
 
     // Внутри метода может быть несколько потоков сразу: горит, пока не вышел последний, потом затухает
     const inside = list.inside[method];
@@ -200,6 +202,7 @@
 
   // Какие ячейки подсветить после этого события (null — ничего)
   function cellEffectOf(method, phase, data) {
+    if (!Array.isArray(data.state)) return null; // без состояния подсвечивать нечего
     if (phase === 'OUT_FAILED') {
       // Индекс за концом массива — «призрачная» ячейка
       const index = data.args.index;
@@ -334,6 +337,11 @@
       ghost.classList.add('ghost');
       ghost.style.animation = glow('fade-out', elapsed);
       cells.append(ghost);
+    }
+    if (list.unreadable) {
+      cells.append(Object.assign(document.createElement('span'), {
+        className: 'error', textContent: '⚠ состояние не прочитать — структура повреждена гонкой (показан последний снимок)',
+      }));
     }
     return cells;
   }

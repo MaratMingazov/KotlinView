@@ -52,7 +52,14 @@ class InstrumentedArrayListInt(
         }
     }
 
-    private fun snapshot(): List<Int> = delegate.toList()
+    // Снимок читает delegate, пока другие потоки могут его менять, или уже испорченный гонкой.
+    // Исключение отсюда не должно ронять метод пользователя: null — «состояние прочитать не удалось»
+    private fun snapshot(): List<Int>? =
+        try {
+            delegate.toList()
+        } catch (e: Exception) {
+            null
+        }
 
     private fun threadName() = Thread.currentThread().name
 }

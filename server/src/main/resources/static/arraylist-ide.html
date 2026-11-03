@@ -67,6 +67,7 @@
     .card { border: 1px solid var(--border); border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; }
     .card-head { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
     .card-head .name { color: var(--keyword); }
+    .card-head .err { color: var(--fail); }
     .method {
       padding: 0 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--dim);
       transition: background .15s;
@@ -328,7 +329,7 @@
 
   function listOf(state, id) {
     if (!state.lists.has(id)) {
-      state.lists.set(id, { id, elements: [], inside: Object.fromEntries(METHODS.map(m => [m, new Map()])) });
+      state.lists.set(id, { id, elements: [], unreadable: false, inside: Object.fromEntries(METHODS.map(m => [m, new Map()])) });
     }
     return state.lists.get(id);
   }
@@ -340,7 +341,9 @@
     if (parsed.method === 'removed') { state.lists.delete(d.objectId); return; }
 
     const list = listOf(state, d.objectId);
-    list.elements = d.state;
+    // state == null — сервер не смог прочитать список (гонка): оставляем прошлые элементы и помечаем карточку
+    list.unreadable = !Array.isArray(d.state);
+    if (!list.unreadable) list.elements = d.state;
     // Внутри метода может быть несколько потоков сразу: подсветка горит, пока не вышел последний
     if (parsed.phase === 'IN') list.inside[parsed.method].set(d.thread, argsText(d));
     else list.inside[parsed.method].delete(d.thread);
@@ -352,8 +355,9 @@
     const { method, phase } = parsed;
     const effect = { listId: d.objectId, thread: d.thread, failedMethod: null, cells: null };
     const index = d.args.index;
+    if (phase === 'FAILED') effect.failedMethod = method;
+    if (!Array.isArray(d.state)) return effect; // без состояния подсвечивать ячейки нечего
     if (phase === 'FAILED') {
-      effect.failedMethod = method;
       // Индекс за концом массива — рисуем «призрачную» ячейку
       if (index !== undefined && index >= d.state.length) effect.cells = { ghost: index };
     }
@@ -483,7 +487,8 @@
 
       const head = document.createElement('div');
       head.className = 'card-head';
-      head.innerHTML = `<span class="name">list#${list.id}</span><span class="empty">size=${list.elements.length}</span>`;
+      head.innerHTML = `<span class="name">list#${list.id}</span><span class="empty">size=${list.elements.length}</span>`
+        + (list.unreadable ? '<span class="err">⚠ состояние не прочитать — структура повреждена гонкой</span>' : '');
       for (const method of METHODS) {
         const threads = list.inside[method];
         const badge = document.createElement('span');
@@ -548,6 +553,7 @@
       if (d.result !== undefined && parsed.method === 'get') row.append(` → ${d.result}`);
       if (d.error) row.append('  ', Object.assign(document.createElement('span'), { className: 'err', textContent: d.error }));
       if (Array.isArray(d.state)) row.append('  ', Object.assign(document.createElement('span'), { className: 'elements', textContent: `[${d.state.join(', ')}]` }));
+      else if ('state' in d) row.append('  ', Object.assign(document.createElement('span'), { className: 'err', textContent: 'state: не прочитать' }));
     }
     row.title = env.type;
     $('events').prepend(row);
