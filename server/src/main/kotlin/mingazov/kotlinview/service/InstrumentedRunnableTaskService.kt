@@ -1,26 +1,28 @@
 package mingazov.kotlinview.service
 
-import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.instrumented.InstrumentedRunnableTask
+import mingazov.kotlinview.instrumented.InstrumentedRunnableTaskRegistry
 import org.springframework.stereotype.Service
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 @Service
-class InstrumentedRunnableTaskService(private val sink: EventSink) {
+class InstrumentedRunnableTaskService(private val registry: InstrumentedRunnableTaskRegistry) {
 
-    private val tasks = ConcurrentHashMap<Long, InstrumentedRunnableTask>()
-    private val taskIds = AtomicLong()
+    private val runnerIds = AtomicLong()
 
+    fun create(durationMs: Long): InstrumentedRunnableTask = registry.create(durationMs)
+    fun get(taskId: Long): InstrumentedRunnableTask = registry.get(taskId)
+    fun remove(taskId: Long) = registry.remove(taskId)
+    fun all() = registry.all()
 
-    fun create(durationMs: Long): InstrumentedRunnableTask {
-        val taskId = taskIds.incrementAndGet()
-        val task = InstrumentedRunnableTask(taskId, durationMs, sink)
-        tasks[taskId] = task
-        return task
+    /**
+     * Запускает run() задачи в новом потоке и сразу возвращает его имя.
+     * Каждый вызов — новый поток: два вызова подряд — два потока внутри одной задачи.
+     */
+    fun run(taskId: Long): String {
+        val task = registry.get(taskId)
+        val thread = Thread(task, "runner-${runnerIds.incrementAndGet()}")
+        thread.start()
+        return thread.name
     }
-
-    fun remove(taskId: Long) { tasks.remove(taskId) ?: throw RuntimeException("Task $taskId not found") }
-
-    fun get(taskId: Long) = tasks[taskId] ?: throw RuntimeException("Task $taskId not found")
 }

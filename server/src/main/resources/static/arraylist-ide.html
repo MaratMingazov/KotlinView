@@ -337,7 +337,11 @@
   // Меняет только state: никаких таймеров, поэтому годится и для живого режима, и для перемотки
   function reduce(state, env, parsed) {
     const d = env.data;
-    if (parsed.method === 'created') { listOf(state, d.objectId); return; }
+    if (parsed.method === 'created') {
+      const list = listOf(state, d.objectId);
+      if (Array.isArray(d.state)) list.elements = d.state; // начальное состояние
+      return;
+    }
     if (parsed.method === 'removed') { state.lists.delete(d.objectId); return; }
 
     const list = listOf(state, d.objectId);

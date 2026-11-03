@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Runnable task playground</title>
+  <style>
+    /* Палитра как в arraylist-ide.html (IntelliJ Darcula) */
+    :root {
+      --bg: #1e1f22; --panel: #2b2d30; --border: #3c3f41; --text: #bcbec4; --dim: #6f737a;
+      --keyword: #cf8e6d; --fn: #56a8f5; --num: #2aacb8; --str: #6aab73;
+      --in: #56a8f5; --out: #6aab73; --fail: #f75464;
+    }
+    body {
+      font: 13px/1.5 "JetBrains Mono", ui-monospace, Menlo, monospace; margin: 16px;
+      background: var(--bg); color: var(--text);
+    }
+    header { display: flex; justify-content: space-between; align-items: center; }
+    h2 { color: var(--keyword); font-weight: normal; }
+    h3 {
+      margin: 16px 0 4px; border-bottom: 1px solid var(--border); color: var(--dim); font-weight: normal;
+      display: flex; justify-content: space-between; align-items: baseline;
+    }
+    .on { color: var(--out); }
+    .off { color: var(--fail); }
+    .empty { color: var(--dim); }
+
+    /* --- кнопки и поля --- */
+    button {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+      color: var(--fn); font: inherit; padding: 0 8px; cursor: pointer;
+    }
+    button:hover { border-color: currentColor; }
+    button.primary { color: var(--out); padding: 2px 12px; }
+    button.run { color: var(--out); }
+    button.danger { color: var(--fail); }
+    button.link { background: none; border: none; color: var(--dim); padding: 0; }
+    button.link:hover { color: var(--text); }
+    input {
+      width: 64px; background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+      color: var(--num); font: inherit; padding: 0 4px;
+    }
+
+    /* --- карточка задачи --- */
+    .task-card { padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .task-head { display: flex; gap: 10px; align-items: center; }
+    .task-head .name { color: var(--keyword); }
+    .method { padding: 0 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--dim); }
+    .method.active { background: var(--out); border-color: var(--out); color: var(--bg); }
+    /* Несколько потоков внутри одной задачи — главное, что хочется заметить */
+    .method.multi { background: var(--keyword); border-color: var(--keyword); }
+
+    /* --- строка на каждый поток внутри run() --- */
+    .runs { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+    .run-row { display: grid; grid-template-columns: 110px 1fr 230px; gap: 10px; align-items: center; }
+    .run-row .thread { font-weight: bold; }
+    .track { height: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
+    .bar { height: 100%; width: 0; background: var(--in); }
+    .run-row.done .bar { background: var(--out); }
+    .run-row.failed .bar { background: var(--fail); }
+    .run-row.failed .label { color: var(--fail); }
+    .run-row.done, .run-row.failed { animation: fade-out var(--fade) ease-in forwards; }
+    @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+
+    /* --- логи --- */
+    .log { max-height: 40vh; overflow-y: auto; }
+    .log div { white-space: pre-wrap; padding: 2px 0; border-bottom: 1px solid var(--panel); }
+    .error { color: var(--fail); }
+    .type { font-weight: bold; color: var(--fn); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h2>Runnable task playground</h2>
+  <span id="status" class="off">● ws disconnected</span>
+</header>
+
+<div>
+  длительность, сек <input id="duration" type="number" value="5" min="1" step="0.5">
+  <button id="create" class="primary" title="POST /api/tasks — создать задачу; карточка появится по событию OBJECT_CREATED">+ new task</button>
+  <span class="empty">  «run» можно нажать несколько раз: каждый раз — новый поток внутри той же задачи</span>
+</div>
+
+<div id="tasks"></div>
+
+<h3>HTTP <button class="link" id="clearHttp">clear</button></h3>
+<div id="http" class="log"></div>
+
+<h3>WebSocket <button class="link" id="clearWs">clear</button></h3>
+<div id="ws" class="log"></div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const base = '/api/tasks';
+  const TICK_MS = 1000;      // как TICK_MS на сервере: METHOD_PROGRESS приходит раз в секунду
+  const DONE_FADE_MS = 1500; // сколько затухает строка после METHOD_OUT
+  const FAILED_FADE_MS = 4000; // после ошибки — дольше, чтобы успеть прочитать
+
+  // Новые записи сверху
+  function prepend(logId, text, isError) {
+    const row = document.createElement('div');
+    row.textContent = text;
+    if (isError) row.className = 'error';
+    $(logId).prepend(row);
+  }
+
+  // ---------- REST ----------
+
+  async function call(method, url, body) {
+    const options = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body !== undefined) options.body = JSON.stringify(body);
+    const request = `${method} ${url}${body !== undefined ? ' ' + JSON.stringify(body) : ''}`;
+    try {
+      const res = await fetch(url, options);
+      const text = await res.text(); // у 204 тела нет
+      prepend('http', `${request} → ${res.status} ${text}`, !res.ok);
+      return res.ok && text ? JSON.parse(text) : null;
+    } catch (e) {
+      prepend('http', `${request} → ${e}`, true);
+      return null;
+    }
+  }
+
+  // Карточку создаёт не ответ на create, а событие OBJECT_CREATED — так же, как для задач, созданных извне
+  $('create').onclick = () => call('POST', base, { durationMs: Math.round(Number($('duration').value) * 1000) });
+  $('clearHttp').onclick = () => { $('http').innerHTML = ''; };
+  $('clearWs').onclick = () => { $('ws').innerHTML = ''; };
+
+  // ---------- Состояние ----------
+
+  // taskId → { id, durationMs, runs: Map<thread, { elapsedMs, phase: 'RUN'|'DONE'|'FAILED', error, endedAt }> }
+  // durationMs приходит в state: уже в OBJECT_CREATED и дальше в каждом METHOD_*
+  const tasks = new Map();
+
+  function taskOf(id) {
+    if (!tasks.has(id)) tasks.set(id, { id, durationMs: null, runs: new Map() });
+    return tasks.get(id);
+  }
+
+  function apply(env) {
+    const d = env.data;
+    if (d?.objectType !== 'RUNNABLE_TASK') return;
+    if (env.type === 'OBJECT_REMOVED') { tasks.delete(d.objectId); return; }
+
+    // Карточка создаётся и по OBJECT_CREATED, и по любому METHOD_*: страницу могли открыть уже после создания
+    const task = taskOf(d.objectId);
+    if (d.state?.durationMs !== undefined) task.durationMs = d.state.durationMs;
+    if (env.type === 'OBJECT_CREATED' || d.method !== 'run') return;
+
+    // Строки различаем по потоку: один поток не может быть внутри run() дважды одновременно
+    switch (env.type) {
+      case 'METHOD_IN':
+        task.runs.set(d.thread, { elapsedMs: 0, phase: 'RUN', error: null, endedAt: null });
+        break;
+      case 'METHOD_PROGRESS': {
+        const run = task.runs.get(d.thread);
+        if (run) run.elapsedMs = d.progress.elapsedMs;
+        break;
+      }
+      case 'METHOD_OUT':
+        finish(task, d.thread, 'DONE', null, DONE_FADE_MS);
+        break;
+      case 'METHOD_OUT_FAILED':
+        finish(task, d.thread, 'FAILED', d.error, FAILED_FADE_MS);
+        break;
+    }
+  }
+
+  // Строка не исчезает сразу: затухает, потом удаляется — если за это время тот же поток не зашёл снова
+  function finish(task, thread, phase, error, fadeMs) {
+    const run = task.runs.get(thread) ?? { elapsedMs: 0 };
+    const endedAt = performance.now();
+    if (phase === 'DONE') run.elapsedMs = task.durationMs ?? run.elapsedMs;
+    Object.assign(run, { phase, error, endedAt });
+    task.runs.set(thread, run);
+    setTimeout(() => {
+      if (task.runs.get(thread)?.endedAt === endedAt) { task.runs.delete(thread); render(); }
+    }, fadeMs);
+  }
+
+  // ---------- Отрисовка ----------
+
+  // Стабильный цвет для имени потока
+  function threadColor(name) {
+    let h = 0;
+    for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
+    return `hsl(${h}, 60%, 65%)`;
+  }
+
+  const seconds = ms => (ms / 1000).toFixed(1) + 's';
+
+  // DOM строк держим постоянным и меняем только ширину полоски — иначе CSS-transition не сработает
+  const cards = new Map(); // taskId → { card, badge, title, runsBox, rows: Map<thread, { row, bar, label, phase, elapsedMs }> }
+
+  function createCard(id) {
+    const card = document.createElement('div');
+    card.className = 'task-card';
+    card.dataset.id = id;
+
+    const head = document.createElement('div');
+    head.className = 'task-head';
+    const title = Object.assign(document.createElement('span'), { className: 'name' });
+    const badge = Object.assign(document.createElement('span'), { className: 'method', textContent: 'run' });
+    const runButton = Object.assign(document.createElement('button'), { className: 'run', textContent: '▶ run' });
+    runButton.title = `POST ${base}/${id}/run — запустить run() в новом потоке`;
+    runButton.onclick = () => call('POST', `${base}/${id}/run`);
+    const removeButton = Object.assign(document.createElement('button'), { className: 'danger', textContent: 'remove' });
+    removeButton.onclick = () => call('DELETE', `${base}/${id}`);
+    head.append(title, badge, runButton, removeButton);
+
+    const runsBox = Object.assign(document.createElement('div'), { className: 'runs' });
+    card.append(head, runsBox);
+    return { card, badge, title, runsBox, rows: new Map() };
+  }
+
+  function createRow(thread) {
+    const row = Object.assign(document.createElement('div'), { className: 'run-row' });
+    const name = Object.assign(document.createElement('span'), { className: 'thread', textContent: thread });
+    name.style.color = threadColor(thread);
+    const track = Object.assign(document.createElement('div'), { className: 'track' });
+    const bar = Object.assign(document.createElement('div'), { className: 'bar' });
+    track.append(bar);
+    const label = Object.assign(document.createElement('span'), { className: 'label' });
+    row.append(name, track, label);
+    return { row, bar, label, phase: null, elapsedMs: null };
+  }
+
+  // Полоска едет плавно: после каждого события она доезжает до следующего ожидаемого тика за время этого тика.
+  // Так она не отстаёт от реальности на секунду и не прыгает рывками.
+  function updateBar(view, run, durationMs) {
+    if (view.phase === run.phase && view.elapsedMs === run.elapsedMs) return; // ничего нового
+    view.phase = run.phase;
+    view.elapsedMs = run.elapsedMs;
+    const bar = view.bar;
+    if (!durationMs) { bar.style.width = '0'; return; }
+
+    if (run.phase === 'RUN') {
+      const nextMs = Math.min(run.elapsedMs + TICK_MS, durationMs);
+      bar.style.transition = 'none';
+      bar.style.width = `${run.elapsedMs / durationMs * 100}%`;
+      bar.getBoundingClientRect(); // применить стартовую ширину, прежде чем запускать переход
+      bar.style.transition = `width ${nextMs - run.elapsedMs}ms linear`;
+      bar.style.width = `${nextMs / durationMs * 100}%`;
+    } else if (run.phase === 'DONE') {
+      bar.style.transition = 'none';
+      bar.style.width = '100%';
+    } else {
+      // Ошибка: останавливаем полоску там, где она сейчас
+      const current = getComputedStyle(bar).width;
+      bar.style.transition = 'none';
+      bar.style.width = current;
+    }
+  }
+
+  function renderTask(task, view) {
+    view.title.textContent = `task#${task.id} · ${task.durationMs === null ? '?' : seconds(task.durationMs)}`;
+
+    const inside = [...task.runs.values()].filter(r => r.phase === 'RUN').length;
+    view.badge.className = 'method' + (inside > 0 ? ' active' : '') + (inside > 1 ? ' multi' : '');
+    view.badge.textContent = 'run' + (inside > 1 ? ` ×${inside}` : '');
+    view.badge.title = inside > 1 ? `${inside} потока одновременно внутри run() одной задачи` : '';
+
+    // Удалить строки потоков, которых больше нет
+    for (const [thread, rowView] of view.rows) {
+      if (!task.runs.has(thread)) { rowView.row.remove(); view.rows.delete(thread); }
+    }
+    for (const [thread, run] of task.runs) {
+      let rowView = view.rows.get(thread);
+      if (!rowView) {
+        rowView = createRow(thread);
+        view.rows.set(thread, rowView);
+        view.runsBox.append(rowView.row);
+      }
+      // Поток мог зайти снова, пока строка затухала: вернуть её в рабочий вид
+      rowView.row.className = 'run-row' + (run.phase === 'DONE' ? ' done' : run.phase === 'FAILED' ? ' failed' : '');
+      rowView.row.style.setProperty('--fade', `${run.phase === 'FAILED' ? FAILED_FADE_MS : DONE_FADE_MS}ms`);
+      updateBar(rowView, run, task.durationMs);
+
+      const total = task.durationMs ?? 0;
+      if (run.phase === 'RUN') rowView.label.textContent = `${seconds(run.elapsedMs)} / ${seconds(total)} · осталось ${seconds(total - run.elapsedMs)}`;
+      if (run.phase === 'DONE') rowView.label.textContent = `готово за ${seconds(total)}`;
+      if (run.phase === 'FAILED') rowView.label.textContent = `✗ ${run.error}`;
+      rowView.label.title = run.error ?? '';
+    }
+  }
+
+  function render() {
+    const root = $('tasks');
+
+    // Удалить карточки исчезнувших задач
+    for (const [id, { card }] of cards) {
+      if (!tasks.has(id)) { card.remove(); cards.delete(id); }
+    }
+
+    // Создать карточки новых задач — по порядку id
+    for (const task of [...tasks.values()].sort((a, b) => a.id - b.id)) {
+      if (!cards.has(task.id)) {
+        const created = createCard(task.id);
+        cards.set(task.id, created);
+        const next = [...root.querySelectorAll('.task-card')].find(c => Number(c.dataset.id) > task.id);
+        root.insertBefore(created.card, next ?? null);
+      }
+      renderTask(task, cards.get(task.id));
+    }
+
+    const placeholder = root.querySelector('.empty-tasks');
+    if (tasks.size === 0 && !placeholder) {
+      root.innerHTML = '<div class="empty empty-tasks">нет задач — нажмите «+ new task»</div>';
+    } else if (tasks.size > 0 && placeholder) {
+      placeholder.remove();
+    }
+  }
+
+  // ---------- WebSocket ----------
+
+  function showEnvelope(env) {
+    if (env.data?.objectType !== 'RUNNABLE_TASK') return; // чужие события (списки и т.п.) не засоряют лог
+    const row = document.createElement('div');
+    const type = document.createElement('span');
+    type.className = 'type';
+    type.textContent = env.type;
+    const time = new Date(env.ts).toISOString().slice(11, 23); // HH:MM:SS.mmm, UTC
+    row.append(`#${env.seq}  ${time}  `, type, `  ${JSON.stringify(env.data)}`);
+    if (env.type.endsWith('_FAILED')) row.className = 'error';
+    $('ws').prepend(row);
+  }
+
+  function onMessage(raw) {
+    let env;
+    try {
+      env = JSON.parse(raw);
+    } catch (e) {
+      prepend('ws', `не JSON: ${raw}`, true);
+      return;
+    }
+    showEnvelope(env);
+    apply(env);
+    render();
+  }
+
+  function connect() {
+    const ws = new WebSocket(`ws://${location.host}/ws/events`);
+    ws.onopen = () => {
+      $('status').textContent = '● ws connected';
+      $('status').className = 'on';
+    };
+    ws.onclose = () => {
+      $('status').textContent = '● ws disconnected';
+      $('status').className = 'off';
+      setTimeout(connect, 1000);
+    };
+    ws.onmessage = msg => onMessage(msg.data);
+  }
+
+  render();
+  connect();
+</script>
+</body>
+</html>

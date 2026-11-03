@@ -170,7 +170,12 @@
   }
 
   function apply(env) {
-    if (env.type === 'OBJECT_CREATED') { if (env.data.objectType === 'LINKED_LIST_INT') listOf(env.data.objectId); return; }
+    if (env.type === 'OBJECT_CREATED') {
+      if (env.data.objectType !== 'LINKED_LIST_INT') return;
+      const list = listOf(env.data.objectId);
+      if (Array.isArray(env.data.state)) list.elements = env.data.state; // начальное состояние
+      return;
+    }
     if (env.type === 'OBJECT_REMOVED') { if (env.data.objectType === 'LINKED_LIST_INT') lists.delete(env.data.objectId); return; }
 
     const phase = PHASE_BY_TYPE[env.type];

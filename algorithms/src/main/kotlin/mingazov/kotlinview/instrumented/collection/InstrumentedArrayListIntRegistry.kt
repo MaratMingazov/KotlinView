@@ -15,7 +15,7 @@ class InstrumentedArrayListIntRegistry(private val sink: EventSink) {
     fun create(): InstrumentedArrayListInt {
         val list = InstrumentedArrayListInt(ids.incrementAndGet(), sink)
         lists[list.id] = list
-        sink.emit(ObjectCreated(ObjectType.ARRAY_LIST_INT, list.id, Thread.currentThread().name))
+        sink.emit(ObjectCreated(ObjectType.ARRAY_LIST_INT, list.id, Thread.currentThread().name, emptyList<Int>())) // новый список пуст
         return list
     }
 
