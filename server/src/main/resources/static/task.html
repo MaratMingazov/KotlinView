@@ -40,24 +40,52 @@
       color: var(--num); font: inherit; padding: 0 4px;
     }
 
-    /* --- карточка задачи --- */
-    .task-card { padding: 10px 0; border-bottom: 1px solid var(--border); }
-    .task-head { display: flex; gap: 10px; align-items: center; }
-    .task-head .name { color: var(--keyword); }
+    /* --- карточка задачи: слева её пульт, справа её состояние (как .list-card на страницах списков) --- */
+    .task-card {
+      display: grid; grid-template-columns: minmax(260px, 1fr) 2fr; gap: 24px; align-items: start;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    @media (max-width: 800px) { .task-card { grid-template-columns: 1fr; } }
+    .card-title { color: var(--keyword); margin-bottom: 6px; }
+    .ops { display: flex; gap: 10px; align-items: center; }
+    .card-controls .danger { margin-top: 10px; }
+    .task-state { display: flex; gap: 20px; align-items: flex-start; }
+    .envelope-box { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+
+    /* --- задача-конверт: длительность внутри, клапан открыт, пока поток внутри run() --- */
+    .envelope rect, .envelope path { fill: var(--panel); stroke: var(--border); stroke-width: 2; stroke-linejoin: round; }
+    .envelope text { fill: var(--num); font: 15px "JetBrains Mono", ui-monospace, Menlo, monospace; }
+    .envelope .flap-open { display: none; }
+    .envelope.running .flap-open { display: inline; }
+    .envelope.running .flap-closed { display: none; }
+    .envelope.running rect, .envelope.running path { stroke: var(--out); }
+    .envelope.multi rect, .envelope.multi path { stroke: var(--keyword); }
+    /* Ошибка: контур вспыхивает красным и затухает */
+    .envelope.failed rect, .envelope.failed path { animation: envelope-failed var(--flash) ease-out forwards; }
+    @keyframes envelope-failed { from { stroke: var(--fail); } to { stroke: var(--border); } }
+
     .method { padding: 0 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--dim); }
     .method.active { background: var(--out); border-color: var(--out); color: var(--bg); }
     /* Несколько потоков внутри одной задачи — главное, что хочется заметить */
     .method.multi { background: var(--keyword); border-color: var(--keyword); }
 
-    /* --- строка на каждый поток внутри run() --- */
-    .runs { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
-    .run-row { display: grid; grid-template-columns: 110px 1fr 230px; gap: 10px; align-items: center; }
-    .run-row .thread { font-weight: bold; }
-    .track { height: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
-    .bar { height: 100%; width: 0; background: var(--in); }
-    .run-row.done .bar { background: var(--out); }
-    .run-row.failed .bar { background: var(--fail); }
-    .run-row.failed .label { color: var(--fail); }
+    /* --- полоска на каждый поток внутри run(): под конвертом, той же ширины, имя потока поверх --- */
+    .runs { display: flex; flex-direction: column; gap: 3px; width: 96px; }
+    .run-row {
+      position: relative; height: 14px; overflow: hidden; cursor: default;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+    }
+    .run-row .bar {
+      position: absolute; top: 0; bottom: 0; left: 0; width: 0;
+      background: color-mix(in srgb, var(--thread) 35%, transparent);
+    }
+    .run-row .thread {
+      position: relative; display: block; padding-left: 4px; white-space: nowrap;
+      font-size: 11px; line-height: 14px; font-weight: bold; color: var(--thread);
+    }
+    .run-row.done .bar { background: color-mix(in srgb, var(--out) 45%, transparent); }
+    .run-row.failed .bar { background: color-mix(in srgb, var(--fail) 45%, transparent); }
+    .run-row.failed .thread { color: var(--fail); }
     .run-row.done, .run-row.failed { animation: fade-out var(--fade) ease-in forwards; }
     @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
 
@@ -95,6 +123,7 @@
   const TICK_MS = 1000;      // как TICK_MS на сервере: METHOD_PROGRESS приходит раз в секунду
   const DONE_FADE_MS = 1500; // сколько затухает строка после METHOD_OUT
   const FAILED_FADE_MS = 4000; // после ошибки — дольше, чтобы успеть прочитать
+  const FAILED_FLASH_MS = 2000; // сколько затухает красная вспышка конверта
 
   // Новые записи сверху
   function prepend(logId, text, isError) {
@@ -128,12 +157,13 @@
 
   // ---------- Состояние ----------
 
-  // taskId → { id, durationMs, runs: Map<thread, { elapsedMs, phase: 'RUN'|'DONE'|'FAILED', error, endedAt }> }
+  // taskId → { id, durationMs, failedAt, runs: Map<thread, { elapsedMs, phase: 'RUN'|'DONE'|'FAILED', error, endedAt }> }
   // durationMs приходит в state: уже в OBJECT_CREATED и дальше в каждом METHOD_*
+  // failedAt — когда последний раз упал run(): по нему конверт вспыхивает красным
   const tasks = new Map();
 
   function taskOf(id) {
-    if (!tasks.has(id)) tasks.set(id, { id, durationMs: null, runs: new Map() });
+    if (!tasks.has(id)) tasks.set(id, { id, durationMs: null, failedAt: null, runs: new Map() });
     return tasks.get(id);
   }
 
@@ -160,9 +190,13 @@
       case 'METHOD_OUT':
         finish(task, d.thread, 'DONE', null, DONE_FADE_MS);
         break;
-      case 'METHOD_OUT_FAILED':
+      case 'METHOD_OUT_FAILED': {
         finish(task, d.thread, 'FAILED', d.error, FAILED_FADE_MS);
+        const failedAt = performance.now();
+        task.failedAt = failedAt;
+        setTimeout(() => { if (task.failedAt === failedAt) { task.failedAt = null; render(); } }, FAILED_FLASH_MS);
         break;
+      }
     }
   }
 
@@ -190,39 +224,68 @@
   const seconds = ms => (ms / 1000).toFixed(1) + 's';
 
   // DOM строк держим постоянным и меняем только ширину полоски — иначе CSS-transition не сработает
-  const cards = new Map(); // taskId → { card, badge, title, runsBox, rows: Map<thread, { row, bar, label, phase, elapsedMs }> }
+  // taskId → { card, envelope, duration, badge, runsBox, rows: Map<thread, { row, bar, label, phase, elapsedMs }> }
+  const cards = new Map();
+
+  const SVG = 'http://www.w3.org/2000/svg';
+  function svg(tag, attrs) {
+    const el = document.createElementNS(SVG, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    return el;
+  }
+
+  // Конверт 96×62; над ним 24px места под открытый клапан
+  function createEnvelope() {
+    const envelope = svg('svg', { class: 'envelope', viewBox: '-2 -26 100 92', width: 100, height: 92 });
+    envelope.append(
+      svg('path', { class: 'flap-open', d: 'M0 0 L48 -22 L96 0 Z' }),
+      svg('rect', { x: 0, y: 0, width: 96, height: 62, rx: 4 }),
+      svg('path', { class: 'flap-closed', d: 'M0 0 L48 30 L96 0' }),
+    );
+    const duration = svg('text', { x: 48, y: 52, 'text-anchor': 'middle' });
+    envelope.append(duration);
+    return { envelope, duration };
+  }
 
   function createCard(id) {
     const card = document.createElement('div');
     card.className = 'task-card';
     card.dataset.id = id;
 
-    const head = document.createElement('div');
-    head.className = 'task-head';
-    const title = Object.assign(document.createElement('span'), { className: 'name' });
-    const badge = Object.assign(document.createElement('span'), { className: 'method', textContent: 'run' });
+    // Слева пульт
+    const controls = Object.assign(document.createElement('div'), { className: 'card-controls' });
+    const title = Object.assign(document.createElement('div'), { className: 'card-title', textContent: `task#${id}` });
+    const ops = Object.assign(document.createElement('div'), { className: 'ops' });
     const runButton = Object.assign(document.createElement('button'), { className: 'run', textContent: '▶ run' });
     runButton.title = `POST ${base}/${id}/run — запустить run() в новом потоке`;
     runButton.onclick = () => call('POST', `${base}/${id}/run`);
+    ops.append(runButton, Object.assign(document.createElement('span'), { className: 'empty', textContent: 'каждый вызов — новый поток' }));
     const removeButton = Object.assign(document.createElement('button'), { className: 'danger', textContent: 'remove' });
+    removeButton.title = `DELETE ${base}/${id}`;
     removeButton.onclick = () => call('DELETE', `${base}/${id}`);
-    head.append(title, badge, runButton, removeButton);
+    controls.append(title, ops, document.createElement('br'), removeButton);
 
+    // Справа состояние — один столбик: конверт, под ним полоски потоков внутри run(), под ними бейдж
+    const state = Object.assign(document.createElement('div'), { className: 'task-state' });
+    const envelopeBox = Object.assign(document.createElement('div'), { className: 'envelope-box' });
+    const { envelope, duration } = createEnvelope();
     const runsBox = Object.assign(document.createElement('div'), { className: 'runs' });
-    card.append(head, runsBox);
-    return { card, badge, title, runsBox, rows: new Map() };
+    const badge = Object.assign(document.createElement('span'), { className: 'method', textContent: 'run' });
+    envelopeBox.append(envelope, runsBox, badge);
+    state.append(envelopeBox);
+
+    card.append(controls, state);
+    return { card, envelope, duration, badge, runsBox, rows: new Map() };
   }
 
+  // Полоска потока: заливка — прогресс, поверх — имя потока; цифры — в подсказке при наведении
   function createRow(thread) {
     const row = Object.assign(document.createElement('div'), { className: 'run-row' });
-    const name = Object.assign(document.createElement('span'), { className: 'thread', textContent: thread });
-    name.style.color = threadColor(thread);
-    const track = Object.assign(document.createElement('div'), { className: 'track' });
+    row.style.setProperty('--thread', threadColor(thread));
     const bar = Object.assign(document.createElement('div'), { className: 'bar' });
-    track.append(bar);
-    const label = Object.assign(document.createElement('span'), { className: 'label' });
-    row.append(name, track, label);
-    return { row, bar, label, phase: null, elapsedMs: null };
+    const name = Object.assign(document.createElement('span'), { className: 'thread', textContent: thread });
+    row.append(bar, name);
+    return { row, bar, phase: null, elapsedMs: null };
   }
 
   // Полоска едет плавно: после каждого события она доезжает до следующего ожидаемого тика за время этого тика.
@@ -253,9 +316,14 @@
   }
 
   function renderTask(task, view) {
-    view.title.textContent = `task#${task.id} · ${task.durationMs === null ? '?' : seconds(task.durationMs)}`;
-
     const inside = [...task.runs.values()].filter(r => r.phase === 'RUN').length;
+
+    // Конверт: клапан открыт, пока внутри есть потоки; несколько потоков — оранжевый; упал run() — красная вспышка
+    view.duration.textContent = task.durationMs === null ? '?' : seconds(task.durationMs);
+    view.envelope.setAttribute('class', 'envelope'
+      + (inside > 0 ? ' running' : '') + (inside > 1 ? ' multi' : '') + (task.failedAt !== null && inside === 0 ? ' failed' : ''));
+    view.envelope.style.setProperty('--flash', `${FAILED_FLASH_MS}ms`);
+
     view.badge.className = 'method' + (inside > 0 ? ' active' : '') + (inside > 1 ? ' multi' : '');
     view.badge.textContent = 'run' + (inside > 1 ? ` ×${inside}` : '');
     view.badge.title = inside > 1 ? `${inside} потока одновременно внутри run() одной задачи` : '';
@@ -277,10 +345,9 @@
       updateBar(rowView, run, task.durationMs);
 
       const total = task.durationMs ?? 0;
-      if (run.phase === 'RUN') rowView.label.textContent = `${seconds(run.elapsedMs)} / ${seconds(total)} · осталось ${seconds(total - run.elapsedMs)}`;
-      if (run.phase === 'DONE') rowView.label.textContent = `готово за ${seconds(total)}`;
-      if (run.phase === 'FAILED') rowView.label.textContent = `✗ ${run.error}`;
-      rowView.label.title = run.error ?? '';
+      if (run.phase === 'RUN') rowView.row.title = `${thread}: ${seconds(run.elapsedMs)} / ${seconds(total)} · осталось ${seconds(total - run.elapsedMs)}`;
+      if (run.phase === 'DONE') rowView.row.title = `${thread}: готово за ${seconds(total)}`;
+      if (run.phase === 'FAILED') rowView.row.title = `${thread}: ✗ ${run.error}`;
     }
   }
 

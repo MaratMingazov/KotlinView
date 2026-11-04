@@ -5,17 +5,24 @@ import mingazov.kotlinview.event.MethodIn
 import mingazov.kotlinview.event.MethodOut
 import mingazov.kotlinview.event.MethodOutFailed
 import mingazov.kotlinview.event.ObjectType
+import java.util.Deque
 import java.util.LinkedList
 
-class InstrumentedLinkedListInt (
+/**
+ * Только Deque, без MutableList: с двумя делегатами (MutableList и Deque) Kotlin 2.3.21 падает
+ * с внутренней ошибкой "Too many suitable delegated supertypes". Все наши методы есть в Deque.
+ * Методы, которые здесь не переопределены, уходят в delegate без событий.
+ */
+class InstrumentedLinkedListInt private constructor(
     val id: Long,
     private val sink: EventSink,
-) {
+    private val delegate: LinkedList<Int>,
+) : Deque<Int> by delegate {
 
-    private val delegate = LinkedList<Int>()
-    val size: Int get() = delegate.size
+    // delegate снаружи не передаётся: иначе кто-то мог бы менять список в обход событий
+    constructor(id: Long, sink: EventSink) : this(id, sink, LinkedList())
 
-    fun add(element: Int): Boolean {
+    override fun add(element: Int): Boolean {
         val args = mapOf("element" to element)
         sink.emit(MethodIn(ObjectType.LINKED_LIST_INT, id, threadName(), "add", args, snapshot()))
         try {
@@ -29,7 +36,7 @@ class InstrumentedLinkedListInt (
     }
 
     // Пока напрямую через delegate.offer — без вызова нашего add, поэтому вложенных событий add нет
-    fun offer(element: Int): Boolean {
+    override fun offer(element: Int): Boolean {
         val args = mapOf("element" to element)
         sink.emit(MethodIn(ObjectType.LINKED_LIST_INT, id, threadName(), "offer", args, snapshot()))
         try {
@@ -42,7 +49,7 @@ class InstrumentedLinkedListInt (
         }
     }
 
-    fun offerFirst(element: Int): Boolean {
+    override fun offerFirst(element: Int): Boolean {
         val args = mapOf("element" to element)
         sink.emit(MethodIn(ObjectType.LINKED_LIST_INT, id, threadName(), "offerFirst", args, snapshot()))
         try {
@@ -55,7 +62,7 @@ class InstrumentedLinkedListInt (
         }
     }
 
-    fun offerLast(element: Int): Boolean {
+    override fun offerLast(element: Int): Boolean {
         val args = mapOf("element" to element)
         sink.emit(MethodIn(ObjectType.LINKED_LIST_INT, id, threadName(), "offerLast", args, snapshot()))
         try {
@@ -69,7 +76,7 @@ class InstrumentedLinkedListInt (
     }
 
     /** Забирает голову. Пустой список — null: для poll это нормальный результат, а не ошибка. */
-    fun poll(): Int? {
+    override fun poll(): Int? {
         val args = emptyMap<String, Any?>()
         sink.emit(MethodIn(ObjectType.LINKED_LIST_INT, id, threadName(), "poll", args, snapshot()))
         try {
@@ -83,7 +90,7 @@ class InstrumentedLinkedListInt (
     }
 
     /** Забирает голову. Пустой список — NoSuchElementException. */
-    fun pop(): Int {
+    override fun pop(): Int {
         val args = emptyMap<String, Any?>()
         sink.emit(MethodIn(ObjectType.LINKED_LIST_INT, id, threadName(), "pop", args, snapshot()))
         try {

@@ -9,12 +9,14 @@ import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
 
-class InstrumentedArrayListInt(
+class InstrumentedArrayListInt private constructor(
     val id: Long,
     private val sink: EventSink,
-) {
-    private val delegate = ArrayList<Int>()
-    val size: Int get() = delegate.size
+    private val delegate: ArrayList<Int>,
+) : MutableList<Int> by delegate {
+
+    // delegate снаружи не передаётся: иначе кто-то мог бы менять список в обход событий
+    constructor(id: Long, sink: EventSink) : this(id, sink, ArrayList())
 
     // Перевёрнутый RW-lock: операции над delegate берут read lock — несколько потоков могут быть внутри одновременно,
     // поэтому гонки ArrayList сохраняются. Снимок берёт write lock — читает, только когда внутри delegate никого нет,
@@ -22,7 +24,7 @@ class InstrumentedArrayListInt(
     // Правило: snapshot() нельзя вызывать под read lock — read lock нельзя повысить до write, будет deadlock.
     private val lock = ReentrantReadWriteLock()
 
-    fun add(element: Int): Boolean {
+    override fun add(element: Int): Boolean {
         val args = mapOf("element" to element)
         sink.emit(MethodIn(ObjectType.ARRAY_LIST_INT, id, threadName(), "add", args, snapshot()))
         try {
@@ -36,7 +38,7 @@ class InstrumentedArrayListInt(
     }
 
     // В протоколе "addAt", а не "add": клиенту нужно отличать перегрузки
-    fun add(index: Int, element: Int) {
+    override fun add(index: Int, element: Int) {
         val args = mapOf("index" to index, "element" to element)
         sink.emit(MethodIn(ObjectType.ARRAY_LIST_INT, id, threadName(), "addAt", args, snapshot()))
         try {
@@ -48,7 +50,7 @@ class InstrumentedArrayListInt(
         }
     }
 
-    fun get(index: Int): Int {
+    override fun get(index: Int): Int {
         val args = mapOf("index" to index)
         sink.emit(MethodIn(ObjectType.ARRAY_LIST_INT, id, threadName(), "get", args, snapshot()))
         try {
