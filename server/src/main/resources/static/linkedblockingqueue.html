@@ -39,31 +39,20 @@
       width: 64px; background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
       color: var(--num); font: inherit; padding: 0 4px;
     }
-    .toolbar { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
-    .toolbar .title { color: var(--keyword); width: 64px; }
+    input::placeholder { color: var(--dim); }
 
-    /* --- полоса задач: из неё берём taskId для offer --- */
-    .tasks { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 4px 74px; min-height: 40px; }
-    .task-chip {
-      display: flex; align-items: center; gap: 6px; padding: 2px 6px; cursor: pointer;
-      border: 1px solid var(--border); border-radius: 4px; background: var(--panel);
-    }
-    .task-chip:hover { border-color: var(--fn); }
-    .task-chip .cid { color: var(--keyword); }
-    .task-chip .dur { color: var(--num); }
-    /* Задача уже лежит в какой-то очереди — её всё равно можно положить ещё раз */
-    .task-chip.queued { opacity: .5; }
-
-    /* --- карточка очереди: слева пульт, справа состояние (как .list-card на страницах списков) --- */
-    .queue-card {
-      display: grid; grid-template-columns: minmax(320px, 1fr) 2fr; gap: 24px; align-items: start;
+    /* --- карточка очереди: слева её пульт, справа её состояние (как .list-card в linkedlist.html) --- */
+    .list-card {
+      display: grid; grid-template-columns: minmax(300px, 1fr) 2fr; gap: 24px; align-items: start;
       padding: 10px 0; border-bottom: 1px solid var(--border);
     }
-    @media (max-width: 800px) { .queue-card { grid-template-columns: 1fr; } }
+    @media (max-width: 800px) { .list-card { grid-template-columns: 1fr; } }
     .card-title { color: var(--keyword); margin-bottom: 6px; }
-    /* Сетка пульта: метод | поле | ▶ | подсказка */
-    .ops { display: grid; grid-template-columns: max-content max-content max-content max-content; gap: 6px 10px; align-items: center; }
+    .card-title .capacity { color: var(--dim); }
+    /* Сетка пульта: метод | поля | ▶ — кнопки запуска выровнены в столбик */
+    .ops { display: grid; grid-template-columns: max-content max-content max-content; gap: 6px 10px; align-items: center; }
     .ops .name { color: var(--fn); }
+    .ops .args { display: flex; gap: 4px; }
     .card-controls .danger { margin-top: 10px; }
 
     /* --- состояние: бейджи методов --- */
@@ -80,39 +69,34 @@
       to { background: transparent; border-color: var(--border); color: var(--dim); }
     }
 
-    /* --- состояние: ячейки очереди head … tail --- */
-    .line { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 8px; min-height: 66px; }
-    .dir { color: var(--dim); font-size: 11px; padding: 16px 4px 0; }
-    .slot { display: flex; flex-direction: column; align-items: center; }
-    .slot .label { font-size: 11px; color: var(--keyword); height: 16px; }
-    .cell {
-      width: 56px; height: 40px; box-sizing: border-box; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; line-height: 1.2;
-      border: 2px dashed var(--border); border-radius: 6px;
+    /* --- состояние: цепочка узлов head ⇄ … ⇄ tail (как в linkedlist.html) --- */
+    .chain { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 0; margin-top: 8px; min-height: 66px; }
+    .node { display: flex; flex-direction: column; align-items: center; }
+    .node .label { font-size: 11px; color: var(--keyword); height: 16px; }
+    .node .box {
+      min-width: 40px; height: 32px; padding: 0 6px; display: flex; align-items: center; justify-content: center;
+      border: 2px solid var(--border); border-radius: 16px; color: var(--num); background: var(--panel);
     }
-    .cell.filled { border-style: solid; background: var(--panel); }
-    .cell .cid { color: var(--keyword); }
-    .cell .dur { color: var(--num); font-size: 11px; }
-    /* Призраки: взятая take'ом задача у головы, отклонённая offer'ом — у хвоста */
-    .cell.taken { border-color: var(--out); }
-    .cell.taken .dur { color: var(--out); }
-    .cell.rejected { border-color: var(--fail); }
-    .cell.rejected .dur { color: var(--fail); }
-    .size { color: var(--dim); padding: 16px 0 0 8px; }
-    @keyframes cell-new {
+    .node .idx { font-size: 11px; color: var(--dim); height: 16px; }
+    .link-arrow { color: var(--dim); padding: 0 6px; margin-bottom: 0; }
+    /* Призрак снятого узла (take) и неудачи (упавший take, отклонённый offer) */
+    .node.removed .box { border-style: dashed; border-color: var(--dim); color: var(--text); background: none; }
+    .node.null .box { border-style: dashed; border-color: var(--border); color: var(--dim); background: none; }
+    .node.failed .box { border-style: dashed; border-color: var(--fail); color: var(--fail); background: none; }
+    /* Подсветка тоже затухает, а не снимается рывком */
+    @keyframes node-new {
       from { background: color-mix(in srgb, var(--out) 45%, var(--panel)); border-color: var(--out); }
       to { background: var(--panel); border-color: var(--border); }
     }
     @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
 
-    /* --- состояние: потоки, которые висят внутри take() --- */
+    /* --- состояние: потоки, которые висят внутри take(). Есть только у блокирующей очереди --- */
     .waiting { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 6px; min-height: 22px; }
     .thread-chip {
       padding: 0 6px; border-radius: 3px; font-weight: bold; color: var(--thread);
       border: 1px solid color-mix(in srgb, var(--thread) 60%, transparent);
       background: color-mix(in srgb, var(--thread) 15%, transparent);
     }
-    .thread-chip.failed { color: var(--fail); border-color: var(--fail); background: none; }
 
     /* --- логи --- */
     .log { max-height: 40vh; overflow-y: auto; }
@@ -128,22 +112,13 @@
   <span id="status" class="off">● ws disconnected</span>
 </header>
 
-<div class="toolbar">
-  <span class="title">tasks</span>
-  длительность, сек <input id="duration" type="number" value="5" min="1" step="0.5">
-  <button id="createTask" class="primary" title="POST /api/tasks — создать задачу; она появится по событию OBJECT_CREATED">+ new task</button>
-  <span class="empty">клик по задаче — подставить её id в offer</span>
-</div>
-<div id="tasks" class="tasks"></div>
-
-<div class="toolbar">
-  <span class="title">queues</span>
+<div>
   capacity <input id="capacity" type="number" value="3" min="1">
-  <button id="createQueue" class="primary" title="POST /api/linkedblockingqueuerunnable — создать очередь; карточка появится по событию OBJECT_CREATED">+ new queue</button>
+  <button id="create" class="primary" title="POST /api/linkedblockingqueuerunnable — создать очередь; карточка появится по событию OBJECT_CREATED">+ new queue</button>
 </div>
 
 <!-- Карточка на каждую очередь: слева управляем ей, справа смотрим результат -->
-<div id="queues"></div>
+<div id="lists"></div>
 
 <h3>HTTP <button class="link" id="clearHttp">clear</button></h3>
 <div id="http" class="log"></div>
@@ -157,13 +132,7 @@
   const tasksBase = '/api/tasks';
   const QUEUE = 'LINKED_BLOCKING_QUEUE_RUNNABLE';
   const TASK = 'RUNNABLE_TASK';
-  const METHODS = ['offer', 'take'];
-  const PHASE_BY_TYPE = { METHOD_IN: 'IN', METHOD_OUT: 'OUT', METHOD_OUT_FAILED: 'OUT_FAILED' };
-  const INT_MAX = 2147483647;  // ёмкость LinkedBlockingQueue() без аргумента
-  const MAX_DRAWN_CELLS = 20;  // больше — пустые ячейки не рисуем, только «n / capacity»
-  const FADE_MS = 800;         // сколько затухает бейдж после выхода последнего потока
-  const CELL_FADE_MS = 1500;   // подсветка новой ячейки и призраки — дольше, чтобы успеть рассмотреть
-  const FAILED_FADE_MS = 4000; // упавший take — ещё дольше, чтобы успеть прочитать ошибку
+  const INT_MAX = 2147483647; // ёмкость LinkedBlockingQueue() без аргумента
 
   // Новые записи сверху
   function prepend(logId, text, isError) {
@@ -190,140 +159,247 @@
     }
   }
 
-  const durationMsOf = input => Math.round(Number(input.value) * 1000);
-
-  // «offer new» — два обычных запроса подряд: сервер не знает такой команды, offer принимает только taskId.
-  // Поэтому в логе честно видно: сначала OBJECT_CREATED задачи, потом offer
+  // offer новой задачи — два обычных запроса подряд: сервер не знает такой команды, offer принимает только taskId.
+  // Поэтому в логе честно видно: сначала OBJECT_CREATED задачи, потом offer. offer по taskId добавим позже
   async function offerNew(queueId, durationMs) {
     const created = await call('POST', tasksBase, { durationMs });
     if (created) await call('POST', `${base}/${queueId}/offer`, { taskId: created.objectId });
   }
 
-  // Карточки создаёт не ответ на create, а событие OBJECT_CREATED — так же, как для объектов, созданных извне
-  $('createTask').onclick = () => call('POST', tasksBase, { durationMs: durationMsOf($('duration')) });
-  $('createQueue').onclick = () => call('POST', base, { capacity: Number($('capacity').value) });
+  // Карточку создаёт не ответ на create, а событие OBJECT_CREATED — так же, как для очередей, созданных извне
+  $('create').onclick = () => call('POST', base, { capacity: Number($('capacity').value) });
   $('clearHttp').onclick = () => { $('http').innerHTML = ''; };
   $('clearWs').onclick = () => { $('ws').innerHTML = ''; };
 
-  // ---------- Состояние ----------
+  // ---------- State ----------
 
-  // taskId → { id, durationMs }. Задачи нужны только ради длительности в ячейках и полосы задач
-  const tasks = new Map();
-  let lastTaskId = null; // последний созданный — подставляется в поле offer
+  const METHODS = ['offer', 'take'];
+  const PHASE_BY_TYPE = { METHOD_IN: 'IN', METHOD_OUT: 'OUT', METHOD_OUT_FAILED: 'OUT_FAILED' };
+  const FADE_MS = 800; // сколько затухает бейдж после выхода последнего потока — подбирается на глаз
+  const NODE_FADE_MS = 1500; // сколько затухает подсветка узлов — дольше, чтобы успеть рассмотреть
 
-  // queueId → {
-  //   id, capacity, taskIds,                      — из state любого события очереди
-  //   inside: { method: Set<thread> },            — кто сейчас внутри метода (для бейджей)
-  //   fade: { method: { start, failed } },        — затухание бейджа после выхода последнего потока
-  //   waiting: Map<thread, { failed, error, endedAt }>  — потоки внутри take(); упавшие тают
-  //   ghosts: [{ side: 'head'|'tail', kind: 'taken'|'rejected', taskId, text, start }]
-  //   added: { index, start } | null              — подсветка ячейки после успешного offer
-  // }
-  const queues = new Map();
+  // taskId → durationMs. Задачи нужны только ради длительности в подсказке узла
+  const durations = new Map();
 
-  function taskOf(id) {
-    if (!tasks.has(id)) tasks.set(id, { id, durationMs: null });
-    return tasks.get(id);
-  }
+  // objectId → { id, capacity, elements, inside: { method: Set<thread> }, fade: { method: { start, failed } }, nodeEffect }
+  // elements — taskIds от головы к хвосту. inside.take — заодно и «ждут в take»: поток внутри take() висит, пока очередь пуста
+  // fade.start — когда вышел последний поток (null — не затухает); fade.failed — гаснуть красным
+  const lists = new Map();
 
-  // Очередь создаётся и по OBJECT_CREATED, и по любому METHOD_*: страницу могли открыть уже после создания
-  function queueOf(id) {
-    if (!queues.has(id)) {
-      queues.set(id, {
-        id, capacity: null, taskIds: [],
-        inside: Object.fromEntries(METHODS.map(m => [m, new Set()])),
-        fade: Object.fromEntries(METHODS.map(m => [m, { start: null, failed: false }])),
-        waiting: new Map(), ghosts: [], added: null,
-      });
+  // Очередь создаётся и по CREATED, и по любому другому событию: страницу могли открыть уже после CREATED
+  function listOf(id) {
+    if (!lists.has(id)) {
+      const inside = Object.fromEntries(METHODS.map(m => [m, new Set()]));
+      const fade = Object.fromEntries(METHODS.map(m => [m, { start: null, failed: false }]));
+      lists.set(id, { id, capacity: null, elements: [], inside, fade, nodeEffect: null });
     }
-    return queues.get(id);
+    return lists.get(id);
   }
 
   function apply(env) {
-    const d = env.data;
-    if (d?.objectType === TASK) applyTask(env, d);
-    if (d?.objectType === QUEUE) applyQueue(env, d);
-  }
-
-  function applyTask(env, d) {
-    if (env.type === 'OBJECT_REMOVED') { tasks.delete(d.objectId); return; }
-    const task = taskOf(d.objectId);
-    if (d.state?.durationMs !== undefined) task.durationMs = d.state.durationMs;
-    if (env.type === 'OBJECT_CREATED') {
-      lastTaskId = d.objectId;
-      fillOfferInputs(d.objectId);
+    const data = env.data;
+    if (data?.objectType === TASK) {
+      if (env.type === 'OBJECT_REMOVED') durations.delete(data.objectId);
+      else if (data.state?.durationMs !== undefined) durations.set(data.objectId, data.state.durationMs);
+      return;
     }
-  }
+    if (data?.objectType !== QUEUE) return;
+    if (env.type === 'OBJECT_REMOVED') { lists.delete(data.objectId); return; }
 
-  function applyQueue(env, d) {
-    if (env.type === 'OBJECT_REMOVED') { queues.delete(d.objectId); return; }
-    const queue = queueOf(d.objectId);
     // Порядок METHOD_OUT offer и take может перепутаться (TODO на сервере), но state в каждом событии полный —
     // поэтому просто берём последний
-    if (d.state) {
-      queue.capacity = d.state.capacity;
-      queue.taskIds = d.state.taskIds;
+    const list = listOf(data.objectId);
+    if (data.state) {
+      list.capacity = data.state.capacity;
+      list.elements = data.state.taskIds;
     }
 
     const phase = PHASE_BY_TYPE[env.type];
-    if (!phase || !METHODS.includes(d.method)) return;
-    const method = d.method;
+    if (!phase || !METHODS.includes(data.method)) return;
+    const method = data.method;
 
-    // Бейдж: горит, пока внутри есть потоки, потом затухает
-    const inside = queue.inside[method];
-    const fade = queue.fade[method];
+    // Внутри метода может быть несколько потоков сразу: горит, пока не вышел последний, потом затухает
+    const inside = list.inside[method];
+    const fade = list.fade[method];
     if (phase === 'IN') {
-      if (inside.size === 0) queue.fade[method] = { start: null, failed: false }; // зажгли заново
-      inside.add(d.thread);
+      if (inside.size === 0) list.fade[method] = { start: null, failed: false }; // зажгли заново
+      inside.add(data.thread);
     } else {
-      inside.delete(d.thread);
+      inside.delete(data.thread);
       fade.failed ||= phase === 'OUT_FAILED'; // ошибку запоминаем, даже если внутри ещё есть потоки
       if (inside.size === 0) fade.start = performance.now();
     }
 
-    if (method === 'take') applyTake(queue, phase, d);
-    if (method === 'offer') applyOffer(queue, phase, d);
-  }
-
-  // Главное на странице: поток висит в take(), пока очередь пуста
-  function applyTake(queue, phase, d) {
-    if (phase === 'IN') {
-      queue.waiting.set(d.thread, { failed: false, error: null, endedAt: null });
-    } else if (phase === 'OUT') {
-      queue.waiting.delete(d.thread);
-      addGhost(queue, { side: 'head', kind: 'taken', taskId: d.result, text: `→ ${d.thread}` });
-    } else {
-      // Упавший поток не исчезает сразу — краснеет и тает, если за это время тот же поток не зашёл снова
-      const endedAt = performance.now();
-      queue.waiting.set(d.thread, { failed: true, error: d.error, endedAt });
-      setTimeout(() => {
-        if (queue.waiting.get(d.thread)?.endedAt === endedAt) { queue.waiting.delete(d.thread); render(); }
-      }, FAILED_FADE_MS);
+    const effect = nodeEffectOf(method, phase, data);
+    if (effect) {
+      list.nodeEffect = { ...effect, start: performance.now() };
+      setTimeout(render, NODE_FADE_MS); // убрать призрак, когда он догорит
     }
   }
 
-  function applyOffer(queue, phase, d) {
-    if (phase !== 'OUT') return;
-    if (d.result === true) {
-      // При гонке «последняя ячейка» — допущение, а не наблюдение
-      queue.added = { index: queue.taskIds.length - 1, start: performance.now() };
-      setTimeout(render, CELL_FADE_MS);
-    } else {
-      addGhost(queue, { side: 'tail', kind: 'rejected', taskId: d.args.taskId, text: '✗ full' });
+  // Что подсветить после этого события (null — ничего). Как в linkedlist.html: offer ≈ offer, take ≈ pop.
+  // side — с какой стороны цепочки призрак: take снимает с головы, отклонённый offer не попал в хвост
+  function nodeEffectOf(method, phase, data) {
+    if (phase === 'OUT_FAILED') {
+      return method === 'take' ? { ghost: '✗', kind: 'failed', side: 'head', title: `${data.thread}: ${data.error}` } : null;
     }
+    if (phase !== 'OUT') return null;
+    if (method === 'offer') {
+      // При гонке «последний узел» — допущение, а не наблюдение
+      if (data.result === true) return { new: data.state.taskIds.length - 1 };
+      return { ghost: `#${data.args.taskId}`, kind: 'failed', side: 'tail', title: `очередь полна: offer вернул false` };
+    }
+    // Снятого узла в state уже нет — его taskId берём из result
+    if (method === 'take') return { ghost: `#${data.result}`, kind: 'removed', side: 'head', title: `взял ${data.thread}` };
+    return null;
   }
 
-  function addGhost(queue, ghost) {
-    queue.ghosts.push({ ...ghost, start: performance.now() });
-    setTimeout(() => {
-      queue.ghosts = queue.ghosts.filter(g => performance.now() - g.start < CELL_FADE_MS);
-      render();
-    }, CELL_FADE_MS);
+  // ---------- Карточка очереди: пульт слева ----------
+
+  // Операции пульта: имя, поля (placeholder + значение по умолчанию) и что вызвать
+  const OPERATIONS = [
+    { name: 'offer', fields: [['сек', 5]], title: id => `POST ${tasksBase} {durationMs}, затем POST ${base}/${id}/offer {taskId} — новая задача`,
+      run: (id, inputs) => offerNew(id, Math.round(Number(inputs['сек'].value) * 1000)) },
+    { name: 'take', fields: [], title: id => `POST ${base}/${id}/take — take() в новом потоке`,
+      run: id => call('POST', `${base}/${id}/take`) },
+  ];
+
+  const capacityText = capacity => capacity === null ? '?' : capacity === INT_MAX ? '∞' : capacity;
+
+  // Карточка создаётся один раз: поля пульта не пересоздаются, поэтому введённое значение и фокус не теряются
+  function createCard(list) {
+    const id = list.id;
+    const card = document.createElement('div');
+    card.className = 'list-card';
+    card.dataset.id = id;
+
+    const controls = document.createElement('div');
+    controls.className = 'card-controls';
+    const title = Object.assign(document.createElement('div'), { className: 'card-title', textContent: `queue #${id} ` });
+    // Ёмкость здесь, а не в состоянии: без неё непонятно, почему offer вернул false
+    title.append(Object.assign(document.createElement('span'), { className: 'capacity', textContent: `· capacity ${capacityText(list.capacity)}` }));
+    controls.append(title);
+
+    const ops = document.createElement('div');
+    ops.className = 'ops';
+    for (const op of OPERATIONS) {
+      const name = Object.assign(document.createElement('span'), { className: 'name', textContent: op.name });
+      const args = Object.assign(document.createElement('span'), { className: 'args' });
+      const inputs = {};
+      for (const [field, defaultValue] of op.fields) {
+        const input = Object.assign(document.createElement('input'), { type: 'number', value: defaultValue, placeholder: field, title: field });
+        input.setAttribute('aria-label', field);
+        inputs[field] = input;
+        args.append(input);
+      }
+      const run = Object.assign(document.createElement('button'), { className: 'run', textContent: '▶', title: op.title(id) });
+      run.onclick = () => op.run(id, inputs);
+      // Enter в поле строки — то же, что ▶
+      for (const input of Object.values(inputs)) input.addEventListener('keydown', e => { if (e.key === 'Enter') run.click(); });
+      ops.append(name, args, run);
+    }
+
+    const remove = Object.assign(document.createElement('button'), { className: 'danger', textContent: 'remove queue' });
+    remove.onclick = () => call('DELETE', `${base}/${id}`);
+
+    controls.append(ops, remove);
+
+    const state = document.createElement('div');
+    state.className = 'card-state';
+
+    card.append(controls, state);
+    return { card, state };
   }
 
-  // ---------- Отрисовка: полоса задач ----------
+  // ---------- Карточка очереди: состояние справа ----------
+  // node, linkArrow, renderBadges, renderChain — как в linkedlist.html: кандидаты в общий компонент
+
+  // Узел цепочки: метка (head/tail), значение, позиция
+  function node(value, label, index) {
+    const el = document.createElement('div');
+    el.className = 'node';
+    el.append(
+      Object.assign(document.createElement('div'), { className: 'label', textContent: label }),
+      Object.assign(document.createElement('div'), { className: 'box', textContent: value }),
+      Object.assign(document.createElement('div'), { className: 'idx', textContent: index }),
+    );
+    return el;
+  }
+
+  const linkArrow = () => Object.assign(document.createElement('span'), { className: 'link-arrow', textContent: '⇄' });
+
+  // Анимация, продолженная с того места, где она была до пересоздания элемента
+  const glow = (name, elapsed) => `${name} ${NODE_FADE_MS}ms ease-out ${-elapsed}ms forwards`;
+
+  function renderBadges(list) {
+    const badges = document.createElement('div');
+    badges.className = 'badges';
+    for (const method of METHODS) {
+      const threads = list.inside[method];
+      const el = document.createElement('span');
+      el.className = 'method' + (threads.size > 0 ? ' active' : '');
+      // Бейдж пересоздаётся на каждый render. Отрицательная задержка продолжает затухание
+      // с того места, где оно было, — без неё анимация начиналась бы заново и бейдж дёргался
+      const { start, failed } = list.fade[method];
+      const elapsed = start === null ? Infinity : performance.now() - start;
+      if (threads.size === 0 && elapsed < FADE_MS) {
+        el.style.animation = `${failed ? 'afterglow-failed' : 'afterglow'} ${FADE_MS}ms ease-out ${-elapsed}ms forwards`;
+      }
+      el.textContent = method + (threads.size > 1 ? ` ×${threads.size}` : '');
+      el.title = threads.size > 0 ? [...threads].join('\n') : '';
+      badges.append(el);
+    }
+    return badges;
+  }
 
   const seconds = ms => ms == null ? '?' : (ms / 1000).toFixed(1) + 's';
+
+  // Значение узла — id задачи, длительность — в подсказке
+  function taskNode(taskId, label, index) {
+    const el = node(`#${taskId}`, label, index);
+    el.title = `task#${taskId}, ${seconds(durations.get(taskId))}`;
+    return el;
+  }
+
+  // Призрак: тает слева от головы (take) или справа от хвоста (отклонённый offer)
+  function ghostParts(effect, elapsed, hasElements) {
+    const ghost = node(effect.ghost, '', '');
+    ghost.classList.add(effect.kind);
+    ghost.style.animation = glow('fade-out', elapsed);
+    if (effect.title) ghost.title = effect.title;
+    if (!hasElements) return [ghost];
+    const arrow = linkArrow();
+    arrow.style.animation = glow('fade-out', elapsed);
+    return effect.side === 'tail' ? [arrow, ghost] : [ghost, arrow];
+  }
+
+  function renderChain(list) {
+    const chain = document.createElement('div');
+    chain.className = 'chain';
+    const effect = list.nodeEffect;
+    const elapsed = effect ? performance.now() - effect.start : Infinity;
+    const active = elapsed < NODE_FADE_MS;
+    const hasGhost = active && effect.ghost !== undefined;
+    const hasElements = list.elements.length > 0;
+
+    if (hasGhost && effect.side !== 'tail') chain.append(...ghostParts(effect, elapsed, hasElements));
+
+    const last = list.elements.length - 1;
+    list.elements.forEach((taskId, i) => {
+      if (i > 0) chain.append(linkArrow());
+      const label = i === 0 && i === last ? 'head·tail' : i === 0 ? 'head' : i === last ? 'tail' : '';
+      const el = taskNode(taskId, label, i);
+      if (active && effect.new === i) el.querySelector('.box').style.animation = glow('node-new', elapsed);
+      chain.append(el);
+    });
+
+    if (!hasElements && !hasGhost) {
+      chain.append(Object.assign(document.createElement('span'), { className: 'empty', textContent: 'head = tail = null' }));
+    }
+
+    if (hasGhost && effect.side === 'tail') chain.append(...ghostParts(effect, elapsed, hasElements));
+    return chain;
+  }
 
   // Стабильный цвет для имени потока
   function threadColor(name) {
@@ -332,166 +408,17 @@
     return `hsl(${h}, 60%, 65%)`;
   }
 
-  const el = (tag, className, textContent) => Object.assign(document.createElement(tag), { className: className ?? '', textContent: textContent ?? '' });
-
-  function renderTasks() {
-    const root = $('tasks');
-    root.replaceChildren();
-    if (tasks.size === 0) {
-      root.append(el('span', 'empty', 'нет задач — «+ new task» или «offer new» в очереди'));
-      return;
-    }
-    for (const task of [...tasks.values()].sort((a, b) => a.id - b.id)) {
-      // В каких очередях лежит и сколько раз: одну задачу можно положить несколько раз
-      const where = [...queues.values()]
-        .map(q => [q.id, q.taskIds.filter(id => id === task.id).length])
-        .filter(([, n]) => n > 0)
-        .map(([id, n]) => `queue #${id}` + (n > 1 ? ` ×${n}` : ''));
-
-      const chip = el('div', 'task-chip' + (where.length ? ' queued' : ''));
-      chip.title = (where.length ? `лежит в ${where.join(', ')}\n` : '') + 'клик — подставить id в offer';
-      chip.onclick = () => fillOfferInputs(task.id);
-      const remove = el('button', 'link', '✕');
-      remove.title = `DELETE ${tasksBase}/${task.id}`;
-      remove.onclick = e => { e.stopPropagation(); call('DELETE', `${tasksBase}/${task.id}`); };
-      chip.append(el('span', 'cid', `#${task.id}`), el('span', 'dur', seconds(task.durationMs)), remove);
-      root.append(chip);
-    }
-  }
-
-  // ---------- Отрисовка: карточка очереди, пульт слева ----------
-
-  // queueId → { card, state, offerInput }
-  const cards = new Map();
-
-  function fillOfferInputs(taskId) {
-    for (const { offerInput } of cards.values()) offerInput.value = taskId;
-  }
-
-  // Карточка создаётся один раз: поля пульта не пересоздаются, поэтому введённое значение и фокус не теряются
-  function createCard(id) {
-    const card = el('div', 'queue-card');
-    card.dataset.id = id;
-
-    const controls = el('div', 'card-controls');
-    controls.append(el('div', 'card-title', `queue #${id}`));
-    const ops = el('div', 'ops');
-
-    // offer существующей задачи: можно положить одну и ту же задачу несколько раз
-    const offerInput = Object.assign(document.createElement('input'), { type: 'number', value: lastTaskId ?? 1, min: 1, title: 'taskId' });
-    const offerRun = el('button', 'run', '▶');
-    offerRun.title = `POST ${base}/${id}/offer {taskId}`;
-    offerRun.onclick = () => call('POST', `${base}/${id}/offer`, { taskId: Number(offerInput.value) });
-    offerInput.addEventListener('keydown', e => { if (e.key === 'Enter') offerRun.click(); });
-    ops.append(el('span', 'name', 'offer'), offerInput, offerRun, el('span', 'empty', 'taskId'));
-
-    // offer new: создать задачу и сразу положить
-    const newInput = Object.assign(document.createElement('input'), { type: 'number', value: $('duration').value, min: 1, step: 0.5, title: 'длительность, сек' });
-    const newRun = el('button', 'run', '▶');
-    newRun.title = `POST ${tasksBase} {durationMs}, затем POST ${base}/${id}/offer {taskId}`;
-    newRun.onclick = () => offerNew(id, durationMsOf(newInput));
-    newInput.addEventListener('keydown', e => { if (e.key === 'Enter') newRun.click(); });
-    ops.append(el('span', 'name', 'offer new'), newInput, newRun, el('span', 'empty', 'сек'));
-
-    // take: блокирующий, поэтому сервер запускает его в новом потоке taker-N
-    const takeRun = el('button', 'run', '▶');
-    takeRun.title = `POST ${base}/${id}/take — take() в новом потоке`;
-    takeRun.onclick = () => call('POST', `${base}/${id}/take`);
-    ops.append(el('span', 'name', 'take'), el('span'), takeRun, el('span', 'empty', 'каждый вызов — новый поток'));
-
-    const remove = el('button', 'danger', 'remove queue');
-    remove.title = `DELETE ${base}/${id}`;
-    remove.onclick = () => call('DELETE', `${base}/${id}`);
-    controls.append(ops, remove);
-
-    const state = el('div', 'card-state');
-    card.append(controls, state);
-    return { card, state, offerInput };
-  }
-
-  // ---------- Отрисовка: карточка очереди, состояние справа ----------
-
-  // Анимация, продолженная с того места, где она была до пересоздания элемента
-  const continued = (name, durationMs, elapsed) => `${name} ${durationMs}ms ease-out ${-elapsed}ms forwards`;
-
-  function renderBadges(queue) {
-    const badges = el('div', 'badges');
-    for (const method of METHODS) {
-      const threads = queue.inside[method];
-      const badge = el('span', 'method' + (threads.size > 0 ? ' active' : ''), method + (threads.size > 1 ? ` ×${threads.size}` : ''));
-      // Бейдж пересоздаётся на каждый render. Отрицательная задержка продолжает затухание с того места, где оно было
-      const { start, failed } = queue.fade[method];
-      const elapsed = start === null ? Infinity : performance.now() - start;
-      if (threads.size === 0 && elapsed < FADE_MS) badge.style.animation = continued(failed ? 'afterglow-failed' : 'afterglow', FADE_MS, elapsed);
-      badge.title = threads.size > 0 ? [...threads].join('\n') : '';
-      badges.append(badge);
-    }
-    return badges;
-  }
-
-  function slot(label, cell) {
-    const s = el('div', 'slot');
-    s.append(el('div', 'label', label), cell);
-    return s;
-  }
-
-  function taskCell(taskId, className, subText) {
-    const cell = el('div', className);
-    cell.append(el('div', 'cid', `#${taskId}`), el('div', 'dur', subText ?? seconds(tasks.get(taskId)?.durationMs)));
-    return cell;
-  }
-
-  function renderGhosts(queue, side) {
-    const now = performance.now();
-    return queue.ghosts
-      .filter(g => g.side === side && now - g.start < CELL_FADE_MS)
-      .map(g => {
-        const ghost = slot('', taskCell(g.taskId, `cell ${g.kind}`, g.text));
-        ghost.style.animation = continued('fade-out', CELL_FADE_MS, now - g.start);
-        return ghost;
-      });
-  }
-
-  // take забирает с головы (слева), offer кладёт в хвост (справа)
-  function renderLine(queue) {
-    const line = el('div', 'line');
-    const n = queue.taskIds.length;
-    const capacity = queue.capacity;
-    const drawEmpty = capacity !== null && capacity <= MAX_DRAWN_CELLS;
-    const count = drawEmpty ? Math.max(capacity, n) : n;
-    const added = queue.added;
-    const addedElapsed = added ? performance.now() - added.start : Infinity;
-
-    line.append(...renderGhosts(queue, 'head'), el('span', 'dir', 'take ◀'));
-    for (let i = 0; i < count; i++) {
-      if (i >= n) { line.append(slot('', el('div', 'cell'))); continue; }
-      const label = i === 0 && i === n - 1 ? 'head·tail' : i === 0 ? 'head' : i === n - 1 ? 'tail' : '';
-      const cell = taskCell(queue.taskIds[i], 'cell filled');
-      if (added?.index === i && addedElapsed < CELL_FADE_MS) cell.style.animation = continued('cell-new', CELL_FADE_MS, addedElapsed);
-      line.append(slot(label, cell));
-    }
-    if (count === 0) line.append(el('span', 'empty', 'пусто'));
-    line.append(el('span', 'dir', '◀ offer'), ...renderGhosts(queue, 'tail'));
-
-    const capacityText = capacity === null ? '?' : capacity === INT_MAX ? '∞' : capacity;
-    line.append(el('span', 'size', `${n} / ${capacityText}`));
-    return line;
-  }
-
-  function renderWaiting(queue) {
-    const row = el('div', 'waiting');
-    row.append(el('span', 'empty', 'ждут в take:'));
-    if (queue.waiting.size === 0) row.append(el('span', 'empty', '—'));
-    const now = performance.now();
-    for (const [thread, w] of queue.waiting) {
-      const chip = el('span', 'thread-chip' + (w.failed ? ' failed' : ''), thread);
+  // Есть только у блокирующей очереди: в общий компонент цепочки не входит
+  function renderWaiting(list) {
+    const row = document.createElement('div');
+    row.className = 'waiting';
+    row.append(Object.assign(document.createElement('span'), { className: 'empty', textContent: 'ждут в take:' }));
+    const threads = list.inside.take;
+    if (threads.size === 0) row.append(Object.assign(document.createElement('span'), { className: 'empty', textContent: '—' }));
+    for (const thread of threads) {
+      const chip = Object.assign(document.createElement('span'), { className: 'thread-chip', textContent: thread });
       chip.style.setProperty('--thread', threadColor(thread));
-      if (w.failed) {
-        chip.title = `✗ ${w.error}`;
-        chip.style.animation = continued('fade-out', FAILED_FADE_MS, now - w.endedAt);
-      } else {
-        chip.title = `${thread} внутри take(): ждёт, пока в очереди появится задача`;
-      }
+      chip.title = `${thread} внутри take(): ждёт, пока в очереди появится задача`;
       row.append(chip);
     }
     return row;
@@ -499,31 +426,33 @@
 
   // ---------- Синхронизация карточек с состоянием ----------
 
+  const cards = new Map(); // objectId → { card, state }
+
   function render() {
-    renderTasks();
-    const root = $('queues');
+    const root = $('lists');
 
     // Удалить карточки исчезнувших очередей
     for (const [id, { card }] of cards) {
-      if (!queues.has(id)) { card.remove(); cards.delete(id); }
+      if (!lists.has(id)) { card.remove(); cards.delete(id); }
     }
 
     // Создать карточки новых очередей — по порядку id
-    for (const queue of [...queues.values()].sort((a, b) => a.id - b.id)) {
-      if (!cards.has(queue.id)) {
-        const created = createCard(queue.id);
-        cards.set(queue.id, created);
-        const next = [...root.querySelectorAll('.queue-card')].find(c => Number(c.dataset.id) > queue.id);
+    for (const list of [...lists.values()].sort((a, b) => a.id - b.id)) {
+      if (!cards.has(list.id)) {
+        const created = createCard(list);
+        cards.set(list.id, created);
+        const next = [...root.querySelectorAll('.list-card')].find(c => Number(c.dataset.id) > list.id);
         root.insertBefore(created.card, next ?? null);
       }
       // Пульт не трогаем — перерисовываем только правую часть
-      cards.get(queue.id).state.replaceChildren(renderBadges(queue), renderLine(queue), renderWaiting(queue));
+      const { state } = cards.get(list.id);
+      state.replaceChildren(renderBadges(list), renderChain(list), renderWaiting(list));
     }
 
-    const placeholder = root.querySelector('.empty-queues');
-    if (queues.size === 0 && !placeholder) {
-      root.innerHTML = '<div class="empty empty-queues">нет очередей — нажмите «+ new queue»</div>';
-    } else if (queues.size > 0 && placeholder) {
+    const placeholder = root.querySelector('.empty-lists');
+    if (lists.size === 0 && !placeholder) {
+      root.innerHTML = '<div class="empty empty-lists">нет очередей — нажмите «+ new queue»</div>';
+    } else if (lists.size > 0 && placeholder) {
       placeholder.remove();
     }
   }
@@ -534,7 +463,9 @@
     const type = env.data?.objectType;
     if (type !== QUEUE && type !== TASK) return; // чужие события (списки и т.п.) не засоряют лог
     const row = document.createElement('div');
-    const typeEl = el('span', 'type', env.type);
+    const typeEl = document.createElement('span');
+    typeEl.className = 'type';
+    typeEl.textContent = env.type;
     const time = new Date(env.ts).toISOString().slice(11, 23); // HH:MM:SS.mmm, UTC
     row.append(`#${env.seq}  ${time}  `, typeEl, `  ${JSON.stringify(env.data)}`);
     if (env.type.endsWith('_FAILED')) row.className = 'error';
