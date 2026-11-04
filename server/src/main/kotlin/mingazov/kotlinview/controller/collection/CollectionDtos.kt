@@ -9,3 +9,5 @@ data class IndexRequest(val index: Int)
 data class IndexElementRequest(val index: Int, val element: Int)
 data class ResultResponse<T>(val result: T)
 data class ErrorResponse(val error: String)
+/** Метод запущен в отдельном потоке: ответ — имя потока, ход выполнения — в событиях METHOD_*. */
+data class ThreadResponse(val thread: String)

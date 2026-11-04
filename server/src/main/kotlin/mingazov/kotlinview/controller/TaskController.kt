@@ -2,6 +2,7 @@ package mingazov.kotlinview.controller
 
 import mingazov.kotlinview.controller.collection.CreatedResponse
 import mingazov.kotlinview.controller.collection.ErrorResponse
+import mingazov.kotlinview.controller.collection.ThreadResponse
 import mingazov.kotlinview.instrumented.RunnableTaskNotFoundException
 import mingazov.kotlinview.service.InstrumentedRunnableTaskService
 import org.springframework.http.HttpStatus
@@ -15,7 +16,6 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 data class CreateTaskRequest(val durationMs: Long)
-data class RunTaskResponse(val thread: String)
 
 @RestController
 @RequestMapping("/api/tasks")
@@ -34,9 +34,9 @@ class TaskController(
     // Не ждёт окончания: run() идёт в отдельном потоке, ход выполнения — в событиях METHOD_*
     @PostMapping("/{taskId}/run")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    fun run(@PathVariable taskId: Long): RunTaskResponse {
+    fun run(@PathVariable taskId: Long): ThreadResponse {
         val thread = taskService.run(taskId)
-        val response = RunTaskResponse(thread)
+        val response = ThreadResponse(thread)
         return response
     }
 

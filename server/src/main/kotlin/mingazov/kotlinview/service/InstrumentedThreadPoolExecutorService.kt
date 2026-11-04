@@ -2,7 +2,7 @@ package mingazov.kotlinview.service
 
 import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.event.PoolRemoved
-import mingazov.kotlinview.instrumented.InstrumentedRunnableBlockingQueue
+import mingazov.kotlinview.instrumented.InstrumentedLinkedBlockingQueueRunnable
 import mingazov.kotlinview.instrumented.InstrumentedRunnableTask
 import mingazov.kotlinview.instrumented.InstrumentedThreadFactory
 import mingazov.kotlinview.instrumented.InstrumentedThreadPoolExecutor
@@ -23,7 +23,7 @@ class InstrumentedThreadPoolExecutorService(
         corePoolSize: Int,
         maximumPoolSize: Int,
         keepAliveMs: Long,
-        queue: InstrumentedRunnableBlockingQueue,
+        queue: InstrumentedLinkedBlockingQueueRunnable,
         threadFactory: InstrumentedThreadFactory,
     ): InstrumentedThreadPoolExecutor {
         val poolId = poolIds.incrementAndGet()

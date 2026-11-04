@@ -2,6 +2,7 @@ package mingazov.kotlinview.config
 
 import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.instrumented.collection.InstrumentedArrayListIntRegistry
+import mingazov.kotlinview.instrumented.InstrumentedLinkedBlockingQueueRunnableRegistry
 import mingazov.kotlinview.instrumented.InstrumentedRunnableTaskRegistry
 import mingazov.kotlinview.instrumented.collection.InstrumentedLinkedListIntRegistry
 import org.springframework.context.annotation.Bean
@@ -18,4 +19,7 @@ class AlgorithmsConfig {
 
     @Bean
     fun runnableTaskRegistry(sink: EventSink) = InstrumentedRunnableTaskRegistry(sink)
+
+    @Bean
+    fun linkedBlockingQueueRunnableRegistry(sink: EventSink) = InstrumentedLinkedBlockingQueueRunnableRegistry(sink)
 }

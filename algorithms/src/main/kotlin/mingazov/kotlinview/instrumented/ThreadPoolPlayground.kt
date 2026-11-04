@@ -20,7 +20,7 @@ fun main() {
 }
 
 fun runThreadPoolExecutor(sink: EventSink) {
-    val queue = InstrumentedRunnableBlockingQueue(0, 2, sink)
+    val queue = InstrumentedLinkedBlockingQueueRunnable(0, 2, sink)
     val factory = InstrumentedThreadFactory(1, sink)
     val threadPoolExecutor = InstrumentedThreadPoolExecutor(1, sink, 1, 1, 1000, queue, factory)
 
