@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>ThreadPoolExecutor playground</title>
+  <style>
+    /* Палитра как в arraylist-ide.html (IntelliJ Darcula) */
+    :root {
+      --bg: #1e1f22; --panel: #2b2d30; --border: #3c3f41; --text: #bcbec4; --dim: #6f737a;
+      --keyword: #cf8e6d; --fn: #56a8f5; --num: #2aacb8; --str: #6aab73;
+      --in: #56a8f5; --out: #6aab73; --fail: #f75464;
+    }
+    body {
+      font: 13px/1.5 "JetBrains Mono", ui-monospace, Menlo, monospace; margin: 16px;
+      background: var(--bg); color: var(--text);
+    }
+    header { display: flex; justify-content: space-between; align-items: center; }
+    h2 { color: var(--keyword); font-weight: normal; }
+    h3 {
+      margin: 16px 0 4px; border-bottom: 1px solid var(--border); color: var(--dim); font-weight: normal;
+      display: flex; justify-content: space-between; align-items: baseline;
+    }
+    .on { color: var(--out); }
+    .off { color: var(--fail); }
+    .empty { color: var(--dim); }
+
+    /* --- кнопки и поля --- */
+    button {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+      color: var(--fn); font: inherit; padding: 0 8px; cursor: pointer;
+    }
+    button:hover { border-color: currentColor; }
+    button.primary { color: var(--out); padding: 2px 12px; }
+    button.run { color: var(--out); }
+    button.danger { color: var(--fail); }
+    button.link { background: none; border: none; color: var(--dim); padding: 0; }
+    button.link:hover { color: var(--text); }
+    input {
+      width: 64px; background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+      color: var(--num); font: inherit; padding: 0 4px;
+    }
+    input::placeholder { color: var(--dim); }
+    .create { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+    /* --- карточка пула: слева пульт, справа состояние (как .list-card на других страницах) --- */
+    .list-card {
+      display: grid; grid-template-columns: minmax(300px, 1fr) 2fr; gap: 24px; align-items: start;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    @media (max-width: 800px) { .list-card { grid-template-columns: 1fr; } }
+    .card-title { color: var(--keyword); margin-bottom: 2px; }
+    .config { color: var(--dim); margin-bottom: 8px; }
+    /* Сетка пульта: метод | поля | ▶ — кнопки запуска выровнены в столбик */
+    .ops { display: grid; grid-template-columns: max-content max-content max-content; gap: 6px 10px; align-items: center; }
+    .ops .name { color: var(--fn); }
+    .ops .args { display: flex; gap: 4px; }
+    .card-controls .danger { margin-top: 10px; }
+
+    /* --- состояние пула --- */
+    .counters { margin-top: 6px; color: var(--dim); }
+    .counters b { color: var(--num); font-weight: normal; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; background: var(--dim); }
+    .dot.RUNNING { background: var(--out); }
+    .dot.SHUTDOWN, .dot.TIDYING { background: var(--keyword); }
+    .run-state { color: var(--text); }
+    /* Отказ execute, задачи, возвращённые shutdownNow: строка вспыхивает и тает */
+    .notice { min-height: 20px; }
+    .notice.failed { color: var(--fail); }
+    .notice.info { color: var(--keyword); }
+
+    /* Подблоки состояния: очередь и воркеры — у каждого свой заголовок и бейджи */
+    .part { margin-top: 10px; padding-top: 6px; border-top: 1px dashed var(--border); }
+    .part-title { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .part-title .name { color: var(--keyword); }
+
+    /* --- воркеры: строка на поток фабрики пула --- */
+    .workers { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+    .worker { display: grid; grid-template-columns: 170px 110px 160px; gap: 10px; align-items: center; }
+    .worker .wname { font-weight: bold; color: var(--thread); white-space: nowrap; }
+    .worker .wstatus { white-space: nowrap; }
+    .worker .wstatus.busy { color: var(--out); }
+    .worker .wstatus.waiting { color: var(--fn); }
+    .worker .wstatus.failed { color: var(--fail); }
+    .worker.ended { animation: fade-out var(--fade) ease-in forwards; }
+    .track {
+      position: relative; height: 12px; overflow: hidden;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+    }
+    .track .bar { position: absolute; top: 0; bottom: 0; left: 0; width: 0; }
+    .track .bar.task { background: color-mix(in srgb, var(--thread) 40%, transparent); }
+    .track .bar.poll { background: color-mix(in srgb, var(--fn) 30%, transparent); }
+    /* Полоски едут сами: анимация на всю длительность, отрицательная задержка — сколько уже прошло */
+    @keyframes fill-up { from { width: 0; } to { width: 100%; } }
+    @keyframes drain { from { width: 100%; } to { width: 0; } }
+
+    /* --- логи --- */
+    .log { max-height: 40vh; overflow-y: auto; }
+    .log div { white-space: pre-wrap; padding: 2px 0; border-bottom: 1px solid var(--panel); }
+    .error { color: var(--fail); }
+    .type { font-weight: bold; color: var(--fn); }
+  </style>
+  <link rel="stylesheet" href="components.css">
+</head>
+<body>
+
+<header>
+  <h2>ThreadPoolExecutor playground</h2>
+  <span id="status" class="off">● ws disconnected</span>
+</header>
+
+<!-- Значения по умолчанию подобраны так, что пять execute подряд проходят все ветки:
+     новый поток, очередь, поток сверх core, отказ, а потом смерть лишнего потока по keepAlive -->
+<div class="create">
+  <span>core <input id="core" type="number" value="1" min="0"></span>
+  <span>max <input id="max" type="number" value="2" min="1"></span>
+  <span>keepAlive, сек <input id="keepAlive" type="number" value="3" min="0" step="0.5"></span>
+  <span>queue capacity <input id="capacity" type="number" value="1" min="1" placeholder="∞" title="пусто — неограниченная очередь"></span>
+  <button id="create" class="primary" title="POST /api/threadpoolexecutor — создать пул вместе с его очередью и фабрикой; карточка появится по событию OBJECT_CREATED">+ new pool</button>
+</div>
+
+<!-- Карточка на каждый пул: слева управляем им, справа смотрим результат -->
+<div id="pools"></div>
+
+<h3>HTTP <button class="link" id="clearHttp">clear</button></h3>
+<div id="http" class="log"></div>
+
+<h3>WebSocket <button class="link" id="clearWs">clear</button></h3>
+<div id="ws" class="log"></div>
+
+<script src="components.js"></script>
+<script>
+  const $ = id => document.getElementById(id);
+  const base = '/api/threadpoolexecutor';
+  const tasksBase = '/api/tasks';
+  const POOL = 'THREAD_POOL_EXECUTOR';
+  const QUEUE = 'LINKED_BLOCKING_QUEUE_RUNNABLE';
+  const FACTORY = 'THREAD_FACTORY';
+  const THREAD = 'THREAD';
+  const TASK = 'RUNNABLE_TASK';
+  const TYPES = [POOL, QUEUE, FACTORY, THREAD, TASK];
+  const INT_MAX = 2147483647;    // ёмкость LinkedBlockingQueue() без аргумента
+  const DONE_FADE_MS = 1500;     // сколько тает строка завершившегося потока
+  const FAILED_FADE_MS = 4000;   // упавшего — дольше, чтобы успеть прочитать ошибку
+  const NOTICE_MS = 4000;        // сколько видна строка об отказе / возвращённых задачах
+
+  // Новые записи сверху
+  function prepend(logId, text, isError) {
+    const row = document.createElement('div');
+    row.textContent = text;
+    if (isError) row.className = 'error';
+    $(logId).prepend(row);
+  }
+
+  // ---------- REST ----------
+
+  async function call(method, url, body) {
+    const options = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body !== undefined) options.body = JSON.stringify(body);
+    const request = `${method} ${url}${body !== undefined ? ' ' + JSON.stringify(body) : ''}`;
+    try {
+      const res = await fetch(url, options);
+      const text = await res.text(); // у 204 тела нет
+      prepend('http', `${request} → ${res.status} ${text}`, !res.ok);
+      return res.ok && text ? JSON.parse(text) : null;
+    } catch (e) {
+      prepend('http', `${request} → ${e}`, true);
+      return null;
+    }
+  }
+
+  // execute новой задачи — два обычных запроса подряд, как offer на странице очереди:
+  // сервер принимает только taskId. execute по taskId добавим позже
+  async function executeNew(poolId, durationMs) {
+    const created = await call('POST', tasksBase, { durationMs });
+    if (created) await call('POST', `${base}/${poolId}/execute`, { taskId: created.objectId });
+  }
+
+  // Карточку создаёт не ответ на create, а событие OBJECT_CREATED — так же, как для пулов, созданных извне
+  $('create').onclick = () => {
+    const capacity = $('capacity').value.trim();
+    call('POST', base, {
+      corePoolSize: Number($('core').value),
+      maximumPoolSize: Number($('max').value),
+      keepAliveMs: Math.round(Number($('keepAlive').value) * 1000),
+      queueCapacity: capacity === '' ? null : Number(capacity),
+    });
+  };
+  $('clearHttp').onclick = () => { $('http').innerHTML = ''; };
+  $('clearWs').onclick = () => { $('ws').innerHTML = ''; };
+
+  // ---------- Состояние ----------
+  // Пул — составной объект: очередь, фабрика и потоки приходят отдельными объектами.
+  // Пул ссылается на них через state.queueId / state.threadFactoryId, воркеры склеиваются по имени потока
+
+  // poolId → { id, state, methods, notice: { text, failed, start } | null }
+  const pools = new Map();
+  // queueId → { id, capacity, elements, methods, nodeEffect }
+  const queues = new Map();
+  // factoryId → { id, createdCount, methods }
+  const factories = new Map();
+  // threadName → { objectId, name, factoryId, phase: 'NEW' | 'RUN' | 'DONE' | 'FAILED', error, endedAt }
+  const threads = new Map();
+  // threadName → { taskId, durationMs, startedAt } — какую задачу поток выполняет прямо сейчас
+  const running = new Map();
+  // threadName → { timeoutMs, start } — поток ждёт в poll(keepAlive) и умрёт, если не дождётся
+  const polling = new Map();
+  // taskId → durationMs — для подсказки узла очереди
+  const durations = new Map();
+
+  function poolOf(id) {
+    if (!pools.has(id)) pools.set(id, { id, state: null, methods: KV.methodsState(['execute', 'shutdown', 'shutdownNow', 'terminated']), notice: null });
+    return pools.get(id);
+  }
+  function queueOf(id) {
+    if (!queues.has(id)) queues.set(id, { id, capacity: null, elements: [], methods: KV.methodsState(['offer', 'take', 'poll', 'drainTo']), nodeEffect: null });
+    return queues.get(id);
+  }
+  function factoryOf(id) {
+    if (!factories.has(id)) factories.set(id, { id, createdCount: 0, methods: KV.methodsState(['newThread']) });
+    return factories.get(id);
+  }
+
+  function apply(env) {
+    const d = env.data;
+    switch (d?.objectType) {
+      case POOL: applyPool(env, d); break;
+      case QUEUE: applyQueue(env, d); break;
+      case FACTORY: applyFactory(env, d); break;
+      case THREAD: applyThread(env, d); break;
+      case TASK: applyTask(env, d); break;
+    }
+  }
+
+  function applyPool(env, d) {
+    if (env.type === 'OBJECT_REMOVED') { pools.delete(d.objectId); return; }
+    const pool = poolOf(d.objectId);
+    if (d.state) pool.state = d.state;
+    const phase = KV.trackMethod(pool.methods, env);
+    if (d.method === 'execute' && phase === 'OUT_FAILED') {
+      notify(pool, `execute(#${d.args.taskId}) ✗ ${shortError(d.error)}`, true);
+    }
+    if (d.method === 'shutdownNow' && phase === 'OUT' && d.result.length > 0) {
+      notify(pool, `shutdownNow вернул ${d.result.map(id => '#' + id).join(', ')} — так и не начали выполняться`, false);
+    }
+  }
+
+  function notify(pool, text, failed) {
+    pool.notice = { text, failed, start: performance.now() };
+    setTimeout(render, NOTICE_MS);
+  }
+
+  // java.util.concurrent.RejectedExecutionException: Task 4 rejected from … → RejectedExecutionException
+  const shortError = error => error.split(':')[0].split('.').pop();
+
+  function applyQueue(env, d) {
+    if (env.type === 'OBJECT_REMOVED') { queues.delete(d.objectId); return; }
+    const queue = queueOf(d.objectId);
+    // state в каждом событии полный — просто берём последний
+    if (d.state) {
+      queue.capacity = d.state.capacity;
+      queue.elements = d.state.taskIds;
+    }
+    const phase = KV.trackMethod(queue.methods, env);
+    if (!phase) return;
+    if (d.method === 'poll') {
+      if (phase === 'IN') polling.set(d.thread, { timeoutMs: d.args.timeoutMs, start: performance.now() });
+      else polling.delete(d.thread);
+    }
+    const effect = queueEffectOf(d.method, phase, d);
+    if (effect) KV.setEffect(queue, effect, render);
+  }
+
+  // Что подсветить в цепочке очереди после этого события (null — ничего). Как на linkedblockingqueue.html, плюс poll и drainTo
+  function queueEffectOf(method, phase, d) {
+    if (phase === 'OUT_FAILED') {
+      // Например, прерванный take/poll при shutdown
+      return method === 'take' || method === 'poll' ? { ghost: '✗', kind: 'failed', side: 'head', title: `${d.thread}: ${d.error}` } : null;
+    }
+    if (phase !== 'OUT') return null;
+    if (method === 'offer') {
+      // При гонке «последний узел» — допущение, а не наблюдение
+      if (d.result === true) return { new: d.state.taskIds.length - 1 };
+      return { ghost: `#${d.args.taskId}`, kind: 'failed', side: 'tail', title: 'очередь полна: offer вернул false' };
+    }
+    // Снятого узла в state уже нет — его taskId берём из result. poll вернул null — таймаут, снимать нечего
+    if ((method === 'take' || method === 'poll') && d.result != null) {
+      return { ghost: `#${d.result}`, kind: 'removed', side: 'head', title: `взял ${d.thread}` };
+    }
+    if (method === 'drainTo' && d.result.length > 0) {
+      return { ghost: d.result.map(id => '#' + id).join(' '), kind: 'removed', side: 'head', title: 'забрал shutdownNow' };
+    }
+    return null;
+  }
+
+  function applyFactory(env, d) {
+    if (env.type === 'OBJECT_REMOVED') { factories.delete(d.objectId); return; }
+    const factory = factoryOf(d.objectId);
+    if (d.state) factory.createdCount = d.state.createdCount;
+    KV.trackMethod(factory.methods, env);
+  }
+
+  function applyThread(env, d) {
+    // Строку убирает не OBJECT_REMOVED, а таймер затухания после METHOD_OUT run
+    if (env.type === 'OBJECT_REMOVED') return;
+    const name = d.state.name;
+    if (!threads.has(name)) {
+      threads.set(name, { objectId: d.objectId, name, factoryId: d.state.threadFactoryId, phase: 'NEW', error: null, endedAt: null });
+    }
+    const thread = threads.get(name);
+    if (d.method !== 'run') return;
+    if (env.type === 'METHOD_IN') thread.phase = 'RUN';
+    if (env.type === 'METHOD_OUT') finishThread(thread, 'DONE', null, DONE_FADE_MS);
+    if (env.type === 'METHOD_OUT_FAILED') finishThread(thread, 'FAILED', d.error, FAILED_FADE_MS);
+  }
+
+  // Строка не исчезает сразу: тает, потом удаляется
+  function finishThread(thread, phase, error, fadeMs) {
+    const endedAt = performance.now();
+    Object.assign(thread, { phase, error, endedAt });
+    running.delete(thread.name);
+    polling.delete(thread.name);
+    setTimeout(() => {
+      if (threads.get(thread.name)?.endedAt === endedAt) { threads.delete(thread.name); render(); }
+    }, fadeMs);
+  }
+
+  function applyTask(env, d) {
+    if (env.type === 'OBJECT_REMOVED') { durations.delete(d.objectId); return; }
+    if (d.state?.durationMs !== undefined) durations.set(d.objectId, d.state.durationMs);
+    if (d.method !== 'run') return;
+    // Поток, выполняющий задачу, — это и есть воркер пула (или чужой runner — его просто не покажем)
+    if (env.type === 'METHOD_IN') running.set(d.thread, { taskId: d.objectId, durationMs: d.state.durationMs, startedAt: performance.now() });
+    if (env.type === 'METHOD_PROGRESS') {
+      const run = running.get(d.thread);
+      if (run) run.startedAt = performance.now() - d.progress.elapsedMs; // подровнять по серверу
+    }
+    if (env.type === 'METHOD_OUT' || env.type === 'METHOD_OUT_FAILED') running.delete(d.thread);
+  }
+
+  // ---------- Карточка пула: пульт слева ----------
+
+  // Операции пульта: имя, поля (placeholder + значение по умолчанию) и что вызвать
+  const OPERATIONS = [
+    { name: 'execute', fields: [['сек', 5]], title: id => `POST ${tasksBase} {durationMs}, затем POST ${base}/${id}/execute {taskId} — новая задача`,
+      run: (id, inputs) => executeNew(id, Math.round(Number(inputs['сек'].value) * 1000)) },
+    { name: 'shutdown', fields: [], title: id => `POST ${base}/${id}/shutdown — новые задачи не принимать, принятые доделать`,
+      run: id => call('POST', `${base}/${id}/shutdown`) },
+    { name: 'shutdownNow', fields: [], title: id => `POST ${base}/${id}/shutdownNow — прервать всех, задачи из очереди вернуть`,
+      run: id => call('POST', `${base}/${id}/shutdownNow`) },
+  ];
+
+  const capacityText = capacity => capacity == null ? '?' : capacity === INT_MAX ? '∞' : capacity;
+
+  // Карточка создаётся один раз: поля пульта не пересоздаются, поэтому введённое значение и фокус не теряются
+  function createCard(pool) {
+    const id = pool.id;
+    const s = pool.state;
+    const card = KV.el('div', 'list-card');
+    card.dataset.id = id;
+
+    const controls = KV.el('div', 'card-controls');
+    // Конфиг пула не меняется — рисуем один раз
+    const capacity = capacityText(queues.get(s?.queueId)?.capacity);
+    controls.append(
+      KV.el('div', 'card-title', `pool #${id}`),
+      KV.el('div', 'config', s ? `core ${s.corePoolSize} · max ${s.maximumPoolSize} · keepAlive ${KV.seconds(s.keepAliveMs)} · queue ${capacity}` : ''),
+    );
+
+    const ops = KV.el('div', 'ops');
+    for (const op of OPERATIONS) {
+      const args = KV.el('span', 'args');
+      const inputs = {};
+      for (const [field, defaultValue] of op.fields) {
+        const input = Object.assign(document.createElement('input'), { type: 'number', value: defaultValue, placeholder: field, title: field });
+        input.setAttribute('aria-label', field);
+        inputs[field] = input;
+        args.append(input);
+      }
+      const run = KV.el('button', 'run', '▶');
+      run.title = op.title(id);
+      run.onclick = () => op.run(id, inputs);
+      // Enter в поле строки — то же, что ▶
+      for (const input of Object.values(inputs)) input.addEventListener('keydown', e => { if (e.key === 'Enter') run.click(); });
+      ops.append(KV.el('span', 'name', op.name), args, run);
+    }
+
+    const remove = KV.el('button', 'danger', 'remove pool');
+    remove.title = `DELETE ${base}/${id} — только TERMINATED; вместе с пулом удаляются его очередь и фабрика`;
+    remove.onclick = () => call('DELETE', `${base}/${id}`);
+    controls.append(ops, remove);
+
+    const state = KV.el('div', 'card-state');
+    card.append(controls, state);
+    return { card, state };
+  }
+
+  // ---------- Карточка пула: состояние справа ----------
+
+  function renderCounters(pool) {
+    const s = pool.state;
+    const row = KV.el('div', 'counters');
+    if (!s) return row;
+    const dot = KV.el('span', `dot ${s.runState}`);
+    row.append(dot, KV.el('span', 'run-state', s.runState), ' · потоков ');
+    row.append(KV.el('b', '', s.poolSize), ` / core ${s.corePoolSize} / max ${s.maximumPoolSize} · активных `);
+    row.append(KV.el('b', '', s.activeCount), ' · выполнено ');
+    row.append(KV.el('b', '', s.completedTaskCount));
+    return row;
+  }
+
+  function renderNotice(pool) {
+    const n = pool.notice;
+    const elapsed = n ? performance.now() - n.start : Infinity;
+    if (elapsed >= NOTICE_MS) return KV.el('div', 'notice');
+    const row = KV.el('div', 'notice ' + (n.failed ? 'failed' : 'info'), n.text);
+    row.style.animation = `fade-out ${NOTICE_MS}ms ease-in ${-elapsed}ms forwards`;
+    return row;
+  }
+
+  // Значение узла — id задачи, длительность — в подсказке
+  function taskNode(taskId, label, index) {
+    const el = KV.node(`#${taskId}`, label, index);
+    el.title = `task#${taskId}, ${KV.seconds(durations.get(taskId))}`;
+    return el;
+  }
+
+  function renderQueue(queueId) {
+    const part = KV.el('div', 'part');
+    const queue = queues.get(queueId);
+    if (!queue) { part.append(KV.el('span', 'empty', `queue #${queueId} — нет данных`)); return part; }
+    const title = KV.el('div', 'part-title');
+    title.append(KV.el('span', 'name', `queue #${queue.id} · capacity ${capacityText(queue.capacity)}`), KV.renderBadges(queue.methods));
+    part.append(title, KV.renderChain(queue.elements, queue.nodeEffect, { node: taskNode }));
+    return part;
+  }
+
+  function renderWorkers(pool) {
+    const factoryId = pool.state.threadFactoryId;
+    const part = KV.el('div', 'part');
+    const title = KV.el('div', 'part-title');
+    title.append(KV.el('span', 'name', `workers · factory #${factoryId}`));
+    const factory = factories.get(factoryId);
+    if (factory) title.append(KV.renderBadges(factory.methods), KV.el('span', 'empty', `создано потоков: ${factory.createdCount}`));
+    part.append(title);
+
+    const queue = queues.get(pool.state.queueId);
+    const list = KV.el('div', 'workers');
+    // Порядок вставки в Map = порядок создания потоков
+    const workers = [...threads.values()].filter(t => t.factoryId === factoryId);
+    if (workers.length === 0) list.append(KV.el('span', 'empty', 'потоков нет — появятся при первом execute'));
+    for (const thread of workers) list.append(renderWorker(thread, queue));
+    part.append(list);
+    return part;
+  }
+
+  // Чем занят воркер, видно не по событиям пула, а по событиям задачи (run) и очереди (take / poll) с его именем потока
+  function renderWorker(thread, queue) {
+    const row = KV.el('div', 'worker');
+    row.style.setProperty('--thread', KV.threadColor(thread.name));
+    const name = KV.el('span', 'wname', thread.name);
+    const status = KV.el('span', 'wstatus');
+    const track = KV.el('div', 'track');
+    const now = performance.now();
+
+    const run = running.get(thread.name);
+    const poll = polling.get(thread.name);
+    if (thread.phase === 'DONE' || thread.phase === 'FAILED') {
+      const failed = thread.phase === 'FAILED';
+      status.textContent = failed ? '✗ упал' : '✓ завершён';
+      status.classList.add(failed ? 'failed' : 'done');
+      row.title = failed ? `${thread.name}: ${thread.error}` : `${thread.name}: вышел из run — keepAlive истёк или пул остановлен`;
+      row.classList.add('ended');
+      const fadeMs = failed ? FAILED_FADE_MS : DONE_FADE_MS;
+      row.style.setProperty('--fade', `${fadeMs}ms`);
+      row.style.animationDelay = `${-(now - thread.endedAt)}ms`; // продолжить затухание после перерисовки
+      track.style.visibility = 'hidden';
+    } else if (run) {
+      status.textContent = `▶ task#${run.taskId}`;
+      status.classList.add('busy');
+      const elapsed = now - run.startedAt;
+      row.title = `${thread.name} выполняет task#${run.taskId}: ${KV.seconds(Math.min(elapsed, run.durationMs))} / ${KV.seconds(run.durationMs)}`;
+      track.append(bar('task', 'fill-up', run.durationMs, elapsed));
+    } else if (queue?.methods.inside.take.has(thread.name)) {
+      status.textContent = '⏳ take';
+      status.classList.add('waiting');
+      row.title = `${thread.name} ждёт задачу в take() — core-поток, ждёт сколько угодно`;
+      track.style.visibility = 'hidden';
+    } else if (poll) {
+      status.textContent = '⏳ poll';
+      status.classList.add('waiting');
+      const elapsed = now - poll.start;
+      row.title = `${thread.name} ждёт задачу в poll(${KV.seconds(poll.timeoutMs)}) — не дождётся, и поток умрёт (keepAlive)`;
+      track.append(bar('poll', 'drain', poll.timeoutMs, elapsed));
+    } else {
+      // Между задачами: внутри getTask() до take/poll, или поток создан, но ещё не стартовал
+      status.textContent = thread.phase === 'NEW' ? 'создан' : '·';
+      row.title = thread.phase === 'NEW' ? `${thread.name}: newThread вернул поток, start() ещё не было` : `${thread.name}: между задачами`;
+      track.style.visibility = 'hidden';
+    }
+    row.append(name, status, track);
+    return row;
+  }
+
+  // Полоска едет сама: анимация на всю длительность с отрицательной задержкой — сколько уже прошло
+  function bar(kind, animation, durationMs, elapsedMs) {
+    const b = KV.el('div', `bar ${kind}`);
+    b.style.animation = `${animation} ${durationMs}ms linear ${-Math.min(elapsedMs, durationMs)}ms forwards`;
+    return b;
+  }
+
+  // ---------- Синхронизация карточек с состоянием ----------
+
+  const cards = new Map(); // poolId → { card, state }
+
+  function render() {
+    const root = $('pools');
+
+    // Удалить карточки исчезнувших пулов
+    for (const [id, { card }] of cards) {
+      if (!pools.has(id)) { card.remove(); cards.delete(id); }
+    }
+
+    // Создать карточки новых пулов — по порядку id
+    for (const pool of [...pools.values()].sort((a, b) => a.id - b.id)) {
+      if (!cards.has(pool.id)) {
+        const created = createCard(pool);
+        cards.set(pool.id, created);
+        const next = [...root.querySelectorAll('.list-card')].find(c => Number(c.dataset.id) > pool.id);
+        root.insertBefore(created.card, next ?? null);
+      }
+      // Пульт не трогаем — перерисовываем только правую часть
+      const { state } = cards.get(pool.id);
+      if (!pool.state) { state.replaceChildren(KV.renderBadges(pool.methods)); continue; }
+      state.replaceChildren(
+        KV.renderBadges(pool.methods),
+        renderCounters(pool),
+        renderNotice(pool),
+        renderQueue(pool.state.queueId),
+        renderWorkers(pool),
+      );
+    }
+
+    const placeholder = root.querySelector('.empty-pools');
+    if (pools.size === 0 && !placeholder) {
+      root.innerHTML = '<div class="empty empty-pools">нет пулов — нажмите «+ new pool»</div>';
+    } else if (pools.size > 0 && placeholder) {
+      placeholder.remove();
+    }
+  }
+
+  // ---------- WebSocket ----------
+
+  function showEnvelope(env) {
+    if (!TYPES.includes(env.data?.objectType)) return; // чужие события (списки и т.п.) не засоряют лог
+    const row = document.createElement('div');
+    const time = new Date(env.ts).toISOString().slice(11, 23); // HH:MM:SS.mmm, UTC
+    row.append(`#${env.seq}  ${time}  `, KV.el('span', 'type', env.type), `  ${JSON.stringify(env.data)}`);
+    if (env.type.endsWith('_FAILED')) row.className = 'error';
+    $('ws').prepend(row);
+  }
+
+  function onMessage(raw) {
+    let env;
+    try {
+      env = JSON.parse(raw);
+    } catch (e) {
+      prepend('ws', `не JSON: ${raw}`, true);
+      return;
+    }
+    showEnvelope(env);
+    apply(env);
+    render();
+  }
+
+  function connect() {
+    const ws = new WebSocket(`ws://${location.host}/ws/events`);
+    ws.onopen = () => {
+      $('status').textContent = '● ws connected';
+      $('status').className = 'on';
+    };
+    ws.onclose = () => {
+      $('status').textContent = '● ws disconnected';
+      $('status').className = 'off';
+      setTimeout(connect, 1000);
+    };
+    ws.onmessage = msg => onMessage(msg.data);
+  }
+
+  render();
+  connect();
+</script>
+</body>
+</html>

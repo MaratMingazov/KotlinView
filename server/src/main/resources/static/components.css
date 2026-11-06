@@ -1,0 +1,41 @@
+/*
+ * Общие компоненты визуализации объектов: бейджи методов и цепочка узлов.
+ * Цвета (--bg, --panel, --border, --dim, --text, --keyword, --num, --out, --fail) задаёт страница в :root.
+ * Пара к components.js.
+ */
+
+/* --- бейджи методов: горят, пока внутри есть потоки, потом затухают --- */
+.badges { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-height: 22px; }
+.method { padding: 0 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--dim); }
+.method.active { background: var(--out); border-color: var(--out); color: var(--bg); }
+/* Послесвечение: после OUT бейдж не гаснет мгновенно, а затухает, как лампа накаливания */
+@keyframes afterglow {
+  from { background: var(--out); border-color: var(--out); color: var(--bg); }
+  to { background: transparent; border-color: var(--border); color: var(--dim); }
+}
+@keyframes afterglow-failed {
+  from { background: var(--fail); border-color: var(--fail); color: var(--bg); }
+  to { background: transparent; border-color: var(--border); color: var(--dim); }
+}
+
+/* --- цепочка узлов head ⇄ … ⇄ tail --- */
+.chain { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 0; margin-top: 8px; min-height: 66px; }
+.chain .empty { color: var(--dim); }
+.node { display: flex; flex-direction: column; align-items: center; }
+.node .label { font-size: 11px; color: var(--keyword); height: 16px; }
+.node .box {
+  min-width: 40px; height: 32px; padding: 0 6px; display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--border); border-radius: 16px; color: var(--num); background: var(--panel);
+}
+.node .idx { font-size: 11px; color: var(--dim); height: 16px; }
+.link-arrow { color: var(--dim); padding: 0 6px; margin-bottom: 0; }
+/* Призраки: снятый узел, «ничего не снято», неудача */
+.node.removed .box { border-style: dashed; border-color: var(--dim); color: var(--text); background: none; }
+.node.null .box { border-style: dashed; border-color: var(--border); color: var(--dim); background: none; }
+.node.failed .box { border-style: dashed; border-color: var(--fail); color: var(--fail); background: none; }
+/* Подсветка тоже затухает, а не снимается рывком */
+@keyframes node-new {
+  from { background: color-mix(in srgb, var(--out) 45%, var(--panel)); border-color: var(--out); }
+  to { background: var(--panel); border-color: var(--border); }
+}
+@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
