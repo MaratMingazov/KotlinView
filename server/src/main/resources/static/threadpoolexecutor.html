@@ -3,60 +3,17 @@
 <head>
   <meta charset="utf-8">
   <title>ThreadPoolExecutor playground</title>
-  <!-- Общие компоненты первыми: стили страницы ниже могут их уточнять -->
+  <!-- Сначала общий каркас и компоненты: стили страницы ниже могут их уточнять -->
+  <link rel="stylesheet" href="base.css">
   <link rel="stylesheet" href="components.css">
   <style>
-    /* Палитра как в arraylist-ide.html (IntelliJ Darcula) */
-    :root {
-      --bg: #1e1f22; --panel: #2b2d30; --border: #3c3f41; --text: #bcbec4; --dim: #6f737a;
-      --keyword: #cf8e6d; --fn: #56a8f5; --num: #2aacb8; --str: #6aab73;
-      --in: #56a8f5; --out: #6aab73; --fail: #f75464;
-    }
-    body {
-      font: 13px/1.5 "JetBrains Mono", ui-monospace, Menlo, monospace; margin: 16px;
-      background: var(--bg); color: var(--text);
-    }
-    header { display: flex; justify-content: space-between; align-items: center; }
-    h2 { color: var(--keyword); font-weight: normal; }
-    h3 {
-      margin: 16px 0 4px; border-bottom: 1px solid var(--border); color: var(--dim); font-weight: normal;
-      display: flex; justify-content: space-between; align-items: baseline;
-    }
-    .on { color: var(--out); }
-    .off { color: var(--fail); }
-    .empty { color: var(--dim); }
+    /* Палитра, шапка, кнопки, карточка, логи — в base.css */
 
-    /* --- кнопки и поля --- */
-    button {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
-      color: var(--fn); font: inherit; padding: 0 8px; cursor: pointer;
-    }
-    button:hover { border-color: currentColor; }
-    button.primary { color: var(--out); padding: 2px 12px; }
-    button.run { color: var(--out); }
-    button.danger { color: var(--fail); }
-    button.link { background: none; border: none; color: var(--dim); padding: 0; }
-    button.link:hover { color: var(--text); }
-    input {
-      width: 64px; background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
-      color: var(--num); font: inherit; padding: 0 4px;
-    }
-    input::placeholder { color: var(--dim); }
     .create { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 
-    /* --- карточка пула: слева пульт, справа состояние (как .list-card на других страницах) --- */
-    .list-card {
-      display: grid; grid-template-columns: minmax(300px, 1fr) 2fr; gap: 24px; align-items: start;
-      padding: 10px 0; border-bottom: 1px solid var(--border);
-    }
-    @media (max-width: 800px) { .list-card { grid-template-columns: 1fr; } }
+    /* --- карточка пула: .list-card из base.css; под заголовком конфиг --- */
     .card-title { color: var(--keyword); margin-bottom: 2px; }
     .config { color: var(--dim); margin-bottom: 8px; }
-    /* Сетка пульта: метод | поля | ▶ — кнопки запуска выровнены в столбик */
-    .ops { display: grid; grid-template-columns: max-content max-content max-content; gap: 6px 10px; align-items: center; }
-    .ops .name { color: var(--fn); }
-    .ops .args { display: flex; gap: 4px; }
-    .card-controls .danger { margin-top: 10px; }
 
     /* --- состояние пула --- */
     .counters { margin-top: 6px; color: var(--dim); }
@@ -93,12 +50,6 @@
     /* Полоски едут сами: анимация на всю длительность, отрицательная задержка — сколько уже прошло.
        fill-up — в components.css, drain (обратный отсчёт keepAlive) — только здесь */
     @keyframes drain { from { width: 100%; } to { width: 0; } }
-
-    /* --- логи --- */
-    .log { max-height: 40vh; overflow-y: auto; }
-    .log div { white-space: pre-wrap; padding: 2px 0; border-bottom: 1px solid var(--panel); }
-    .error { color: var(--fail); }
-    .type { font-weight: bold; color: var(--fn); }
   </style>
 </head>
 <body>
@@ -127,9 +78,10 @@
 <h3>WebSocket <button class="link" id="clearWs">clear</button></h3>
 <div id="ws" class="log"></div>
 
+<script src="base.js"></script>
 <script src="components.js"></script>
 <script>
-  const $ = id => document.getElementById(id);
+  const { $, call } = UI;
   const base = '/api/threadpoolexecutor';
   const tasksBase = '/api/tasks';
   const POOL = 'THREAD_POOL_EXECUTOR';
@@ -143,30 +95,7 @@
   const FAILED_FADE_MS = 4000;   // упавшего — дольше, чтобы успеть прочитать ошибку
   const NOTICE_MS = 4000;        // сколько видна строка об отказе / возвращённых задачах
 
-  // Новые записи сверху
-  function prepend(logId, text, isError) {
-    const row = document.createElement('div');
-    row.textContent = text;
-    if (isError) row.className = 'error';
-    $(logId).prepend(row);
-  }
-
-  // ---------- REST ----------
-
-  async function call(method, url, body) {
-    const options = { method, headers: { 'Content-Type': 'application/json' } };
-    if (body !== undefined) options.body = JSON.stringify(body);
-    const request = `${method} ${url}${body !== undefined ? ' ' + JSON.stringify(body) : ''}`;
-    try {
-      const res = await fetch(url, options);
-      const text = await res.text(); // у 204 тела нет
-      prepend('http', `${request} → ${res.status} ${text}`, !res.ok);
-      return res.ok && text ? JSON.parse(text) : null;
-    } catch (e) {
-      prepend('http', `${request} → ${e}`, true);
-      return null;
-    }
-  }
+  // REST и лог HTTP — UI.call из base.js
 
   // execute новой задачи — два обычных запроса подряд, как offer на странице очереди:
   // сервер принимает только taskId. execute по taskId добавим позже
@@ -185,8 +114,6 @@
       queueCapacity: capacity === '' ? null : Number(capacity),
     });
   };
-  $('clearHttp').onclick = () => { $('http').innerHTML = ''; };
-  $('clearWs').onclick = () => { $('ws').innerHTML = ''; };
 
   // ---------- Состояние ----------
   // Пул — составной объект: очередь, фабрика и потоки приходят отдельными объектами.
@@ -496,27 +423,12 @@
 
   // ---------- Синхронизация карточек с состоянием ----------
 
-  const cards = new Map(); // poolId → { card, state }
 
-  function render() {
-    const root = $('pools');
-
-    // Удалить карточки исчезнувших пулов
-    for (const [id, { card }] of cards) {
-      if (!pools.has(id)) { card.remove(); cards.delete(id); }
-    }
-
-    // Создать карточки новых пулов — по порядку id
-    for (const pool of [...pools.values()].sort((a, b) => a.id - b.id)) {
-      if (!cards.has(pool.id)) {
-        const created = createCard(pool);
-        cards.set(pool.id, created);
-        const next = [...root.querySelectorAll('.list-card')].find(c => Number(c.dataset.id) > pool.id);
-        root.insertBefore(created.card, next ?? null);
-      }
-      // Пульт не трогаем — перерисовываем только правую часть
-      const { state } = cards.get(pool.id);
-      if (!pool.state) { state.replaceChildren(KV.renderBadges(pool.methods)); continue; }
+  // Карточка на каждый объект, по порядку id: пульт создаётся один раз, состояние справа перерисовывается
+  const cards = UI.cardList('pools', {
+    create: createCard,
+    update: (pool, { state }) => {
+      if (!pool.state) { state.replaceChildren(KV.renderBadges(pool.methods)); return; }
       state.replaceChildren(
         KV.renderBadges(pool.methods),
         renderCounters(pool),
@@ -524,56 +436,19 @@
         renderQueue(pool.state.queueId),
         renderWorkers(pool),
       );
-    }
+    },
+    empty: 'нет пулов — нажмите «+ new pool»',
+  });
 
-    const placeholder = root.querySelector('.empty-pools');
-    if (pools.size === 0 && !placeholder) {
-      root.innerHTML = '<div class="empty empty-pools">нет пулов — нажмите «+ new pool»</div>';
-    } else if (pools.size > 0 && placeholder) {
-      placeholder.remove();
-    }
+  function render() {
+    cards.sync(pools);
   }
 
   // ---------- WebSocket ----------
-
-  function showEnvelope(env) {
-    if (!TYPES.includes(env.data?.objectType)) return; // чужие события (списки и т.п.) не засоряют лог
-    const row = document.createElement('div');
-    const time = new Date(env.ts).toISOString().slice(11, 23); // HH:MM:SS.mmm, UTC
-    row.append(`#${env.seq}  ${time}  `, KV.el('span', 'type', env.type), `  ${JSON.stringify(env.data)}`);
-    if (env.type.endsWith('_FAILED')) row.className = 'error';
-    $('ws').prepend(row);
-  }
-
-  function onMessage(raw) {
-    let env;
-    try {
-      env = JSON.parse(raw);
-    } catch (e) {
-      prepend('ws', `не JSON: ${raw}`, true);
-      return;
-    }
-    showEnvelope(env);
-    apply(env);
-    render();
-  }
-
-  function connect() {
-    const ws = new WebSocket(`ws://${location.host}/ws/events`);
-    ws.onopen = () => {
-      $('status').textContent = '● ws connected';
-      $('status').className = 'on';
-    };
-    ws.onclose = () => {
-      $('status').textContent = '● ws disconnected';
-      $('status').className = 'off';
-      setTimeout(connect, 1000);
-    };
-    ws.onmessage = msg => onMessage(msg.data);
-  }
+  // Подключение, лог событий и переподключение — UI.connect из base.js
 
   render();
-  connect();
+  UI.connect({ onEnvelope: env => { apply(env); render(); }, types: TYPES });
 </script>
 </body>
 </html>

@@ -1,0 +1,60 @@
+/*
+ * Каркас всех playground-страниц: палитра, шапка, кнопки и поля, карточка «пульт слева — состояние справа», логи.
+ * Подключается первым: <link rel="stylesheet" href="base.css">, затем components.css, затем стили страницы.
+ */
+
+/* Палитра IntelliJ Darcula */
+:root {
+  --bg: #1e1f22; --panel: #2b2d30; --border: #3c3f41; --text: #bcbec4; --dim: #6f737a;
+  --keyword: #cf8e6d; --fn: #56a8f5; --num: #2aacb8; --str: #6aab73;
+  --in: #56a8f5; --out: #6aab73; --fail: #f75464;
+}
+body {
+  font: 13px/1.5 "JetBrains Mono", ui-monospace, Menlo, monospace; margin: 16px;
+  background: var(--bg); color: var(--text);
+}
+header { display: flex; justify-content: space-between; align-items: center; }
+h2 { color: var(--keyword); font-weight: normal; }
+h3 {
+  margin: 16px 0 4px; border-bottom: 1px solid var(--border); color: var(--dim); font-weight: normal;
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.on { color: var(--out); }
+.off { color: var(--fail); }
+.empty { color: var(--dim); }
+
+/* --- кнопки и поля --- */
+button {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+  color: var(--fn); font: inherit; padding: 0 8px; cursor: pointer;
+}
+button:hover { border-color: currentColor; }
+button.primary { color: var(--out); padding: 2px 12px; }
+button.run { color: var(--out); }
+button.danger { color: var(--fail); }
+button.link { background: none; border: none; color: var(--dim); padding: 0; }
+button.link:hover { color: var(--text); }
+input {
+  width: 64px; background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+  color: var(--num); font: inherit; padding: 0 4px;
+}
+input::placeholder { color: var(--dim); }
+
+/* --- карточка объекта: слева его пульт, справа его состояние --- */
+.list-card {
+  display: grid; grid-template-columns: minmax(300px, 1fr) 2fr; gap: 24px; align-items: start;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+@media (max-width: 800px) { .list-card { grid-template-columns: 1fr; } }
+.card-title { color: var(--keyword); margin-bottom: 6px; }
+/* Сетка пульта: метод | поля | ▶ — кнопки запуска выровнены в столбик */
+.ops { display: grid; grid-template-columns: max-content max-content max-content; gap: 6px 10px; align-items: center; }
+.ops .name { color: var(--fn); }
+.ops .args { display: flex; gap: 4px; }
+.card-controls .danger { margin-top: 10px; }
+
+/* --- логи --- */
+.log { max-height: 40vh; overflow-y: auto; }
+.log div { white-space: pre-wrap; padding: 2px 0; border-bottom: 1px solid var(--panel); }
+.error { color: var(--fail); }
+.type { font-weight: bold; color: var(--fn); }

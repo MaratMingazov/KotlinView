@@ -3,69 +3,26 @@
 <head>
   <meta charset="utf-8">
   <title>Runnable task playground</title>
-  <!-- Общие компоненты первыми: стили страницы ниже могут их уточнять -->
+  <!-- Сначала общий каркас и компоненты: стили страницы ниже могут их уточнять -->
+  <link rel="stylesheet" href="base.css">
   <link rel="stylesheet" href="components.css">
   <style>
-    /* Палитра как в arraylist-ide.html (IntelliJ Darcula) */
-    :root {
-      --bg: #1e1f22; --panel: #2b2d30; --border: #3c3f41; --text: #bcbec4; --dim: #6f737a;
-      --keyword: #cf8e6d; --fn: #56a8f5; --num: #2aacb8; --str: #6aab73;
-      --in: #56a8f5; --out: #6aab73; --fail: #f75464;
-    }
-    body {
-      font: 13px/1.5 "JetBrains Mono", ui-monospace, Menlo, monospace; margin: 16px;
-      background: var(--bg); color: var(--text);
-    }
-    header { display: flex; justify-content: space-between; align-items: center; }
-    h2 { color: var(--keyword); font-weight: normal; }
-    h3 {
-      margin: 16px 0 4px; border-bottom: 1px solid var(--border); color: var(--dim); font-weight: normal;
-      display: flex; justify-content: space-between; align-items: baseline;
-    }
-    .on { color: var(--out); }
-    .off { color: var(--fail); }
-    .empty { color: var(--dim); }
+    /* Палитра, шапка, кнопки, карточка, логи — в base.css */
 
-    /* --- кнопки и поля --- */
-    button {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
-      color: var(--fn); font: inherit; padding: 0 8px; cursor: pointer;
-    }
-    button:hover { border-color: currentColor; }
-    button.primary { color: var(--out); padding: 2px 12px; }
-    button.run { color: var(--out); }
-    button.danger { color: var(--fail); }
-    button.link { background: none; border: none; color: var(--dim); padding: 0; }
-    button.link:hover { color: var(--text); }
-    input {
-      width: 64px; background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
-      color: var(--num); font: inherit; padding: 0 4px;
-    }
-
-    /* --- карточка задачи: слева её пульт, справа её состояние (как .list-card на страницах списков) --- */
+    /* --- карточка задачи: как .list-card из base.css, но левая колонка уже; пульт в одну строку --- */
     .task-card {
       display: grid; grid-template-columns: minmax(260px, 1fr) 2fr; gap: 24px; align-items: start;
       padding: 10px 0; border-bottom: 1px solid var(--border);
     }
     @media (max-width: 800px) { .task-card { grid-template-columns: 1fr; } }
-    .card-title { color: var(--keyword); margin-bottom: 6px; }
     .ops { display: flex; gap: 10px; align-items: center; }
-    .card-controls .danger { margin-top: 10px; }
     .task-state { display: flex; gap: 20px; align-items: flex-start; }
     .task-column { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 
     /* Конверт и полоски потоков внутри run() — в components.css */
 
-    .method { padding: 0 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--dim); }
-    .method.active { background: var(--out); border-color: var(--out); color: var(--bg); }
-    /* Несколько потоков внутри одной задачи — главное, что хочется заметить */
+    /* Бейдж run: .method / .method.active — в components.css. Несколько потоков внутри одной задачи — главное, что хочется заметить */
     .method.multi { background: var(--keyword); border-color: var(--keyword); }
-
-    /* --- логи --- */
-    .log { max-height: 40vh; overflow-y: auto; }
-    .log div { white-space: pre-wrap; padding: 2px 0; border-bottom: 1px solid var(--panel); }
-    .error { color: var(--fail); }
-    .type { font-weight: bold; color: var(--fn); }
   </style>
 </head>
 <body>
@@ -89,40 +46,16 @@
 <h3>WebSocket <button class="link" id="clearWs">clear</button></h3>
 <div id="ws" class="log"></div>
 
+<script src="base.js"></script>
 <script src="components.js"></script>
 <script>
-  const $ = id => document.getElementById(id);
+  const { $, call } = UI;
   const base = '/api/tasks';
 
-  // Новые записи сверху
-  function prepend(logId, text, isError) {
-    const row = document.createElement('div');
-    row.textContent = text;
-    if (isError) row.className = 'error';
-    $(logId).prepend(row);
-  }
-
-  // ---------- REST ----------
-
-  async function call(method, url, body) {
-    const options = { method, headers: { 'Content-Type': 'application/json' } };
-    if (body !== undefined) options.body = JSON.stringify(body);
-    const request = `${method} ${url}${body !== undefined ? ' ' + JSON.stringify(body) : ''}`;
-    try {
-      const res = await fetch(url, options);
-      const text = await res.text(); // у 204 тела нет
-      prepend('http', `${request} → ${res.status} ${text}`, !res.ok);
-      return res.ok && text ? JSON.parse(text) : null;
-    } catch (e) {
-      prepend('http', `${request} → ${e}`, true);
-      return null;
-    }
-  }
+  // REST и лог HTTP — UI.call из base.js
 
   // Карточку создаёт не ответ на create, а событие OBJECT_CREATED — так же, как для задач, созданных извне
   $('create').onclick = () => call('POST', base, { durationMs: Math.round(Number($('duration').value) * 1000) });
-  $('clearHttp').onclick = () => { $('http').innerHTML = ''; };
-  $('clearWs').onclick = () => { $('ws').innerHTML = ''; };
 
   // ---------- Состояние ----------
 
@@ -137,8 +70,6 @@
 
   // Пульт карточки создаётся один раз, состояние справа — конверт, полоски потоков, бейдж — перерисовывается целиком.
   // Анимации при этом не начинаются заново: компоненты продолжают их с того места, где они были
-  // taskId → { card, state }
-  const cards = new Map();
 
   function createCard(id) {
     const card = KV.el('div', 'task-card');
@@ -171,76 +102,22 @@
     return column;
   }
 
+  // Карточка на каждый объект, по порядку id: пульт создаётся один раз, состояние справа перерисовывается
+  const cards = UI.cardList('tasks', {
+    create: task => createCard(task.id),
+    update: (task, { state }) => state.replaceChildren(renderTask(task)),
+    empty: 'нет задач — нажмите «+ new task»',
+  });
+
   function render() {
-    const root = $('tasks');
-
-    // Удалить карточки исчезнувших задач
-    for (const [id, { card }] of cards) {
-      if (!tasks.has(id)) { card.remove(); cards.delete(id); }
-    }
-
-    // Создать карточки новых задач — по порядку id
-    for (const task of [...tasks.values()].sort((a, b) => a.id - b.id)) {
-      if (!cards.has(task.id)) {
-        const created = createCard(task.id);
-        cards.set(task.id, created);
-        const next = [...root.querySelectorAll('.task-card')].find(c => Number(c.dataset.id) > task.id);
-        root.insertBefore(created.card, next ?? null);
-      }
-      cards.get(task.id).state.replaceChildren(renderTask(task));
-    }
-
-    const placeholder = root.querySelector('.empty-tasks');
-    if (tasks.size === 0 && !placeholder) {
-      root.innerHTML = '<div class="empty empty-tasks">нет задач — нажмите «+ new task»</div>';
-    } else if (tasks.size > 0 && placeholder) {
-      placeholder.remove();
-    }
+    cards.sync(tasks);
   }
 
   // ---------- WebSocket ----------
-
-  function showEnvelope(env) {
-    if (env.data?.objectType !== 'RUNNABLE_TASK') return; // чужие события (списки и т.п.) не засоряют лог
-    const row = document.createElement('div');
-    const type = document.createElement('span');
-    type.className = 'type';
-    type.textContent = env.type;
-    const time = new Date(env.ts).toISOString().slice(11, 23); // HH:MM:SS.mmm, UTC
-    row.append(`#${env.seq}  ${time}  `, type, `  ${JSON.stringify(env.data)}`);
-    if (env.type.endsWith('_FAILED')) row.className = 'error';
-    $('ws').prepend(row);
-  }
-
-  function onMessage(raw) {
-    let env;
-    try {
-      env = JSON.parse(raw);
-    } catch (e) {
-      prepend('ws', `не JSON: ${raw}`, true);
-      return;
-    }
-    showEnvelope(env);
-    apply(env);
-    render();
-  }
-
-  function connect() {
-    const ws = new WebSocket(`ws://${location.host}/ws/events`);
-    ws.onopen = () => {
-      $('status').textContent = '● ws connected';
-      $('status').className = 'on';
-    };
-    ws.onclose = () => {
-      $('status').textContent = '● ws disconnected';
-      $('status').className = 'off';
-      setTimeout(connect, 1000);
-    };
-    ws.onmessage = msg => onMessage(msg.data);
-  }
+  // Подключение, лог событий и переподключение — UI.connect из base.js
 
   render();
-  connect();
+  UI.connect({ onEnvelope: env => { apply(env); render(); }, types: ['RUNNABLE_TASK'] });
 </script>
 </body>
 </html>
