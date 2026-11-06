@@ -7,6 +7,7 @@ import mingazov.kotlinview.event.MethodOutFailed
 import mingazov.kotlinview.event.ObjectType
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 
 /**
  * BlockingQueue<Runnable>, а не свой класс: ThreadPoolExecutor принимает только этот интерфейс.
@@ -49,6 +50,40 @@ class InstrumentedLinkedBlockingQueueRunnable private constructor(
         } catch (e: Exception) {
             // Например, InterruptedException от shutdownNow() пула
             sink.emit(MethodOutFailed(ObjectType.LINKED_BLOCKING_QUEUE_RUNNABLE, id, threadName(), "take", args, e.toString(), state()))
+            throw e
+        }
+    }
+
+    // Зовут воркеры сверх corePoolSize: ждут не дольше keepAlive, null — задачи не дождались, поток пула умрёт
+    override fun poll(timeout: Long, unit: TimeUnit): Runnable? {
+        val args = mapOf("timeoutMs" to unit.toMillis(timeout)) // пул передаёт keepAlive в наносекундах
+        sink.emit(MethodIn(ObjectType.LINKED_BLOCKING_QUEUE_RUNNABLE, id, threadName(), "poll", args, state()))
+        try {
+            val element = delegate.poll(timeout, unit) // блокирующий, но с таймаутом
+            val taskId = element?.let(InstrumentedRunnableTask::taskIdOf) // null — таймаут
+            sink.emit(MethodOut(ObjectType.LINKED_BLOCKING_QUEUE_RUNNABLE, id, threadName(), "poll", args, taskId, state()))
+            return element
+        } catch (e: Exception) {
+            sink.emit(MethodOutFailed(ObjectType.LINKED_BLOCKING_QUEUE_RUNNABLE, id, threadName(), "poll", args, e.toString(), state()))
+            throw e
+        }
+    }
+
+    // Зовёт shutdownNow() пула: забрать все задачи разом
+    override fun drainTo(c: MutableCollection<in Runnable>): Int {
+        val args = emptyMap<String, Any?>()
+        sink.emit(MethodIn(ObjectType.LINKED_BLOCKING_QUEUE_RUNNABLE, id, threadName(), "drainTo", args, state()))
+        try {
+            // Сначала в свой список: так точно знаем, какие задачи забрали, что бы ни было в c до вызова
+            val drained = ArrayList<Runnable>()
+            val result = delegate.drainTo(drained)
+            c.addAll(drained) // контракт drainTo: если add в c упал, элементы могут потеряться — так и у LinkedBlockingQueue
+            // result — taskIds забранных задач, а не их число: так клиент увидит, что именно ушло
+            val taskIds = drained.map(InstrumentedRunnableTask::taskIdOf)
+            sink.emit(MethodOut(ObjectType.LINKED_BLOCKING_QUEUE_RUNNABLE, id, threadName(), "drainTo", args, taskIds, state()))
+            return result
+        } catch (e: Exception) {
+            sink.emit(MethodOutFailed(ObjectType.LINKED_BLOCKING_QUEUE_RUNNABLE, id, threadName(), "drainTo", args, e.toString(), state()))
             throw e
         }
     }

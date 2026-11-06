@@ -1,6 +1,6 @@
 package mingazov.kotlinview.event
 
-enum class ObjectType { ARRAY_LIST_INT, LINKED_LIST_INT, RUNNABLE_TASK, LINKED_BLOCKING_QUEUE_RUNNABLE, THREAD_FACTORY, THREAD }
+enum class ObjectType { ARRAY_LIST_INT, LINKED_LIST_INT, RUNNABLE_TASK, LINKED_BLOCKING_QUEUE_RUNNABLE, THREAD_FACTORY, THREAD, THREAD_POOL_EXECUTOR }
 
 /** state — начальное состояние объекта: клиент может нарисовать его сразу, не дожидаясь первого вызова метода. */
 data class ObjectCreated(val objectType: ObjectType, val objectId: Long, override val thread: String, val state: Any?) : Event
