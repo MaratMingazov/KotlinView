@@ -1,15 +1,11 @@
 package mingazov.kotlinview.controller
 
 import mingazov.kotlinview.controller.collection.CreatedResponse
-import mingazov.kotlinview.controller.collection.ErrorResponse
 import mingazov.kotlinview.controller.collection.ResultResponse
 import mingazov.kotlinview.controller.collection.ThreadResponse
-import mingazov.kotlinview.instrumented.LinkedBlockingQueueRunnableNotFoundException
-import mingazov.kotlinview.instrumented.RunnableTaskNotFoundException
 import mingazov.kotlinview.service.LinkedBlockingQueueRunnableService
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
-import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -53,8 +49,4 @@ class LinkedBlockingQueueRunnableController(
     @DeleteMapping("/{queueId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun remove(@PathVariable queueId: Long) = queueService.remove(queueId)
-
-    @ExceptionHandler(LinkedBlockingQueueRunnableNotFoundException::class, RunnableTaskNotFoundException::class)
-    @ResponseStatus(HttpStatus.NOT_FOUND)
-    fun handleNotFound(e: NoSuchElementException) = ErrorResponse(e.toString())
 }

@@ -20,14 +20,14 @@ import java.util.concurrent.TimeUnit
  *   поэтому beforeExecute/afterExecute не переопределяем.
  */
 class InstrumentedThreadPoolExecutor(
-    val id: Long,
+    override val id: Long,
     private val sink: EventSink,
     corePoolSize: Int,
     maximumPoolSize: Int,
     private val keepAliveMs: Long,
     private val queue: InstrumentedLinkedBlockingQueueRunnable,
     private val threadFactory: InstrumentedThreadFactory,
-) : ThreadPoolExecutor(corePoolSize, maximumPoolSize, keepAliveMs, TimeUnit.MILLISECONDS, queue, threadFactory) {
+) : ThreadPoolExecutor(corePoolSize, maximumPoolSize, keepAliveMs, TimeUnit.MILLISECONDS, queue, threadFactory), Instrumented {
 
     // Чьи части — фасаду, чтобы удалить их вместе с пулом. Сами части наружу не отдаём
     val queueId: Long get() = queue.id
@@ -86,12 +86,12 @@ class InstrumentedThreadPoolExecutor(
     // thread — кто довёл пул до конца: вызвавший shutdown или последний умирающий воркер
     override fun terminated() {
         val args = emptyMap<String, Any?>()
-        sink.emit(MethodIn(ObjectType.THREAD_POOL_EXECUTOR, id, threadName(), "terminated", args, state(runState = "TIDYING")))
+        sink.emit(MethodIn(ObjectType.THREAD_POOL_EXECUTOR, id, threadName(), "terminated", args, stateWith("TIDYING")))
         try {
             super.terminated()
-            sink.emit(MethodOut(ObjectType.THREAD_POOL_EXECUTOR, id, threadName(), "terminated", args, null, state(runState = "TERMINATED")))
+            sink.emit(MethodOut(ObjectType.THREAD_POOL_EXECUTOR, id, threadName(), "terminated", args, null, stateWith("TERMINATED")))
         } catch (e: Exception) {
-            sink.emit(MethodOutFailed(ObjectType.THREAD_POOL_EXECUTOR, id, threadName(), "terminated", args, e.toString(), state(runState = "TIDYING")))
+            sink.emit(MethodOutFailed(ObjectType.THREAD_POOL_EXECUTOR, id, threadName(), "terminated", args, e.toString(), stateWith("TIDYING")))
             throw e
         }
     }
@@ -99,9 +99,11 @@ class InstrumentedThreadPoolExecutor(
     /**
      * Состояние пула для событий. poolSize / activeCount / completedTaskCount берут mainLock пула:
      * внутри execute он не держится, а в хуках вроде terminated() — реентерабельный, дедлока нет.
-     * runState передаёт только terminated(): снаружи TIDYING не отличить от SHUTDOWN.
      */
-    fun state(runState: String = runState()): Map<String, Any?> = mapOf(
+    override fun state(): Map<String, Any?> = stateWith(runState())
+
+    // runState передаёт только terminated(): снаружи TIDYING не отличить от SHUTDOWN
+    private fun stateWith(runState: String): Map<String, Any?> = mapOf(
         "corePoolSize" to corePoolSize,
         "maximumPoolSize" to maximumPoolSize,
         "keepAliveMs" to keepAliveMs,

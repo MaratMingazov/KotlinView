@@ -15,11 +15,11 @@ import java.util.concurrent.TimeUnit
  * Методы, которые здесь не переопределены, уходят в delegate без событий.
  */
 class InstrumentedLinkedBlockingQueueRunnable private constructor(
-    val id: Long,
+    override val id: Long,
     private val sink: EventSink,
     private val capacity: Int, // у LinkedBlockingQueue нет геттера ёмкости, а size + remainingCapacity() под гонкой не атомарно
     private val delegate: LinkedBlockingQueue<Runnable>,
-) : BlockingQueue<Runnable> by delegate {
+) : BlockingQueue<Runnable> by delegate, Instrumented {
 
     // delegate снаружи не передаётся: иначе кто-то мог бы менять очередь в обход событий
     constructor(id: Long, capacity: Int, sink: EventSink) : this(id, sink, capacity, LinkedBlockingQueue(capacity))
@@ -89,7 +89,7 @@ class InstrumentedLinkedBlockingQueueRunnable private constructor(
     }
 
     /** Состояние очереди для событий. Итератор LinkedBlockingQueue потокобезопасен и не бросает исключений — замок не нужен. */
-    fun state(): Map<String, Any?> =
+    override fun state(): Map<String, Any?> =
         mapOf("capacity" to capacity, "taskIds" to delegate.map(InstrumentedRunnableTask::taskIdOf))
 
     private fun threadName() = Thread.currentThread().name

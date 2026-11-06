@@ -1,6 +1,6 @@
 package mingazov.kotlinview.controller.collection
 
-import mingazov.kotlinview.instrumented.collection.LinkedListIntNotFoundException
+import mingazov.kotlinview.instrumented.ObjectNotFoundException
 import mingazov.kotlinview.service.collection.LinkedListIntService
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -73,12 +73,14 @@ class LinkedListIntController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun remove(@PathVariable linkedListId: Long) = linkedListIntService.remove(linkedListId)
 
-    @ExceptionHandler(LinkedListIntNotFoundException::class)
+    // Обычно 404 — в ErrorHandlers, но здесь он нужен свой: обработчики контроллера проверяются раньше advice,
+    // и без него «списка нет» (ObjectNotFoundException — тоже NoSuchElementException) ушёл бы в handleEmpty ниже.
+    // Внутри контроллера Spring выбирает самый точный тип — поэтому этот 404 выигрывает у 409
+    @ExceptionHandler(ObjectNotFoundException::class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
-    fun handleNotFound(e: LinkedListIntNotFoundException) = ErrorResponse(e.toString())
+    fun handleNotFound(e: ObjectNotFoundException) = ErrorResponse(e.toString())
 
-    // pop() на пустом списке. LinkedListIntNotFoundException — тоже NoSuchElementException,
-    // но Spring выбирает самый точный обработчик, поэтому «списка нет» по-прежнему уходит в 404 выше
+    // pop() на пустом списке
     @ExceptionHandler(NoSuchElementException::class)
     @ResponseStatus(HttpStatus.CONFLICT)
     fun handleEmpty(e: NoSuchElementException) = ErrorResponse(e.toString())

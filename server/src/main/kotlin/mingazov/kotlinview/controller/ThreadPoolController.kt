@@ -3,8 +3,6 @@ package mingazov.kotlinview.controller
 import mingazov.kotlinview.controller.collection.CreatedResponse
 import mingazov.kotlinview.controller.collection.ErrorResponse
 import mingazov.kotlinview.controller.collection.ResultResponse
-import mingazov.kotlinview.instrumented.RunnableTaskNotFoundException
-import mingazov.kotlinview.instrumented.ThreadPoolExecutorNotFoundException
 import mingazov.kotlinview.service.ThreadPoolExecutorService
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -64,9 +62,6 @@ class ThreadPoolController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun remove(@PathVariable poolId: Long) = poolService.remove(poolId)
 
-    @ExceptionHandler(ThreadPoolExecutorNotFoundException::class, RunnableTaskNotFoundException::class)
-    @ResponseStatus(HttpStatus.NOT_FOUND)
-    fun handleNotFound(e: NoSuchElementException) = ErrorResponse(e.toString())
 
     // require в create: например, corePoolSize > maximumPoolSize
     @ExceptionHandler(IllegalArgumentException::class)

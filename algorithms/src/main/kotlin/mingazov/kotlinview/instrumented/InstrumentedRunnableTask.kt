@@ -13,10 +13,10 @@ import mingazov.kotlinview.event.ObjectType
  * Общего изменяемого состояния тоже нет — прогресс в локальных переменных, у каждого потока свой.
  */
 class InstrumentedRunnableTask(
-    val id: Long,
+    override val id: Long,
     private val durationMs: Long,
     private val sink: EventSink,
-    ) : Runnable {
+    ) : Runnable, Instrumented {
 
     override fun run() {
         val args = emptyMap<String, Any?>()
@@ -44,7 +44,7 @@ class InstrumentedRunnableTask(
         mapOf("elapsedMs" to elapsedMs, "remainingMs" to durationMs - elapsedMs, "durationMs" to durationMs)
 
     /** Состояние задачи для событий. Неизменяемое: durationMs — val. */
-    fun state(): Map<String, Any?> = mapOf("durationMs" to durationMs)
+    override fun state(): Map<String, Any?> = mapOf("durationMs" to durationMs)
 
     private fun threadName() = Thread.currentThread().name
 

@@ -15,9 +15,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * Жизнь потока = его run: METHOD_IN — стартовал, METHOD_OUT — вышел, затем OBJECT_REMOVED — больше событий не будет.
  */
 class InstrumentedThreadFactory (
-    val id: Long,
+    override val id: Long,
     private val sink: EventSink,
-) : ThreadFactory {
+) : ThreadFactory, Instrumented {
 
     private val counter = AtomicInteger()
 
@@ -58,7 +58,7 @@ class InstrumentedThreadFactory (
     }
 
     /** Состояние фабрики: сколько потоков она создала. */
-    fun state(): Map<String, Any?> = mapOf("createdCount" to counter.get())
+    override fun state(): Map<String, Any?> = mapOf("createdCount" to counter.get())
 
     /** Состояние потока неизменяемо: имя и чья фабрика. */
     private fun threadState(name: String): Map<String, Any?> = mapOf("name" to name, "threadFactoryId" to id)

@@ -1,6 +1,5 @@
 package mingazov.kotlinview.controller.collection
 
-import mingazov.kotlinview.instrumented.collection.ArrayListIntNotFoundException
 import mingazov.kotlinview.service.collection.ArrayListIntService
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -50,9 +49,6 @@ class ArrayListIntController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun remove(@PathVariable arrayListId: Long) = arrayListIntService.remove(arrayListId)
 
-    @ExceptionHandler(ArrayListIntNotFoundException::class)
-    @ResponseStatus(HttpStatus.NOT_FOUND)
-    fun handleNotFound(e: ArrayListIntNotFoundException) = ErrorResponse(e.toString())
 
     @ExceptionHandler(IndexOutOfBoundsException::class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
