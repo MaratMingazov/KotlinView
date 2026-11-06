@@ -3,11 +3,8 @@ package mingazov.kotlinview.instrumented
 import java.util.concurrent.Callable
 import java.util.concurrent.CompletableFuture.runAsync
 import java.util.concurrent.CompletableFuture.supplyAsync
-import java.util.concurrent.CompletionStage
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
-import java.util.function.BiFunction
-import java.util.function.Supplier
 import kotlin.time.Clock
 
 
