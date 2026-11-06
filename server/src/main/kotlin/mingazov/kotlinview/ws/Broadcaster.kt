@@ -25,7 +25,7 @@ class Broadcaster(
     override fun emit(event: Event) {
         log.info("event: {}", event)
         val time = System.currentTimeMillis()
-        val payload = WebSocketMapper.toPayload(event) ?: return // событие не входит в протокол
+        val payload = WebSocketMapper.toPayload(event)
         val message = toMessage(++seq, payload, time)
         Thread.sleep(sleepMillis)
         sessionRegistry.sendToAll(message)
