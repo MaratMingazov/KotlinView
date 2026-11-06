@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <title>ArrayList&lt;Int&gt; playground</title>
+  <!-- Общие компоненты первыми: стили страницы ниже могут их уточнять -->
+  <link rel="stylesheet" href="components.css">
   <style>
     /* Палитра как в arraylist-ide.html (IntelliJ Darcula) */
     :root {
@@ -54,19 +56,7 @@
     .ops .args { display: flex; gap: 4px; }
     .card-controls .danger { margin-top: 10px; }
 
-    /* --- состояние: бейджи методов --- */
-    .badges { display: flex; gap: 8px; align-items: center; min-height: 22px; }
-    .method { padding: 0 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--dim); }
-    .method.active { background: var(--out); border-color: var(--out); color: var(--bg); }
-    /* Послесвечение: после OUT бейдж не гаснет мгновенно, а затухает, как лампа накаливания */
-    @keyframes afterglow {
-      from { background: var(--out); border-color: var(--out); color: var(--bg); }
-      to { background: transparent; border-color: var(--border); color: var(--dim); }
-    }
-    @keyframes afterglow-failed {
-      from { background: var(--fail); border-color: var(--fail); color: var(--bg); }
-      to { background: transparent; border-color: var(--border); color: var(--dim); }
-    }
+    /* Бейджи методов — в components.css */
 
     /* --- состояние: ячейки с индексами --- */
     .cells { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; min-height: 50px; }
@@ -87,7 +77,7 @@
       from { background: color-mix(in srgb, var(--in) 45%, var(--panel)); border-color: var(--in); }
       to { background: var(--panel); border-color: var(--border); }
     }
-    @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+    /* fade-out — в components.css */
 
     /* --- логи --- */
     .log { max-height: 40vh; overflow-y: auto; }
@@ -114,6 +104,7 @@
 <h3>WebSocket <button class="link" id="clearWs">clear</button></h3>
 <div id="ws" class="log"></div>
 
+<script src="components.js"></script>
 <script>
   const $ = id => document.getElementById(id);
   const base = '/api/arraylistint';
@@ -151,21 +142,15 @@
   // ---------- State ----------
 
   const METHODS = ['add', 'addAt', 'get'];
-  const PHASE_BY_TYPE = { METHOD_IN: 'IN', METHOD_OUT: 'OUT', METHOD_OUT_FAILED: 'OUT_FAILED' };
-  const FADE_MS = 800; // сколько затухает бейдж после выхода последнего потока — подбирается на глаз
   const CELL_FADE_MS = 1500; // сколько затухает подсветка ячеек — дольше, чтобы успеть рассмотреть
 
-  // objectId → { id, elements, inside: { method: Set<thread> }, fade: { method: { start, failed } }, cellEffect }
-  // fade.start — когда вышел последний поток (null — не затухает); fade.failed — гаснуть красным
+  // objectId → { id, elements, unreadable, methods, cellEffect }
+  // methods — KV.methodsState: кто внутри какого метода и затухание бейджей
   const lists = new Map();
 
   // Список создаётся и по CREATED, и по любому другому событию: страницу могли открыть уже после CREATED
   function listOf(id) {
-    if (!lists.has(id)) {
-      const inside = Object.fromEntries(METHODS.map(m => [m, new Set()]));
-      const fade = Object.fromEntries(METHODS.map(m => [m, { start: null, failed: false }]));
-      lists.set(id, { id, elements: [], unreadable: false, inside, fade, cellEffect: null });
-    }
+    if (!lists.has(id)) lists.set(id, { id, elements: [], unreadable: false, methods: KV.methodsState(METHODS), cellEffect: null });
     return lists.get(id);
   }
 
@@ -178,27 +163,15 @@
     }
     if (env.type === 'OBJECT_REMOVED') { if (env.data.objectType === 'ARRAY_LIST_INT') lists.delete(env.data.objectId); return; }
 
-    const phase = PHASE_BY_TYPE[env.type];
-    if (!phase || env.data.objectType !== 'ARRAY_LIST_INT' || !METHODS.includes(env.data.method)) return;
-    const method = env.data.method;
+    if (env.data.objectType !== 'ARRAY_LIST_INT') return;
     const list = listOf(env.data.objectId);
+    const phase = KV.trackMethod(list.methods, env);
+    if (!phase) return;
     // state == null — сервер не смог прочитать список (гонка): оставляем прошлые элементы и помечаем карточку
     list.unreadable = !Array.isArray(env.data.state);
     if (!list.unreadable) list.elements = env.data.state;
 
-    // Внутри метода может быть несколько потоков сразу: горит, пока не вышел последний, потом затухает
-    const inside = list.inside[method];
-    const fade = list.fade[method];
-    if (phase === 'IN') {
-      if (inside.size === 0) list.fade[method] = { start: null, failed: false }; // зажгли заново
-      inside.add(env.data.thread);
-    } else {
-      inside.delete(env.data.thread);
-      fade.failed ||= phase === 'OUT_FAILED'; // ошибку запоминаем, даже если внутри ещё есть потоки
-      if (inside.size === 0) fade.start = performance.now();
-    }
-
-    const cells = cellEffectOf(method, phase, env.data);
+    const cells = cellEffectOf(env.data.method, phase, env.data);
     if (cells) {
       list.cellEffect = { ...cells, start: performance.now() };
       setTimeout(render, CELL_FADE_MS); // убрать «призрачную» ячейку, когда она догорит
@@ -276,6 +249,7 @@
   }
 
   // ---------- Карточка списка: состояние справа ----------
+  // Бейджи — общий компонент из components.js. Ячейки массива — свои: это не цепочка, у них свои эффекты
 
   // Ячейка массива: значение и индекс под ним
   function cell(value, index) {
@@ -293,27 +267,6 @@
 
   // Анимация, продолженная с того места, где она была до пересоздания элемента
   const glow = (name, elapsed) => `${name} ${CELL_FADE_MS}ms ease-out ${-elapsed}ms forwards`;
-
-  function renderBadges(list) {
-    const badges = document.createElement('div');
-    badges.className = 'badges';
-    for (const method of METHODS) {
-      const threads = list.inside[method];
-      const el = document.createElement('span');
-      el.className = 'method' + (threads.size > 0 ? ' active' : '');
-      // Бейдж пересоздаётся на каждый render. Отрицательная задержка продолжает затухание
-      // с того места, где оно было, — без неё анимация начиналась бы заново и бейдж дёргался
-      const { start, failed } = list.fade[method];
-      const elapsed = start === null ? Infinity : performance.now() - start;
-      if (threads.size === 0 && elapsed < FADE_MS) {
-        el.style.animation = `${failed ? 'afterglow-failed' : 'afterglow'} ${FADE_MS}ms ease-out ${-elapsed}ms forwards`;
-      }
-      el.textContent = method + (threads.size > 1 ? ` ×${threads.size}` : '');
-      el.title = threads.size > 0 ? [...threads].join('\n') : '';
-      badges.append(el);
-    }
-    return badges;
-  }
 
   function renderCells(list) {
     const cells = document.createElement('div');
@@ -373,7 +326,7 @@
       }
       // Пульт не трогаем — перерисовываем только правую часть
       const { state } = cards.get(list.id);
-      state.replaceChildren(renderBadges(list), renderCells(list));
+      state.replaceChildren(KV.renderBadges(list.methods), renderCells(list));
     }
 
     const placeholder = root.querySelector('.empty');

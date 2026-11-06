@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <title>LinkedList&lt;Int&gt; playground</title>
+  <!-- Общие компоненты первыми: стили страницы ниже могут их уточнять -->
+  <link rel="stylesheet" href="components.css">
   <style>
     /* Палитра как в arraylist-ide.html (IntelliJ Darcula) */
     :root {
@@ -54,40 +56,7 @@
     .ops .args { display: flex; gap: 4px; }
     .card-controls .danger { margin-top: 10px; }
 
-    /* --- состояние: бейджи методов --- */
-    .badges { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-height: 22px; }
-    .method { padding: 0 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--dim); }
-    .method.active { background: var(--out); border-color: var(--out); color: var(--bg); }
-    /* Послесвечение: после OUT бейдж не гаснет мгновенно, а затухает, как лампа накаливания */
-    @keyframes afterglow {
-      from { background: var(--out); border-color: var(--out); color: var(--bg); }
-      to { background: transparent; border-color: var(--border); color: var(--dim); }
-    }
-    @keyframes afterglow-failed {
-      from { background: var(--fail); border-color: var(--fail); color: var(--bg); }
-      to { background: transparent; border-color: var(--border); color: var(--dim); }
-    }
-
-    /* --- состояние: цепочка узлов head ⇄ … ⇄ tail --- */
-    .chain { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 0; margin-top: 8px; min-height: 66px; }
-    .node { display: flex; flex-direction: column; align-items: center; }
-    .node .label { font-size: 11px; color: var(--keyword); height: 16px; }
-    .node .box {
-      min-width: 40px; height: 32px; padding: 0 6px; display: flex; align-items: center; justify-content: center;
-      border: 2px solid var(--border); border-radius: 16px; color: var(--num); background: var(--panel);
-    }
-    .node .idx { font-size: 11px; color: var(--dim); height: 16px; }
-    .link-arrow { color: var(--dim); padding: 0 6px; margin-bottom: 0; }
-    /* Призрак снятого узла (poll/pop) и «ничего не снято» */
-    .node.removed .box { border-style: dashed; border-color: var(--dim); color: var(--text); background: none; }
-    .node.null .box { border-style: dashed; border-color: var(--border); color: var(--dim); background: none; }
-    .node.failed .box { border-style: dashed; border-color: var(--fail); color: var(--fail); background: none; }
-    /* Подсветка тоже затухает, а не снимается рывком */
-    @keyframes node-new {
-      from { background: color-mix(in srgb, var(--out) 45%, var(--panel)); border-color: var(--out); }
-      to { background: var(--panel); border-color: var(--border); }
-    }
-    @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+    /* Бейджи методов и цепочка узлов — в components.css */
 
     /* --- логи --- */
     .log { max-height: 40vh; overflow-y: auto; }
@@ -114,6 +83,7 @@
 <h3>WebSocket <button class="link" id="clearWs">clear</button></h3>
 <div id="ws" class="log"></div>
 
+<script src="components.js"></script>
 <script>
   const $ = id => document.getElementById(id);
   const base = '/api/linkedlistint';
@@ -151,21 +121,14 @@
   // ---------- State ----------
 
   const METHODS = ['add', 'offer', 'offerFirst', 'offerLast', 'poll', 'pop'];
-  const PHASE_BY_TYPE = { METHOD_IN: 'IN', METHOD_OUT: 'OUT', METHOD_OUT_FAILED: 'OUT_FAILED' };
-  const FADE_MS = 800; // сколько затухает бейдж после выхода последнего потока — подбирается на глаз
-  const NODE_FADE_MS = 1500; // сколько затухает подсветка узлов — дольше, чтобы успеть рассмотреть
 
-  // objectId → { id, elements, inside: { method: Set<thread> }, fade: { method: { start, failed } }, nodeEffect }
-  // fade.start — когда вышел последний поток (null — не затухает); fade.failed — гаснуть красным
+  // objectId → { id, elements, methods, nodeEffect }
+  // methods — KV.methodsState: кто внутри какого метода и затухание бейджей
   const lists = new Map();
 
   // Список создаётся и по CREATED, и по любому другому событию: страницу могли открыть уже после CREATED
   function listOf(id) {
-    if (!lists.has(id)) {
-      const inside = Object.fromEntries(METHODS.map(m => [m, new Set()]));
-      const fade = Object.fromEntries(METHODS.map(m => [m, { start: null, failed: false }]));
-      lists.set(id, { id, elements: [], inside, fade, nodeEffect: null });
-    }
+    if (!lists.has(id)) lists.set(id, { id, elements: [], methods: KV.methodsState(METHODS), nodeEffect: null });
     return lists.get(id);
   }
 
@@ -178,29 +141,14 @@
     }
     if (env.type === 'OBJECT_REMOVED') { if (env.data.objectType === 'LINKED_LIST_INT') lists.delete(env.data.objectId); return; }
 
-    const phase = PHASE_BY_TYPE[env.type];
-    if (!phase || env.data.objectType !== 'LINKED_LIST_INT' || !METHODS.includes(env.data.method)) return;
-    const method = env.data.method;
+    if (env.data.objectType !== 'LINKED_LIST_INT') return;
     const list = listOf(env.data.objectId);
+    const phase = KV.trackMethod(list.methods, env);
+    if (!phase) return;
     list.elements = env.data.state;
 
-    // Внутри метода может быть несколько потоков сразу: горит, пока не вышел последний, потом затухает
-    const inside = list.inside[method];
-    const fade = list.fade[method];
-    if (phase === 'IN') {
-      if (inside.size === 0) list.fade[method] = { start: null, failed: false }; // зажгли заново
-      inside.add(env.data.thread);
-    } else {
-      inside.delete(env.data.thread);
-      fade.failed ||= phase === 'OUT_FAILED'; // ошибку запоминаем, даже если внутри ещё есть потоки
-      if (inside.size === 0) fade.start = performance.now();
-    }
-
-    const effect = nodeEffectOf(method, phase, env.data);
-    if (effect) {
-      list.nodeEffect = { ...effect, start: performance.now() };
-      setTimeout(render, NODE_FADE_MS); // убрать призрак, когда он догорит
-    }
+    const effect = nodeEffectOf(env.data.method, phase, env.data);
+    if (effect) KV.setEffect(list, effect, render); // перерисовать, когда призрак догорит
   }
 
   // Что подсветить после этого события (null — ничего).
@@ -278,79 +226,7 @@
   }
 
   // ---------- Карточка списка: состояние справа ----------
-
-  // Узел цепочки: метка (head/tail), значение, позиция
-  function node(value, label, index) {
-    const el = document.createElement('div');
-    el.className = 'node';
-    el.append(
-      Object.assign(document.createElement('div'), { className: 'label', textContent: label }),
-      Object.assign(document.createElement('div'), { className: 'box', textContent: value }),
-      Object.assign(document.createElement('div'), { className: 'idx', textContent: index }),
-    );
-    return el;
-  }
-
-  const linkArrow = () => Object.assign(document.createElement('span'), { className: 'link-arrow', textContent: '⇄' });
-
-  // Анимация, продолженная с того места, где она была до пересоздания элемента
-  const glow = (name, elapsed) => `${name} ${NODE_FADE_MS}ms ease-out ${-elapsed}ms forwards`;
-
-  function renderBadges(list) {
-    const badges = document.createElement('div');
-    badges.className = 'badges';
-    for (const method of METHODS) {
-      const threads = list.inside[method];
-      const el = document.createElement('span');
-      el.className = 'method' + (threads.size > 0 ? ' active' : '');
-      // Бейдж пересоздаётся на каждый render. Отрицательная задержка продолжает затухание
-      // с того места, где оно было, — без неё анимация начиналась бы заново и бейдж дёргался
-      const { start, failed } = list.fade[method];
-      const elapsed = start === null ? Infinity : performance.now() - start;
-      if (threads.size === 0 && elapsed < FADE_MS) {
-        el.style.animation = `${failed ? 'afterglow-failed' : 'afterglow'} ${FADE_MS}ms ease-out ${-elapsed}ms forwards`;
-      }
-      el.textContent = method + (threads.size > 1 ? ` ×${threads.size}` : '');
-      el.title = threads.size > 0 ? [...threads].join('\n') : '';
-      badges.append(el);
-    }
-    return badges;
-  }
-
-  function renderChain(list) {
-    const chain = document.createElement('div');
-    chain.className = 'chain';
-    const effect = list.nodeEffect;
-    const elapsed = effect ? performance.now() - effect.start : Infinity;
-    const active = elapsed < NODE_FADE_MS;
-
-    // Призрак снятого узла тает слева от головы
-    if (active && effect.ghost !== undefined) {
-      const ghost = node(effect.ghost, '', '');
-      ghost.classList.add(effect.kind);
-      ghost.style.animation = glow('fade-out', elapsed);
-      chain.append(ghost);
-      if (list.elements.length > 0) {
-        const arrow = linkArrow();
-        arrow.style.animation = glow('fade-out', elapsed);
-        chain.append(arrow);
-      }
-    }
-
-    const last = list.elements.length - 1;
-    list.elements.forEach((value, i) => {
-      if (i > 0) chain.append(linkArrow());
-      const label = i === 0 && i === last ? 'head·tail' : i === 0 ? 'head' : i === last ? 'tail' : '';
-      const el = node(value, label, i);
-      if (active && effect.new === i) el.querySelector('.box').style.animation = glow('node-new', elapsed);
-      chain.append(el);
-    });
-
-    if (list.elements.length === 0 && !(active && effect.ghost !== undefined)) {
-      chain.append(Object.assign(document.createElement('span'), { className: 'empty', textContent: 'head = tail = null' }));
-    }
-    return chain;
-  }
+  // Бейджи и цепочка — общие компоненты из components.js. Призрак снятого узла тает слева от головы
 
   // ---------- Синхронизация карточек с состоянием ----------
 
@@ -374,7 +250,7 @@
       }
       // Пульт не трогаем — перерисовываем только правую часть
       const { state } = cards.get(list.id);
-      state.replaceChildren(renderBadges(list), renderChain(list));
+      state.replaceChildren(KV.renderBadges(list.methods), KV.renderChain(list.elements, list.nodeEffect));
     }
 
     const placeholder = root.querySelector('.empty-lists');

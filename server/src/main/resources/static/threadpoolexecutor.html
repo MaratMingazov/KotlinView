@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <title>ThreadPoolExecutor playground</title>
+  <!-- Общие компоненты первыми: стили страницы ниже могут их уточнять -->
+  <link rel="stylesheet" href="components.css">
   <style>
     /* Палитра как в arraylist-ide.html (IntelliJ Darcula) */
     :root {
@@ -73,24 +75,23 @@
     .part-title { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
     .part-title .name { color: var(--keyword); }
 
-    /* --- воркеры: строка на поток фабрики пула --- */
-    .workers { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
-    .worker { display: grid; grid-template-columns: 170px 110px 160px; gap: 10px; align-items: center; }
+    /* --- воркеры: колонка на поток фабрики пула --- */
+    /* Воркеры рядом, как узлы цепочки: сверху имя потока, под ним его задача (конверт + полоска) или ожидание */
+    .workers { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-start; margin-top: 6px; }
+    .worker { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 150px; }
     .worker .wname { font-weight: bold; color: var(--thread); white-space: nowrap; }
     .worker .wstatus { white-space: nowrap; }
-    .worker .wstatus.busy { color: var(--out); }
     .worker .wstatus.waiting { color: var(--fn); }
     .worker .wstatus.failed { color: var(--fail); }
     .worker.ended { animation: fade-out var(--fade) ease-in forwards; }
     .track {
-      position: relative; height: 12px; overflow: hidden;
+      position: relative; width: 96px; height: 14px; overflow: hidden; box-sizing: border-box;
       background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
     }
     .track .bar { position: absolute; top: 0; bottom: 0; left: 0; width: 0; }
-    .track .bar.task { background: color-mix(in srgb, var(--thread) 40%, transparent); }
     .track .bar.poll { background: color-mix(in srgb, var(--fn) 30%, transparent); }
-    /* Полоски едут сами: анимация на всю длительность, отрицательная задержка — сколько уже прошло */
-    @keyframes fill-up { from { width: 0; } to { width: 100%; } }
+    /* Полоски едут сами: анимация на всю длительность, отрицательная задержка — сколько уже прошло.
+       fill-up — в components.css, drain (обратный отсчёт keepAlive) — только здесь */
     @keyframes drain { from { width: 100%; } to { width: 0; } }
 
     /* --- логи --- */
@@ -99,7 +100,6 @@
     .error { color: var(--fail); }
     .type { font-weight: bold; color: var(--fn); }
   </style>
-  <link rel="stylesheet" href="components.css">
 </head>
 <body>
 
@@ -200,12 +200,11 @@
   const factories = new Map();
   // threadName → { objectId, name, factoryId, phase: 'NEW' | 'RUN' | 'DONE' | 'FAILED', error, endedAt }
   const threads = new Map();
-  // threadName → { taskId, durationMs, startedAt } — какую задачу поток выполняет прямо сейчас
-  const running = new Map();
   // threadName → { timeoutMs, start } — поток ждёт в poll(keepAlive) и умрёт, если не дождётся
   const polling = new Map();
-  // taskId → durationMs — для подсказки узла очереди
-  const durations = new Map();
+  // taskId → задача из KV.trackTask: узлы очереди и занятые воркеры рисуются её конвертом — тем же, что на странице задачи.
+  // Какую задачу выполняет поток, тоже отсюда: у задачи в runs есть этот поток в фазе RUN
+  const tasks = new Map();
 
   function poolOf(id) {
     if (!pools.has(id)) pools.set(id, { id, state: null, methods: KV.methodsState(['execute', 'shutdown', 'shutdownNow', 'terminated']), notice: null });
@@ -227,7 +226,7 @@
       case QUEUE: applyQueue(env, d); break;
       case FACTORY: applyFactory(env, d); break;
       case THREAD: applyThread(env, d); break;
-      case TASK: applyTask(env, d); break;
+      case TASK: applyTask(env); break;
     }
   }
 
@@ -280,11 +279,11 @@
     if (method === 'offer') {
       // При гонке «последний узел» — допущение, а не наблюдение
       if (d.result === true) return { new: d.state.taskIds.length - 1 };
-      return { ghost: `#${d.args.taskId}`, kind: 'failed', side: 'tail', title: 'очередь полна: offer вернул false' };
+      return { value: d.args.taskId, kind: 'failed', side: 'tail', title: 'очередь полна: offer вернул false' };
     }
     // Снятого узла в state уже нет — его taskId берём из result. poll вернул null — таймаут, снимать нечего
     if ((method === 'take' || method === 'poll') && d.result != null) {
-      return { ghost: `#${d.result}`, kind: 'removed', side: 'head', title: `взял ${d.thread}` };
+      return { value: d.result, kind: 'removed', side: 'head', title: `взял ${d.thread}` };
     }
     if (method === 'drainTo' && d.result.length > 0) {
       return { ghost: d.result.map(id => '#' + id).join(' '), kind: 'removed', side: 'head', title: 'забрал shutdownNow' };
@@ -317,24 +316,23 @@
   function finishThread(thread, phase, error, fadeMs) {
     const endedAt = performance.now();
     Object.assign(thread, { phase, error, endedAt });
-    running.delete(thread.name);
     polling.delete(thread.name);
     setTimeout(() => {
       if (threads.get(thread.name)?.endedAt === endedAt) { threads.delete(thread.name); render(); }
     }, fadeMs);
   }
 
-  function applyTask(env, d) {
-    if (env.type === 'OBJECT_REMOVED') { durations.delete(d.objectId); return; }
-    if (d.state?.durationMs !== undefined) durations.set(d.objectId, d.state.durationMs);
-    if (d.method !== 'run') return;
-    // Поток, выполняющий задачу, — это и есть воркер пула (или чужой runner — его просто не покажем)
-    if (env.type === 'METHOD_IN') running.set(d.thread, { taskId: d.objectId, durationMs: d.state.durationMs, startedAt: performance.now() });
-    if (env.type === 'METHOD_PROGRESS') {
-      const run = running.get(d.thread);
-      if (run) run.startedAt = performance.now() - d.progress.elapsedMs; // подровнять по серверу
+  function applyTask(env) {
+    KV.trackTask(tasks, env, render);
+  }
+
+  // Какую задачу поток выполняет прямо сейчас (null — никакую). Чужие runner-потоки тоже найдутся, но их строк нет
+  function taskRunBy(threadName) {
+    for (const task of tasks.values()) {
+      const run = task.runs.get(threadName);
+      if (run?.phase === 'RUN') return { task, run };
     }
-    if (env.type === 'METHOD_OUT' || env.type === 'METHOD_OUT_FAILED') running.delete(d.thread);
+    return null;
   }
 
   // ---------- Карточка пула: пульт слева ----------
@@ -417,12 +415,8 @@
     return row;
   }
 
-  // Значение узла — id задачи, длительность — в подсказке
-  function taskNode(taskId, label, index) {
-    const el = KV.node(`#${taskId}`, label, index);
-    el.title = `task#${taskId}, ${KV.seconds(durations.get(taskId))}`;
-    return el;
-  }
+  // Узел — мини-конверт задачи из общего компонента
+  const taskNode = (taskId, label, index) => KV.taskNode(tasks, taskId, label, index);
 
   function renderQueue(queueId) {
     const part = KV.el('div', 'part');
@@ -453,52 +447,44 @@
     return part;
   }
 
-  // Чем занят воркер, видно не по событиям пула, а по событиям задачи (run) и очереди (take / poll) с его именем потока
+  // Чем занят воркер, видно не по событиям пула, а по событиям задачи (run) и очереди (take / poll) с его именем потока.
+  // Колонка: сверху имя потока, под ним либо его задача — тем же компонентом, что на странице задачи, — либо ожидание
   function renderWorker(thread, queue) {
-    const row = KV.el('div', 'worker');
-    row.style.setProperty('--thread', KV.threadColor(thread.name));
-    const name = KV.el('span', 'wname', thread.name);
-    const status = KV.el('span', 'wstatus');
-    const track = KV.el('div', 'track');
+    const column = KV.el('div', 'worker');
+    column.style.setProperty('--thread', KV.threadColor(thread.name));
+    column.append(KV.el('span', 'wname', thread.name));
     const now = performance.now();
 
-    const run = running.get(thread.name);
+    const busy = taskRunBy(thread.name);
     const poll = polling.get(thread.name);
     if (thread.phase === 'DONE' || thread.phase === 'FAILED') {
       const failed = thread.phase === 'FAILED';
-      status.textContent = failed ? '✗ упал' : '✓ завершён';
-      status.classList.add(failed ? 'failed' : 'done');
-      row.title = failed ? `${thread.name}: ${thread.error}` : `${thread.name}: вышел из run — keepAlive истёк или пул остановлен`;
-      row.classList.add('ended');
-      const fadeMs = failed ? FAILED_FADE_MS : DONE_FADE_MS;
-      row.style.setProperty('--fade', `${fadeMs}ms`);
-      row.style.animationDelay = `${-(now - thread.endedAt)}ms`; // продолжить затухание после перерисовки
-      track.style.visibility = 'hidden';
-    } else if (run) {
-      status.textContent = `▶ task#${run.taskId}`;
-      status.classList.add('busy');
+      column.append(KV.el('span', 'wstatus ' + (failed ? 'failed' : 'done'), failed ? '✗ упал' : '✓ завершён'));
+      column.title = failed ? `${thread.name}: ${thread.error}` : `${thread.name}: вышел из run — keepAlive истёк или пул остановлен`;
+      column.classList.add('ended');
+      column.style.setProperty('--fade', `${failed ? FAILED_FADE_MS : DONE_FADE_MS}ms`);
+      column.style.animationDelay = `${-(now - thread.endedAt)}ms`; // продолжить затухание после перерисовки
+    } else if (busy) {
+      // Конверт с полоской этого потока под ним; имя потока уже над конвертом — на полоске его не дублируем
+      const { task, run } = busy;
+      column.append(KV.renderTask(task, { size: 'mini', thread: thread.name, names: false }));
       const elapsed = now - run.startedAt;
-      row.title = `${thread.name} выполняет task#${run.taskId}: ${KV.seconds(Math.min(elapsed, run.durationMs))} / ${KV.seconds(run.durationMs)}`;
-      track.append(bar('task', 'fill-up', run.durationMs, elapsed));
+      column.title = `${thread.name} выполняет task#${task.id}: ${KV.seconds(Math.min(elapsed, task.durationMs ?? 0))} / ${KV.seconds(task.durationMs)}`;
     } else if (queue?.methods.inside.take.has(thread.name)) {
-      status.textContent = '⏳ take';
-      status.classList.add('waiting');
-      row.title = `${thread.name} ждёт задачу в take() — core-поток, ждёт сколько угодно`;
-      track.style.visibility = 'hidden';
+      column.append(KV.el('span', 'wstatus waiting', '⏳ take'));
+      column.title = `${thread.name} ждёт задачу в take() — core-поток, ждёт сколько угодно`;
     } else if (poll) {
-      status.textContent = '⏳ poll';
-      status.classList.add('waiting');
-      const elapsed = now - poll.start;
-      row.title = `${thread.name} ждёт задачу в poll(${KV.seconds(poll.timeoutMs)}) — не дождётся, и поток умрёт (keepAlive)`;
-      track.append(bar('poll', 'drain', poll.timeoutMs, elapsed));
+      column.append(KV.el('span', 'wstatus waiting', '⏳ poll'));
+      const track = KV.el('div', 'track');
+      track.append(bar('poll', 'drain', poll.timeoutMs, now - poll.start));
+      column.append(track);
+      column.title = `${thread.name} ждёт задачу в poll(${KV.seconds(poll.timeoutMs)}) — не дождётся, и поток умрёт (keepAlive)`;
     } else {
       // Между задачами: внутри getTask() до take/poll, или поток создан, но ещё не стартовал
-      status.textContent = thread.phase === 'NEW' ? 'создан' : '·';
-      row.title = thread.phase === 'NEW' ? `${thread.name}: newThread вернул поток, start() ещё не было` : `${thread.name}: между задачами`;
-      track.style.visibility = 'hidden';
+      column.append(KV.el('span', 'wstatus', thread.phase === 'NEW' ? 'создан' : '·'));
+      column.title = thread.phase === 'NEW' ? `${thread.name}: newThread вернул поток, start() ещё не было` : `${thread.name}: между задачами`;
     }
-    row.append(name, status, track);
-    return row;
+    return column;
   }
 
   // Полоска едет сама: анимация на всю длительность с отрицательной задержкой — сколько уже прошло

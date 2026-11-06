@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <title>LinkedBlockingQueue&lt;Runnable&gt; playground</title>
+  <!-- Общие компоненты первыми: стили страницы ниже могут их уточнять -->
+  <link rel="stylesheet" href="components.css">
   <style>
     /* Палитра как в arraylist-ide.html (IntelliJ Darcula) */
     :root {
@@ -71,7 +73,6 @@
     .error { color: var(--fail); }
     .type { font-weight: bold; color: var(--fn); }
   </style>
-  <link rel="stylesheet" href="components.css">
 </head>
 <body>
 
@@ -144,8 +145,8 @@
 
   const METHODS = ['offer', 'take'];
 
-  // taskId → durationMs. Задачи нужны только ради длительности в подсказке узла
-  const durations = new Map();
+  // taskId → задача из KV.trackTask: узлы очереди рисуются её конвертом — тем же, что на странице задачи
+  const tasks = new Map();
 
   // objectId → { id, capacity, elements, methods, nodeEffect }
   // elements — taskIds от головы к хвосту. methods — KV.methodsState: кто внутри какого метода и затухание бейджей.
@@ -160,11 +161,7 @@
 
   function apply(env) {
     const data = env.data;
-    if (data?.objectType === TASK) {
-      if (env.type === 'OBJECT_REMOVED') durations.delete(data.objectId);
-      else if (data.state?.durationMs !== undefined) durations.set(data.objectId, data.state.durationMs);
-      return;
-    }
+    if (data?.objectType === TASK) { KV.trackTask(tasks, env, render); return; }
     if (data?.objectType !== QUEUE) return;
     if (env.type === 'OBJECT_REMOVED') { lists.delete(data.objectId); return; }
 
@@ -192,10 +189,10 @@
     if (method === 'offer') {
       // При гонке «последний узел» — допущение, а не наблюдение
       if (data.result === true) return { new: data.state.taskIds.length - 1 };
-      return { ghost: `#${data.args.taskId}`, kind: 'failed', side: 'tail', title: `очередь полна: offer вернул false` };
+      return { value: data.args.taskId, kind: 'failed', side: 'tail', title: `очередь полна: offer вернул false` };
     }
     // Снятого узла в state уже нет — его taskId берём из result
-    if (method === 'take') return { ghost: `#${data.result}`, kind: 'removed', side: 'head', title: `взял ${data.thread}` };
+    if (method === 'take') return { value: data.result, kind: 'removed', side: 'head', title: `взял ${data.thread}` };
     return null;
   }
 
@@ -259,12 +256,8 @@
   // ---------- Карточка очереди: состояние справа ----------
   // Бейджи и цепочка — общие компоненты из components.js
 
-  // Значение узла — id задачи, длительность — в подсказке
-  function taskNode(taskId, label, index) {
-    const el = KV.node(`#${taskId}`, label, index);
-    el.title = `task#${taskId}, ${KV.seconds(durations.get(taskId))}`;
-    return el;
-  }
+  // Узел — мини-конверт задачи из общего компонента
+  const taskNode = (taskId, label, index) => KV.taskNode(tasks, taskId, label, index);
 
   // Есть только у блокирующей очереди: в общий компонент цепочки не входит
   function renderWaiting(list) {

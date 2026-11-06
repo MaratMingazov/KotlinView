@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <title>Runnable task playground</title>
+  <!-- Общие компоненты первыми: стили страницы ниже могут их уточнять -->
+  <link rel="stylesheet" href="components.css">
   <style>
     /* Палитра как в arraylist-ide.html (IntelliJ Darcula) */
     :root {
@@ -50,44 +52,14 @@
     .ops { display: flex; gap: 10px; align-items: center; }
     .card-controls .danger { margin-top: 10px; }
     .task-state { display: flex; gap: 20px; align-items: flex-start; }
-    .envelope-box { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .task-column { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 
-    /* --- задача-конверт: длительность внутри, клапан открыт, пока поток внутри run() --- */
-    .envelope rect, .envelope path { fill: var(--panel); stroke: var(--border); stroke-width: 2; stroke-linejoin: round; }
-    .envelope text { fill: var(--num); font: 15px "JetBrains Mono", ui-monospace, Menlo, monospace; }
-    .envelope .flap-open { display: none; }
-    .envelope.running .flap-open { display: inline; }
-    .envelope.running .flap-closed { display: none; }
-    .envelope.running rect, .envelope.running path { stroke: var(--out); }
-    .envelope.multi rect, .envelope.multi path { stroke: var(--keyword); }
-    /* Ошибка: контур вспыхивает красным и затухает */
-    .envelope.failed rect, .envelope.failed path { animation: envelope-failed var(--flash) ease-out forwards; }
-    @keyframes envelope-failed { from { stroke: var(--fail); } to { stroke: var(--border); } }
+    /* Конверт и полоски потоков внутри run() — в components.css */
 
     .method { padding: 0 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--dim); }
     .method.active { background: var(--out); border-color: var(--out); color: var(--bg); }
     /* Несколько потоков внутри одной задачи — главное, что хочется заметить */
     .method.multi { background: var(--keyword); border-color: var(--keyword); }
-
-    /* --- полоска на каждый поток внутри run(): под конвертом, той же ширины, имя потока поверх --- */
-    .runs { display: flex; flex-direction: column; gap: 3px; width: 96px; }
-    .run-row {
-      position: relative; height: 14px; overflow: hidden; cursor: default;
-      background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
-    }
-    .run-row .bar {
-      position: absolute; top: 0; bottom: 0; left: 0; width: 0;
-      background: color-mix(in srgb, var(--thread) 35%, transparent);
-    }
-    .run-row .thread {
-      position: relative; display: block; padding-left: 4px; white-space: nowrap;
-      font-size: 11px; line-height: 14px; font-weight: bold; color: var(--thread);
-    }
-    .run-row.done .bar { background: color-mix(in srgb, var(--out) 45%, transparent); }
-    .run-row.failed .bar { background: color-mix(in srgb, var(--fail) 45%, transparent); }
-    .run-row.failed .thread { color: var(--fail); }
-    .run-row.done, .run-row.failed { animation: fade-out var(--fade) ease-in forwards; }
-    @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
 
     /* --- логи --- */
     .log { max-height: 40vh; overflow-y: auto; }
@@ -117,13 +89,10 @@
 <h3>WebSocket <button class="link" id="clearWs">clear</button></h3>
 <div id="ws" class="log"></div>
 
+<script src="components.js"></script>
 <script>
   const $ = id => document.getElementById(id);
   const base = '/api/tasks';
-  const TICK_MS = 1000;      // как TICK_MS на сервере: METHOD_PROGRESS приходит раз в секунду
-  const DONE_FADE_MS = 1500; // сколько затухает строка после METHOD_OUT
-  const FAILED_FADE_MS = 4000; // после ошибки — дольше, чтобы успеть прочитать
-  const FAILED_FLASH_MS = 2000; // сколько затухает красная вспышка конверта
 
   // Новые записи сверху
   function prepend(logId, text, isError) {
@@ -157,198 +126,49 @@
 
   // ---------- Состояние ----------
 
-  // taskId → { id, durationMs, failedAt, runs: Map<thread, { elapsedMs, phase: 'RUN'|'DONE'|'FAILED', error, endedAt }> }
-  // durationMs приходит в state: уже в OBJECT_CREATED и дальше в каждом METHOD_*
-  // failedAt — когда последний раз упал run(): по нему конверт вспыхивает красным
+  // taskId → задача из KV.trackTask: { id, durationMs, failedAt, runs: Map<thread, …> }
   const tasks = new Map();
 
-  function taskOf(id) {
-    if (!tasks.has(id)) tasks.set(id, { id, durationMs: null, failedAt: null, runs: new Map() });
-    return tasks.get(id);
-  }
-
   function apply(env) {
-    const d = env.data;
-    if (d?.objectType !== 'RUNNABLE_TASK') return;
-    if (env.type === 'OBJECT_REMOVED') { tasks.delete(d.objectId); return; }
-
-    // Карточка создаётся и по OBJECT_CREATED, и по любому METHOD_*: страницу могли открыть уже после создания
-    const task = taskOf(d.objectId);
-    if (d.state?.durationMs !== undefined) task.durationMs = d.state.durationMs;
-    if (env.type === 'OBJECT_CREATED' || d.method !== 'run') return;
-
-    // Строки различаем по потоку: один поток не может быть внутри run() дважды одновременно
-    switch (env.type) {
-      case 'METHOD_IN':
-        task.runs.set(d.thread, { elapsedMs: 0, phase: 'RUN', error: null, endedAt: null });
-        break;
-      case 'METHOD_PROGRESS': {
-        const run = task.runs.get(d.thread);
-        if (run) run.elapsedMs = d.progress.elapsedMs;
-        break;
-      }
-      case 'METHOD_OUT':
-        finish(task, d.thread, 'DONE', null, DONE_FADE_MS);
-        break;
-      case 'METHOD_OUT_FAILED': {
-        finish(task, d.thread, 'FAILED', d.error, FAILED_FADE_MS);
-        const failedAt = performance.now();
-        task.failedAt = failedAt;
-        setTimeout(() => { if (task.failedAt === failedAt) { task.failedAt = null; render(); } }, FAILED_FLASH_MS);
-        break;
-      }
-    }
-  }
-
-  // Строка не исчезает сразу: затухает, потом удаляется — если за это время тот же поток не зашёл снова
-  function finish(task, thread, phase, error, fadeMs) {
-    const run = task.runs.get(thread) ?? { elapsedMs: 0 };
-    const endedAt = performance.now();
-    if (phase === 'DONE') run.elapsedMs = task.durationMs ?? run.elapsedMs;
-    Object.assign(run, { phase, error, endedAt });
-    task.runs.set(thread, run);
-    setTimeout(() => {
-      if (task.runs.get(thread)?.endedAt === endedAt) { task.runs.delete(thread); render(); }
-    }, fadeMs);
+    KV.trackTask(tasks, env, render);
   }
 
   // ---------- Отрисовка ----------
 
-  // Стабильный цвет для имени потока
-  function threadColor(name) {
-    let h = 0;
-    for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
-    return `hsl(${h}, 60%, 65%)`;
-  }
-
-  const seconds = ms => (ms / 1000).toFixed(1) + 's';
-
-  // DOM строк держим постоянным и меняем только ширину полоски — иначе CSS-transition не сработает
-  // taskId → { card, envelope, duration, badge, runsBox, rows: Map<thread, { row, bar, label, phase, elapsedMs }> }
+  // Пульт карточки создаётся один раз, состояние справа — конверт, полоски потоков, бейдж — перерисовывается целиком.
+  // Анимации при этом не начинаются заново: компоненты продолжают их с того места, где они были
+  // taskId → { card, state }
   const cards = new Map();
 
-  const SVG = 'http://www.w3.org/2000/svg';
-  function svg(tag, attrs) {
-    const el = document.createElementNS(SVG, tag);
-    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
-    return el;
-  }
-
-  // Конверт 96×62; над ним 24px места под открытый клапан
-  function createEnvelope() {
-    const envelope = svg('svg', { class: 'envelope', viewBox: '-2 -26 100 92', width: 100, height: 92 });
-    envelope.append(
-      svg('path', { class: 'flap-open', d: 'M0 0 L48 -22 L96 0 Z' }),
-      svg('rect', { x: 0, y: 0, width: 96, height: 62, rx: 4 }),
-      svg('path', { class: 'flap-closed', d: 'M0 0 L48 30 L96 0' }),
-    );
-    const duration = svg('text', { x: 48, y: 52, 'text-anchor': 'middle' });
-    envelope.append(duration);
-    return { envelope, duration };
-  }
-
   function createCard(id) {
-    const card = document.createElement('div');
-    card.className = 'task-card';
+    const card = KV.el('div', 'task-card');
     card.dataset.id = id;
 
     // Слева пульт
-    const controls = Object.assign(document.createElement('div'), { className: 'card-controls' });
-    const title = Object.assign(document.createElement('div'), { className: 'card-title', textContent: `task#${id}` });
-    const ops = Object.assign(document.createElement('div'), { className: 'ops' });
-    const runButton = Object.assign(document.createElement('button'), { className: 'run', textContent: '▶ run' });
+    const controls = KV.el('div', 'card-controls');
+    const ops = KV.el('div', 'ops');
+    const runButton = KV.el('button', 'run', '▶ run');
     runButton.title = `POST ${base}/${id}/run — запустить run() в новом потоке`;
     runButton.onclick = () => call('POST', `${base}/${id}/run`);
-    ops.append(runButton, Object.assign(document.createElement('span'), { className: 'empty', textContent: 'каждый вызов — новый поток' }));
-    const removeButton = Object.assign(document.createElement('button'), { className: 'danger', textContent: 'remove' });
+    ops.append(runButton, KV.el('span', 'empty', 'каждый вызов — новый поток'));
+    const removeButton = KV.el('button', 'danger', 'remove');
     removeButton.title = `DELETE ${base}/${id}`;
     removeButton.onclick = () => call('DELETE', `${base}/${id}`);
-    controls.append(title, ops, document.createElement('br'), removeButton);
+    controls.append(KV.el('div', 'card-title', `task#${id}`), ops, document.createElement('br'), removeButton);
 
-    // Справа состояние — один столбик: конверт, под ним полоски потоков внутри run(), под ними бейдж
-    const state = Object.assign(document.createElement('div'), { className: 'task-state' });
-    const envelopeBox = Object.assign(document.createElement('div'), { className: 'envelope-box' });
-    const { envelope, duration } = createEnvelope();
-    const runsBox = Object.assign(document.createElement('div'), { className: 'runs' });
-    const badge = Object.assign(document.createElement('span'), { className: 'method', textContent: 'run' });
-    envelopeBox.append(envelope, runsBox, badge);
-    state.append(envelopeBox);
-
+    const state = KV.el('div', 'task-state');
     card.append(controls, state);
-    return { card, envelope, duration, badge, runsBox, rows: new Map() };
+    return { card, state };
   }
 
-  // Полоска потока: заливка — прогресс, поверх — имя потока; цифры — в подсказке при наведении
-  function createRow(thread) {
-    const row = Object.assign(document.createElement('div'), { className: 'run-row' });
-    row.style.setProperty('--thread', threadColor(thread));
-    const bar = Object.assign(document.createElement('div'), { className: 'bar' });
-    const name = Object.assign(document.createElement('span'), { className: 'thread', textContent: thread });
-    row.append(bar, name);
-    return { row, bar, phase: null, elapsedMs: null };
-  }
-
-  // Полоска едет плавно: после каждого события она доезжает до следующего ожидаемого тика за время этого тика.
-  // Так она не отстаёт от реальности на секунду и не прыгает рывками.
-  function updateBar(view, run, durationMs) {
-    if (view.phase === run.phase && view.elapsedMs === run.elapsedMs) return; // ничего нового
-    view.phase = run.phase;
-    view.elapsedMs = run.elapsedMs;
-    const bar = view.bar;
-    if (!durationMs) { bar.style.width = '0'; return; }
-
-    if (run.phase === 'RUN') {
-      const nextMs = Math.min(run.elapsedMs + TICK_MS, durationMs);
-      bar.style.transition = 'none';
-      bar.style.width = `${run.elapsedMs / durationMs * 100}%`;
-      bar.getBoundingClientRect(); // применить стартовую ширину, прежде чем запускать переход
-      bar.style.transition = `width ${nextMs - run.elapsedMs}ms linear`;
-      bar.style.width = `${nextMs / durationMs * 100}%`;
-    } else if (run.phase === 'DONE') {
-      bar.style.transition = 'none';
-      bar.style.width = '100%';
-    } else {
-      // Ошибка: останавливаем полоску там, где она сейчас
-      const current = getComputedStyle(bar).width;
-      bar.style.transition = 'none';
-      bar.style.width = current;
-    }
-  }
-
-  function renderTask(task, view) {
-    const inside = [...task.runs.values()].filter(r => r.phase === 'RUN').length;
-
-    // Конверт: клапан открыт, пока внутри есть потоки; несколько потоков — оранжевый; упал run() — красная вспышка
-    view.duration.textContent = task.durationMs === null ? '?' : seconds(task.durationMs);
-    view.envelope.setAttribute('class', 'envelope'
-      + (inside > 0 ? ' running' : '') + (inside > 1 ? ' multi' : '') + (task.failedAt !== null && inside === 0 ? ' failed' : ''));
-    view.envelope.style.setProperty('--flash', `${FAILED_FLASH_MS}ms`);
-
-    view.badge.className = 'method' + (inside > 0 ? ' active' : '') + (inside > 1 ? ' multi' : '');
-    view.badge.textContent = 'run' + (inside > 1 ? ` ×${inside}` : '');
-    view.badge.title = inside > 1 ? `${inside} потока одновременно внутри run() одной задачи` : '';
-
-    // Удалить строки потоков, которых больше нет
-    for (const [thread, rowView] of view.rows) {
-      if (!task.runs.has(thread)) { rowView.row.remove(); view.rows.delete(thread); }
-    }
-    for (const [thread, run] of task.runs) {
-      let rowView = view.rows.get(thread);
-      if (!rowView) {
-        rowView = createRow(thread);
-        view.rows.set(thread, rowView);
-        view.runsBox.append(rowView.row);
-      }
-      // Поток мог зайти снова, пока строка затухала: вернуть её в рабочий вид
-      rowView.row.className = 'run-row' + (run.phase === 'DONE' ? ' done' : run.phase === 'FAILED' ? ' failed' : '');
-      rowView.row.style.setProperty('--fade', `${run.phase === 'FAILED' ? FAILED_FADE_MS : DONE_FADE_MS}ms`);
-      updateBar(rowView, run, task.durationMs);
-
-      const total = task.durationMs ?? 0;
-      if (run.phase === 'RUN') rowView.row.title = `${thread}: ${seconds(run.elapsedMs)} / ${seconds(total)} · осталось ${seconds(total - run.elapsedMs)}`;
-      if (run.phase === 'DONE') rowView.row.title = `${thread}: готово за ${seconds(total)}`;
-      if (run.phase === 'FAILED') rowView.row.title = `${thread}: ✗ ${run.error}`;
-    }
+  // Справа один столбик: конверт, под ним полоски потоков внутри run(), под ними бейдж
+  function renderTask(task) {
+    const inside = KV.runningThreads(task).length;
+    const badge = KV.el('span', 'method' + (inside > 0 ? ' active' : '') + (inside > 1 ? ' multi' : ''), 'run' + (inside > 1 ? ` ×${inside}` : ''));
+    badge.title = inside > 1 ? `${inside} потока одновременно внутри run() одной задачи` : '';
+    const column = KV.el('div', 'task-column');
+    column.append(KV.renderTask(task), badge);
+    return column;
   }
 
   function render() {
@@ -367,7 +187,7 @@
         const next = [...root.querySelectorAll('.task-card')].find(c => Number(c.dataset.id) > task.id);
         root.insertBefore(created.card, next ?? null);
       }
-      renderTask(task, cards.get(task.id));
+      cards.get(task.id).state.replaceChildren(renderTask(task));
     }
 
     const placeholder = root.querySelector('.empty-tasks');
