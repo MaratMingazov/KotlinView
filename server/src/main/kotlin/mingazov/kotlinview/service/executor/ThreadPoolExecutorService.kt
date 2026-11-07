@@ -35,6 +35,28 @@ class ThreadPoolExecutorService(
         return poolRegistry.create(corePoolSize, maximumPoolSize, keepAliveMs, queue, threadFactory)
     }
 
+    // ---------- Готовые конфигурации, как в java.util.concurrent.Executors ----------
+    // Это не отдельные виды пулов: Executors — фабрика наборов параметров для того же ThreadPoolExecutor.
+    // Отличие от JDK: очередь ограничена PRESET_QUEUE_CAPACITY, а не бесконечна — чтобы на странице было видно,
+    // что происходит, когда она заполняется: при core = max новых потоков не будет, следующий execute получит отказ
+
+    /** Как Executors.newFixedThreadPool(n): ровно n потоков навсегда, лишние задачи ждут в очереди. */
+    fun newFixedThreadPool(nThreads: Int): InstrumentedThreadPoolExecutor {
+        require(nThreads > 0) { "nThreads must be > 0" }
+        return create(corePoolSize = nThreads, maximumPoolSize = nThreads, keepAliveMs = 0, queueCapacity = PRESET_QUEUE_CAPACITY)
+    }
+
+    /**
+     * Как Executors.newSingleThreadExecutor(): один поток, задачи выполняются строго по очереди.
+     * В JDK пул ещё обёрнут, чтобы его нельзя было перенастроить (setCorePoolSize); у нас таких методов в API нет — это просто fixed(1).
+     */
+    fun newSingleThreadExecutor(): InstrumentedThreadPoolExecutor = newFixedThreadPool(1)
+
+    private companion object {
+        /** В JDK у fixed и single очередь неограниченная (LinkedBlockingQueue()). У нас — 5, чтобы заполнение было видно. */
+        const val PRESET_QUEUE_CAPACITY = 5
+    }
+
     fun get(poolId: Long): InstrumentedThreadPoolExecutor = poolRegistry.get(poolId)
     fun all() = poolRegistry.all()
 

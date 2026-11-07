@@ -10,6 +10,8 @@
     /* Палитра, шапка, кнопки, карточка, логи — в base.css */
 
     .create { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .create.presets { margin-top: 6px; }
+    .config .preset { color: var(--keyword); }
 
     /* --- карточка пула: .list-card из base.css; под заголовком конфиг --- */
     .card-title { color: var(--keyword); margin-bottom: 2px; }
@@ -69,6 +71,14 @@
   <button id="create" class="primary" title="POST /api/threadpoolexecutor — создать пул вместе с его очередью и фабрикой; карточка появится по событию OBJECT_CREATED">+ new pool</button>
 </div>
 
+<!-- Готовые конфигурации того же пула, как в java.util.concurrent.Executors -->
+<div class="create presets">
+  <span class="empty">Executors:</span>
+  <span>newFixedThreadPool( <input id="nThreads" type="number" value="2" min="1"> )
+    <button id="createFixed" class="primary" title="POST /api/threadpoolexecutor/fixed {nThreads} — core = max = n, keepAlive 0, очередь на 5 (в JDK — неограниченная)">+ fixed</button></span>
+  <button id="createSingle" class="primary" title="POST /api/threadpoolexecutor/single — fixed(1): один поток, задачи строго по очереди; очередь на 5 (в JDK — неограниченная)">+ newSingleThreadExecutor()</button>
+</div>
+
 <!-- Карточка на каждый пул: слева управляем им, справа смотрим результат -->
 <div id="pools"></div>
 
@@ -114,6 +124,8 @@
       queueCapacity: capacity === '' ? null : Number(capacity),
     });
   };
+  $('createFixed').onclick = () => call('POST', `${base}/fixed`, { nThreads: Number($('nThreads').value) });
+  $('createSingle').onclick = () => call('POST', `${base}/single`);
 
   // ---------- Состояние ----------
   // Пул — составной объект: очередь, фабрика и потоки приходят отдельными объектами.
@@ -274,6 +286,15 @@
       run: id => call('POST', `${base}/${id}/shutdownNow`) },
   ];
 
+  // Узнать готовую конфигурацию Executors по параметрам: сервер не помечает пул, но набор параметров однозначен.
+  // Очередь — как в пресетах сервера (PRESET_QUEUE_CAPACITY = 5), а не бесконечная, как в JDK
+  const PRESET_QUEUE_CAPACITY = 5;
+  function presetOf(s, queueCapacity) {
+    const fixed = s.corePoolSize === s.maximumPoolSize && s.keepAliveMs === 0 && queueCapacity === PRESET_QUEUE_CAPACITY;
+    if (!fixed) return null;
+    return s.corePoolSize === 1 ? 'newSingleThreadExecutor()' : `newFixedThreadPool(${s.corePoolSize})`;
+  }
+
   const capacityText = capacity => capacity == null ? '?' : capacity === INT_MAX ? '∞' : capacity;
 
   // Карточка создаётся один раз: поля пульта не пересоздаются, поэтому введённое значение и фокус не теряются
@@ -285,11 +306,11 @@
 
     const controls = KV.el('div', 'card-controls');
     // Конфиг пула не меняется — рисуем один раз
-    const capacity = capacityText(queues.get(s?.queueId)?.capacity);
-    controls.append(
-      KV.el('div', 'card-title', `pool #${id}`),
-      KV.el('div', 'config', s ? `core ${s.corePoolSize} · max ${s.maximumPoolSize} · keepAlive ${KV.seconds(s.keepAliveMs)} · queue ${capacity}` : ''),
-    );
+    const queueCapacity = queues.get(s?.queueId)?.capacity;
+    const config = KV.el('div', 'config', s ? `core ${s.corePoolSize} · max ${s.maximumPoolSize} · keepAlive ${KV.seconds(s.keepAliveMs)} · queue ${capacityText(queueCapacity)}` : '');
+    const preset = s && presetOf(s, queueCapacity);
+    if (preset) config.append(document.createElement('br'), KV.el('span', 'preset', `= Executors.${preset}`));
+    controls.append(KV.el('div', 'card-title', `pool #${id}`), config);
 
     const ops = KV.el('div', 'ops');
     for (const op of OPERATIONS) {

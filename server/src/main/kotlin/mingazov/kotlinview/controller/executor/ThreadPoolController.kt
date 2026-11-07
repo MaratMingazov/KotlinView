@@ -23,6 +23,8 @@ data class CreatePoolRequest(
     val queueCapacity: Int? = null,
 )
 
+data class FixedPoolRequest(val nThreads: Int)
+
 @RestController
 @RequestMapping("/api/threadpoolexecutor")
 class ThreadPoolController(
@@ -34,6 +36,23 @@ class ThreadPoolController(
     @ResponseStatus(HttpStatus.ACCEPTED)
     fun create(@RequestBody request: CreatePoolRequest): CreatedResponse {
         val pool = poolService.create(request.corePoolSize, request.maximumPoolSize, request.keepAliveMs, request.queueCapacity)
+        val response = CreatedResponse(pool.id)
+        return response
+    }
+
+    // Готовые конфигурации, как Executors.newFixedThreadPool / newSingleThreadExecutor
+    @PostMapping("/fixed")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    fun createFixed(@RequestBody request: FixedPoolRequest): CreatedResponse {
+        val pool = poolService.newFixedThreadPool(request.nThreads)
+        val response = CreatedResponse(pool.id)
+        return response
+    }
+
+    @PostMapping("/single")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    fun createSingle(): CreatedResponse {
+        val pool = poolService.newSingleThreadExecutor()
         val response = CreatedResponse(pool.id)
         return response
     }
