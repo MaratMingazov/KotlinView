@@ -8,7 +8,8 @@ enum class ObjectType {
     SYNCHRONOUS_QUEUE_RUNNABLE,
     THREAD_FACTORY,
     THREAD,
-    THREAD_POOL_EXECUTOR
+    THREAD_POOL_EXECUTOR,
+    SEMAPHORE
 }
 
 /** state — начальное состояние объекта: клиент может нарисовать его сразу, не дожидаясь первого вызова метода. */

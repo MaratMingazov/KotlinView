@@ -6,6 +6,7 @@ import mingazov.kotlinview.instrumented.collection.registry.InstrumentedArrayLis
 import mingazov.kotlinview.instrumented.collection.registry.InstrumentedLinkedBlockingQueueRunnableRegistry
 import mingazov.kotlinview.instrumented.collection.registry.InstrumentedLinkedListIntRegistry
 import mingazov.kotlinview.instrumented.collection.registry.InstrumentedSynchronousQueueRunnableRegistry
+import mingazov.kotlinview.instrumented.concurrent.locks.registry.InstrumentedSemaphoreRegistry
 import mingazov.kotlinview.instrumented.executor.registry.InstrumentedRunnableTaskRegistry
 import mingazov.kotlinview.instrumented.executor.registry.InstrumentedThreadFactoryRegistry
 import mingazov.kotlinview.instrumented.executor.registry.InstrumentedThreadPoolExecutorRegistry
@@ -39,4 +40,7 @@ class AlgorithmsConfig {
 
     @Bean
     fun threadPoolExecutorRegistry(sink: EventSink, ids: IdGenerator) = InstrumentedThreadPoolExecutorRegistry(sink, ids)
+
+    @Bean
+    fun semaphoreRegistry(sink: EventSink, ids: IdGenerator) = InstrumentedSemaphoreRegistry(sink, ids)
 }

@@ -1,0 +1,33 @@
+/* Semaphore (semaphore.js): ряды «ждут / жетоны / вышли» и очередь AQS.
+   Подключать после base.css и components.css; плашка потока — .thread-chip в components.css.
+   Всё под .sem-*: на index.html рядом стили других структур */
+.sem-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; min-height: 22px; }
+.sem-label { color: var(--dim); width: 64px; flex: none; }
+.sem-count { color: var(--dim); margin-left: 8px; }
+.sem-aqs { color: var(--dim); font-size: 11px; margin-top: 8px; }
+
+/* --- жетоны разрешений --- */
+.tokens { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.token { width: 14px; height: 14px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--out); }
+.token.free { background: var(--out); }
+.token.taken { border-color: var(--border); background: none; }
+/* Сверх initialPermits — ромб другим цветом: «напечатали лишнее» */
+.token.extra { background: var(--keyword); border-color: var(--keyword); border-radius: 2px; transform: rotate(45deg) scale(.85); }
+.token.debt { border: 2px dashed var(--fail); background: none; }
+/* Пришли (release): вокруг жетона расходится свечение. Ушли (acquire): заливка вытекает */
+@keyframes token-gain {
+  from { box-shadow: 0 0 0 5px color-mix(in srgb, var(--out) 55%, transparent); }
+  to { box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes token-take {
+  from { background: var(--out); border-color: var(--out); }
+  to { background: none; border-color: var(--border); }
+}
+
+/* --- только что вышедшие: плашка тает (fade-out — components.css), рамка — чем кончилось --- */
+.sem-row .thread-chip.got { border-color: var(--out); }
+.sem-row .thread-chip.none { border-style: dashed; }
+.sem-row .thread-chip.failed { border-color: var(--fail); }
+.sem-row .thread-chip.released { border-color: var(--fn); }
+/* Обогнал очередь — главное, что хочется заметить на честном семафоре */
+.sem-row .thread-chip.barged { border-color: var(--keyword); color: var(--keyword); }
