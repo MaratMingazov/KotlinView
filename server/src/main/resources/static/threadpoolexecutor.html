@@ -35,14 +35,16 @@
     /* --- воркеры: колонка на поток фабрики пула --- */
     /* Воркеры рядом, как узлы цепочки: сверху имя потока, под ним его задача (конверт + полоска) или ожидание */
     .workers { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-start; margin-top: 6px; }
-    .worker { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 150px; }
+    .worker { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 56px; } /* чуть шире мини-конверта (52px) */
     .worker .wname { font-weight: bold; color: var(--thread); white-space: nowrap; }
     .worker .wstatus { white-space: nowrap; }
     .worker .wstatus.waiting { color: var(--fn); }
     .worker .wstatus.failed { color: var(--fail); }
+    /* Полоска выполнения — по ширине тела мини-конверта (48px), а не 96px, как на странице задачи */
+    .worker .runs { width: 48px; }
     .worker.ended { animation: fade-out var(--fade) ease-in forwards; }
     .track {
-      position: relative; width: 96px; height: 14px; overflow: hidden; box-sizing: border-box;
+      position: relative; width: 48px; height: 14px; overflow: hidden; box-sizing: border-box;
       background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
     }
     .track .bar { position: absolute; top: 0; bottom: 0; left: 0; width: 0; }
@@ -264,10 +266,13 @@
 
   // ---------- Карточка пула: пульт слева ----------
 
+  // Все задачи пока одной длины — поле ввода у execute убрали
+  const TASK_DURATION_MS = 5000;
+
   // Операции пульта: имя, поля (placeholder + значение по умолчанию) и что вызвать
   const OPERATIONS = [
-    { name: 'execute', fields: [['сек', 5]], title: id => `POST ${tasksBase} {durationMs}, затем POST ${base}/${id}/execute {taskId} — новая задача`,
-      run: (id, inputs) => executeNew(id, Math.round(Number(inputs['сек'].value) * 1000)) },
+    { name: 'execute', fields: [], title: id => `POST ${tasksBase} {durationMs: ${TASK_DURATION_MS}}, затем POST ${base}/${id}/execute {taskId} — новая задача`,
+      run: id => executeNew(id, TASK_DURATION_MS) },
     { name: 'shutdown', fields: [], title: id => `POST ${base}/${id}/shutdown — новые задачи не принимать, принятые доделать`,
       run: id => call('POST', `${base}/${id}/shutdown`) },
     { name: 'shutdownNow', fields: [], title: id => `POST ${base}/${id}/shutdownNow — прервать всех, задачи из очереди вернуть`,
@@ -283,8 +288,6 @@
     return s.corePoolSize === 1 ? 'newSingleThreadExecutor()' : `newFixedThreadPool(${s.corePoolSize})`;
   }
 
-  const capacityText = capacity => capacity == null ? '?' : capacity === INT_MAX ? '∞' : capacity;
-
   // Карточка создаётся один раз: поля пульта не пересоздаются, поэтому введённое значение и фокус не теряются
   function createCard(pool) {
     const id = pool.id;
@@ -293,11 +296,11 @@
     card.dataset.id = id;
 
     const controls = KV.el('div', 'card-controls');
-    // Конфиг пула не меняется — рисуем один раз
-    const queueCapacity = queues.get(s?.queueId)?.capacity;
-    const config = KV.el('div', 'config', s ? `core ${s.corePoolSize} · max ${s.maximumPoolSize} · keepAlive ${KV.seconds(s.keepAliveMs)} · queue ${capacityText(queueCapacity)}` : '');
-    const preset = s && presetOf(s, queueCapacity);
-    if (preset) config.append(document.createElement('br'), KV.el('span', 'preset', `= Executors.${preset}`));
+    // Конфиг пула (core / max / keepAlive / queue) пока не выводим — минималистичный дизайн.
+    // Остаётся только пометка пресета Executors: по ней пулы и сравниваем. Конфиг не меняется — рисуем один раз
+    const config = KV.el('div', 'config');
+    const preset = s && presetOf(s, queues.get(s.queueId)?.capacity);
+    if (preset) config.append(KV.el('span', 'preset', `= Executors.${preset}`));
     controls.append(KV.el('div', 'card-title', `pool #${id}`), config);
 
     const ops = KV.el('div', 'ops');
@@ -360,7 +363,7 @@
     const queue = queues.get(queueId);
     if (!queue) { part.append(KV.el('span', 'empty', `queue #${queueId} — нет данных`)); return part; }
     const title = KV.el('div', 'part-title');
-    title.append(KV.el('span', 'name', `queue #${queue.id} · capacity ${capacityText(queue.capacity)}`), KV.renderBadges(queue.methods));
+    title.append(KV.el('span', 'name', 'queue'), KV.renderBadges(queue.methods));
     // Свободные ячейки — только для ограниченной очереди: ∞ (INT_MAX) и «ещё не знаем» не рисуем
     const capacity = queue.capacity != null && queue.capacity !== INT_MAX ? queue.capacity : undefined;
     part.append(title, KV.renderChain(queue.elements, queue.nodeEffect, { node: taskNode, slot: KV.taskSlot, capacity }));
@@ -371,9 +374,8 @@
     const factoryId = pool.state.threadFactoryId;
     const part = KV.el('div', 'part');
     const title = KV.el('div', 'part-title');
-    title.append(KV.el('span', 'name', `workers · factory #${factoryId}`));
-    const factory = factories.get(factoryId);
-    if (factory) title.append(KV.renderBadges(factory.methods));
+    // Ни id фабрики, ни бейджа newThread пока не выводим — минималистичный дизайн
+    title.append(KV.el('span', 'name', 'workers'));
     part.append(title);
 
     const queue = queues.get(pool.state.queueId);
@@ -390,15 +392,17 @@
   function renderWorker(thread, queue) {
     const column = KV.el('div', 'worker');
     column.style.setProperty('--thread', KV.threadColor(thread.name));
-    column.append(KV.el('span', 'wname', thread.name));
+    // Пока просто «worker»: различаются цветом (по полному имени потока), полное имя — в подсказке
+    column.append(KV.el('span', 'wname', 'worker'));
     const now = performance.now();
 
     const busy = taskRunBy(thread.name);
     const poll = polling.get(thread.name);
     if (thread.phase === 'DONE' || thread.phase === 'FAILED') {
       const failed = thread.phase === 'FAILED';
-      column.append(KV.el('span', 'wstatus ' + (failed ? 'failed' : 'done'), failed ? '✗ упал' : '✓ завершён'));
-      column.title = failed ? `${thread.name}: ${thread.error}` : `${thread.name}: вышел из run — keepAlive истёк или пул остановлен`;
+      // Только значок — чтобы колонка не расширялась; что случилось, написано в подсказке
+      column.append(KV.el('span', 'wstatus ' + (failed ? 'failed' : 'done'), failed ? '✗' : '✓'));
+      column.title = failed ? `${thread.name} упал: ${thread.error}` : `${thread.name} завершён: вышел из run — keepAlive истёк или пул остановлен`;
       column.classList.add('ended');
       column.style.setProperty('--fade', `${failed ? FAILED_FADE_MS : DONE_FADE_MS}ms`);
       column.style.animationDelay = `${-(now - thread.endedAt)}ms`; // продолжить затухание после перерисовки
