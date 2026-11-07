@@ -6,52 +6,17 @@
   <!-- Сначала общий каркас и компоненты: стили страницы ниже могут их уточнять -->
   <link rel="stylesheet" href="base.css">
   <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="pool.css">
   <style>
-    /* Палитра, шапка, кнопки, карточка, логи — в base.css */
+    /* Палитра, шапка, кнопки, карточка, логи — в base.css; состояние пула — в pool.css */
 
     .create { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
     .create.presets { margin-top: 6px; }
     .config .preset { color: var(--keyword); }
 
-    /* --- карточка пула: .list-card из base.css; под заголовком конфиг --- */
+    /* --- карточка пула: .list-card из base.css; под заголовком пометка пресета --- */
     .card-title { color: var(--keyword); margin-bottom: 2px; }
     .config { color: var(--dim); margin-bottom: 8px; }
-
-    /* --- состояние пула --- */
-    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; background: var(--dim); }
-    .dot.RUNNING { background: var(--out); }
-    .dot.SHUTDOWN, .dot.TIDYING { background: var(--keyword); }
-    .run-state { color: var(--text); }
-    /* Отказ execute, задачи, возвращённые shutdownNow: строка вспыхивает и тает */
-    .notice { min-height: 20px; }
-    .notice.failed { color: var(--fail); }
-    .notice.info { color: var(--keyword); }
-
-    /* Подблоки состояния: очередь и воркеры — у каждого свой заголовок и бейджи */
-    .part { margin-top: 10px; padding-top: 6px; border-top: 1px dashed var(--border); }
-    .part-title { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-    .part-title .name { color: var(--keyword); }
-
-    /* --- воркеры: колонка на поток фабрики пула --- */
-    /* Воркеры рядом, как узлы цепочки: сверху имя потока, под ним его задача (конверт + полоска) или ожидание */
-    .workers { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-start; margin-top: 6px; }
-    .worker { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 56px; } /* чуть шире мини-конверта (52px) */
-    .worker .wname { font-weight: bold; color: var(--thread); white-space: nowrap; }
-    .worker .wstatus { white-space: nowrap; }
-    .worker .wstatus.waiting { color: var(--fn); }
-    .worker .wstatus.failed { color: var(--fail); }
-    /* Полоска выполнения — по ширине тела мини-конверта (48px), а не 96px, как на странице задачи */
-    .worker .runs { width: 48px; }
-    .worker.ended { animation: fade-out var(--fade) ease-in forwards; }
-    .track {
-      position: relative; width: 48px; height: 14px; overflow: hidden; box-sizing: border-box;
-      background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
-    }
-    .track .bar { position: absolute; top: 0; bottom: 0; left: 0; width: 0; }
-    .track .bar.poll { background: color-mix(in srgb, var(--fn) 30%, transparent); }
-    /* Полоски едут сами: анимация на всю длительность, отрицательная задержка — сколько уже прошло.
-       fill-up — в components.css, drain (обратный отсчёт keepAlive) — только здесь */
-    @keyframes drain { from { width: 100%; } to { width: 0; } }
   </style>
 </head>
 <body>
@@ -90,205 +55,34 @@
 
 <script src="base.js"></script>
 <script src="components.js"></script>
+<script src="pool.js"></script>
 <script>
-  const { $, call } = UI;
-  const base = '/api/threadpoolexecutor';
-  const tasksBase = '/api/tasks';
-  const POOL = 'THREAD_POOL_EXECUTOR';
-  const QUEUE = 'LINKED_BLOCKING_QUEUE_RUNNABLE';
-  const FACTORY = 'THREAD_FACTORY';
-  const THREAD = 'THREAD';
-  const TASK = 'RUNNABLE_TASK';
-  const TYPES = [POOL, QUEUE, FACTORY, THREAD, TASK];
-  const INT_MAX = 2147483647;    // ёмкость LinkedBlockingQueue() без аргумента
-  const DONE_FADE_MS = 1500;     // сколько тает строка завершившегося потока
-  const FAILED_FADE_MS = 4000;   // упавшего — дольше, чтобы успеть прочитать ошибку
-  const NOTICE_MS = 4000;        // сколько видна строка об отказе / возвращённых задачах
-
-  // REST и лог HTTP — UI.call из base.js
-
-  // execute новой задачи — два обычных запроса подряд, как offer на странице очереди:
-  // сервер принимает только taskId. execute по taskId добавим позже
-  async function executeNew(poolId, durationMs) {
-    const created = await call('POST', tasksBase, { durationMs });
-    if (created) await call('POST', `${base}/${poolId}/execute`, { taskId: created.objectId });
-  }
+  // Модель, отрисовка состояния пула и REST — в pool.js; здесь только форма создания и карточки
+  const { $ } = UI;
+  const { api, titles } = Pool;
 
   // Карточку создаёт не ответ на create, а событие OBJECT_CREATED — так же, как для пулов, созданных извне
   // Ёмкость обязательна: пустое или < 1 поле не отправляем, браузер подсветит его и покажет подсказку
   $('create').onclick = () => {
     const capacityInput = $('capacity');
     if (!capacityInput.reportValidity()) return;
-    call('POST', base, {
+    api.create({
       corePoolSize: Number($('core').value),
       maximumPoolSize: Number($('max').value),
       keepAliveMs: Math.round(Number($('keepAlive').value) * 1000),
       queueCapacity: Number(capacityInput.value),
     });
   };
-  $('createFixed').onclick = () => call('POST', `${base}/fixed`, { nThreads: Number($('nThreads').value) });
-  $('createSingle').onclick = () => call('POST', `${base}/single`);
+  $('createFixed').onclick = () => api.createFixed(Number($('nThreads').value));
+  $('createSingle').onclick = () => api.createSingle();
 
-  // ---------- Состояние ----------
-  // Пул — составной объект: очередь, фабрика и потоки приходят отдельными объектами.
-  // Пул ссылается на них через state.queueId / state.threadFactoryId, воркеры склеиваются по имени потока
-
-  // poolId → { id, state, methods, notice: { text, failed, start } | null }
-  const pools = new Map();
-  // queueId → { id, capacity, elements, methods, nodeEffect }
-  const queues = new Map();
-  // factoryId → { id, createdCount, methods }
-  const factories = new Map();
-  // threadName → { objectId, name, factoryId, phase: 'NEW' | 'RUN' | 'DONE' | 'FAILED', error, endedAt }
-  const threads = new Map();
-  // threadName → { timeoutMs, start } — поток ждёт в poll(keepAlive) и умрёт, если не дождётся
-  const polling = new Map();
-  // taskId → задача из KV.trackTask: узлы очереди и занятые воркеры рисуются её конвертом — тем же, что на странице задачи.
-  // Какую задачу выполняет поток, тоже отсюда: у задачи в runs есть этот поток в фазе RUN
-  const tasks = new Map();
-
-  function poolOf(id) {
-    if (!pools.has(id)) pools.set(id, { id, state: null, methods: KV.methodsState(['execute', 'shutdown', 'shutdownNow', 'terminated']), notice: null });
-    return pools.get(id);
-  }
-  function queueOf(id) {
-    if (!queues.has(id)) queues.set(id, { id, capacity: null, elements: [], methods: KV.methodsState(['offer', 'take', 'poll', 'drainTo']), nodeEffect: null });
-    return queues.get(id);
-  }
-  function factoryOf(id) {
-    if (!factories.has(id)) factories.set(id, { id, createdCount: 0, methods: KV.methodsState(['newThread']) });
-    return factories.get(id);
-  }
-
-  function apply(env) {
-    const d = env.data;
-    switch (d?.objectType) {
-      case POOL: applyPool(env, d); break;
-      case QUEUE: applyQueue(env, d); break;
-      case FACTORY: applyFactory(env, d); break;
-      case THREAD: applyThread(env, d); break;
-      case TASK: applyTask(env); break;
-    }
-  }
-
-  function applyPool(env, d) {
-    if (env.type === 'OBJECT_REMOVED') { pools.delete(d.objectId); return; }
-    const pool = poolOf(d.objectId);
-    if (d.state) pool.state = d.state;
-    const phase = KV.trackMethod(pool.methods, env);
-    if (d.method === 'execute' && phase === 'OUT_FAILED') {
-      notify(pool, `execute(#${d.args.taskId}) ✗ ${shortError(d.error)}`, true);
-    }
-    if (d.method === 'shutdownNow' && phase === 'OUT' && d.result.length > 0) {
-      notify(pool, `shutdownNow вернул ${d.result.map(id => '#' + id).join(', ')} — так и не начали выполняться`, false);
-    }
-  }
-
-  function notify(pool, text, failed) {
-    pool.notice = { text, failed, start: performance.now() };
-    setTimeout(render, NOTICE_MS);
-  }
-
-  // java.util.concurrent.RejectedExecutionException: Task 4 rejected from … → RejectedExecutionException
-  const shortError = error => error.split(':')[0].split('.').pop();
-
-  function applyQueue(env, d) {
-    if (env.type === 'OBJECT_REMOVED') { queues.delete(d.objectId); return; }
-    const queue = queueOf(d.objectId);
-    // state в каждом событии полный — просто берём последний
-    if (d.state) {
-      queue.capacity = d.state.capacity;
-      queue.elements = d.state.taskIds;
-    }
-    const phase = KV.trackMethod(queue.methods, env);
-    if (!phase) return;
-    if (d.method === 'poll') {
-      if (phase === 'IN') polling.set(d.thread, { timeoutMs: d.args.timeoutMs, start: performance.now() });
-      else polling.delete(d.thread);
-    }
-    const effect = queueEffectOf(d.method, phase, d);
-    if (effect) KV.setEffect(queue, effect, render);
-  }
-
-  // Что подсветить в цепочке очереди после этого события (null — ничего). Только offer:
-  // призраков в голове (снятый take/poll, прерванный take/poll, drainTo) пока не рисуем — с пустыми ячейками
-  // ряд на время затухания становился на ячейку длиннее и потом сжимался
-  function queueEffectOf(method, phase, d) {
-    if (phase !== 'OUT' || method !== 'offer') return null;
-    // При гонке «последний узел» — допущение, а не наблюдение
-    if (d.result === true) return { new: d.state.taskIds.length - 1 };
-    return { value: d.args.taskId, kind: 'failed', side: 'tail', title: 'очередь полна: offer вернул false' };
-  }
-
-  function applyFactory(env, d) {
-    if (env.type === 'OBJECT_REMOVED') { factories.delete(d.objectId); return; }
-    const factory = factoryOf(d.objectId);
-    if (d.state) factory.createdCount = d.state.createdCount;
-    KV.trackMethod(factory.methods, env);
-  }
-
-  function applyThread(env, d) {
-    // Строку убирает не OBJECT_REMOVED, а таймер затухания после METHOD_OUT run
-    if (env.type === 'OBJECT_REMOVED') return;
-    const name = d.state.name;
-    if (!threads.has(name)) {
-      threads.set(name, { objectId: d.objectId, name, factoryId: d.state.threadFactoryId, phase: 'NEW', error: null, endedAt: null });
-    }
-    const thread = threads.get(name);
-    if (d.method !== 'run') return;
-    if (env.type === 'METHOD_IN') thread.phase = 'RUN';
-    if (env.type === 'METHOD_OUT') finishThread(thread, 'DONE', null, DONE_FADE_MS);
-    if (env.type === 'METHOD_OUT_FAILED') finishThread(thread, 'FAILED', d.error, FAILED_FADE_MS);
-  }
-
-  // Строка не исчезает сразу: тает, потом удаляется
-  function finishThread(thread, phase, error, fadeMs) {
-    const endedAt = performance.now();
-    Object.assign(thread, { phase, error, endedAt });
-    polling.delete(thread.name);
-    setTimeout(() => {
-      if (threads.get(thread.name)?.endedAt === endedAt) { threads.delete(thread.name); render(); }
-    }, fadeMs);
-  }
-
-  function applyTask(env) {
-    KV.trackTask(tasks, env, render);
-  }
-
-  // Какую задачу поток выполняет прямо сейчас (null — никакую). Чужие runner-потоки тоже найдутся, но их строк нет
-  function taskRunBy(threadName) {
-    for (const task of tasks.values()) {
-      const run = task.runs.get(threadName);
-      if (run?.phase === 'RUN') return { task, run };
-    }
-    return null;
-  }
+  const store = Pool.createStore(render);
 
   // ---------- Карточка пула: пульт слева ----------
 
-  // Все задачи пока одной длины — поле ввода у execute убрали
-  const TASK_DURATION_MS = 5000;
+  const OPERATIONS = ['execute', 'shutdown', 'shutdownNow'];
 
-  // Операции пульта: имя, поля (placeholder + значение по умолчанию) и что вызвать
-  const OPERATIONS = [
-    { name: 'execute', fields: [], title: id => `POST ${tasksBase} {durationMs: ${TASK_DURATION_MS}}, затем POST ${base}/${id}/execute {taskId} — новая задача`,
-      run: id => executeNew(id, TASK_DURATION_MS) },
-    { name: 'shutdown', fields: [], title: id => `POST ${base}/${id}/shutdown — новые задачи не принимать, принятые доделать`,
-      run: id => call('POST', `${base}/${id}/shutdown`) },
-    { name: 'shutdownNow', fields: [], title: id => `POST ${base}/${id}/shutdownNow — прервать всех, задачи из очереди вернуть`,
-      run: id => call('POST', `${base}/${id}/shutdownNow`) },
-  ];
-
-  // Узнать готовую конфигурацию Executors по параметрам: сервер не помечает пул, но набор параметров однозначен.
-  // Очередь — как в пресетах сервера (PRESET_QUEUE_CAPACITY = 5), а не бесконечная, как в JDK
-  const PRESET_QUEUE_CAPACITY = 5;
-  function presetOf(s, queueCapacity) {
-    const fixed = s.corePoolSize === s.maximumPoolSize && s.keepAliveMs === 0 && queueCapacity === PRESET_QUEUE_CAPACITY;
-    if (!fixed) return null;
-    return s.corePoolSize === 1 ? 'newSingleThreadExecutor()' : `newFixedThreadPool(${s.corePoolSize})`;
-  }
-
-  // Карточка создаётся один раз: поля пульта не пересоздаются, поэтому введённое значение и фокус не теряются
+  // Карточка создаётся один раз: пульт не пересоздаётся
   function createCard(pool) {
     const id = pool.id;
     const s = pool.state;
@@ -297,33 +91,23 @@
 
     const controls = KV.el('div', 'card-controls');
     // Конфиг пула (core / max / keepAlive / queue) пока не выводим — минималистичный дизайн.
-    // Остаётся только пометка пресета Executors: по ней пулы и сравниваем. Конфиг не меняется — рисуем один раз
+    // Остаётся только пометка пресета Executors. Конфиг не меняется — рисуем один раз
     const config = KV.el('div', 'config');
-    const preset = s && presetOf(s, queues.get(s.queueId)?.capacity);
+    const preset = s && Pool.presetOf(s, store.queues.get(s.queueId)?.capacity);
     if (preset) config.append(KV.el('span', 'preset', `= Executors.${preset}`));
     controls.append(KV.el('div', 'card-title', `pool #${id}`), config);
 
     const ops = KV.el('div', 'ops');
     for (const op of OPERATIONS) {
-      const args = KV.el('span', 'args');
-      const inputs = {};
-      for (const [field, defaultValue] of op.fields) {
-        const input = Object.assign(document.createElement('input'), { type: 'number', value: defaultValue, placeholder: field, title: field });
-        input.setAttribute('aria-label', field);
-        inputs[field] = input;
-        args.append(input);
-      }
       const run = KV.el('button', 'run', '▶');
-      run.title = op.title(id);
-      run.onclick = () => op.run(id, inputs);
-      // Enter в поле строки — то же, что ▶
-      for (const input of Object.values(inputs)) input.addEventListener('keydown', e => { if (e.key === 'Enter') run.click(); });
-      ops.append(KV.el('span', 'name', op.name), args, run);
+      run.title = titles[op](id);
+      run.onclick = () => api[op](id);
+      ops.append(KV.el('span', 'name', op), KV.el('span', 'args'), run);
     }
 
     const remove = KV.el('button', 'danger', 'remove pool');
-    remove.title = `DELETE ${base}/${id} — только TERMINATED; вместе с пулом удаляются его очередь и фабрика`;
-    remove.onclick = () => call('DELETE', `${base}/${id}`);
+    remove.title = titles.remove(id);
+    remove.onclick = async () => { await api.remove(store, id); render(); };
     controls.append(ops, remove);
 
     const state = KV.el('div', 'card-state');
@@ -331,138 +115,24 @@
     return { card, state };
   }
 
-  // ---------- Карточка пула: состояние справа ----------
-
-  // Один ряд: бейджи методов пула и его runState. Счётчики не выводим — дизайн минималистичный,
-  // чтобы рядом помещалось несколько пулов; они остаются в подсказке к статусу
-  function renderStatus(pool) {
-    const row = KV.renderBadges(pool.methods);
-    const s = pool.state;
-    if (!s) return row;
-    const status = KV.el('span', 'run-state');
-    status.append(KV.el('span', `dot ${s.runState}`), s.runState);
-    status.title = `потоков ${s.poolSize} / core ${s.corePoolSize} / max ${s.maximumPoolSize} · активных ${s.activeCount} · выполнено ${s.completedTaskCount}`;
-    row.append(status);
-    return row;
-  }
-
-  function renderNotice(pool) {
-    const n = pool.notice;
-    const elapsed = n ? performance.now() - n.start : Infinity;
-    if (elapsed >= NOTICE_MS) return KV.el('div', 'notice');
-    const row = KV.el('div', 'notice ' + (n.failed ? 'failed' : 'info'), n.text);
-    row.style.animation = `fade-out ${NOTICE_MS}ms ease-in ${-elapsed}ms forwards`;
-    return row;
-  }
-
-  // Узел — мини-конверт задачи из общего компонента
-  const taskNode = (taskId, label, index) => KV.taskNode(tasks, taskId, label, index);
-
-  function renderQueue(queueId) {
-    const part = KV.el('div', 'part');
-    const queue = queues.get(queueId);
-    if (!queue) { part.append(KV.el('span', 'empty', `queue #${queueId} — нет данных`)); return part; }
-    const title = KV.el('div', 'part-title');
-    title.append(KV.el('span', 'name', 'queue'), KV.renderBadges(queue.methods));
-    // Свободные ячейки — только для ограниченной очереди: ∞ (INT_MAX) и «ещё не знаем» не рисуем
-    const capacity = queue.capacity != null && queue.capacity !== INT_MAX ? queue.capacity : undefined;
-    part.append(title, KV.renderChain(queue.elements, queue.nodeEffect, { node: taskNode, slot: KV.taskSlot, capacity }));
-    return part;
-  }
-
-  function renderWorkers(pool) {
-    const factoryId = pool.state.threadFactoryId;
-    const part = KV.el('div', 'part');
-    const title = KV.el('div', 'part-title');
-    // Ни id фабрики, ни бейджа newThread пока не выводим — минималистичный дизайн
-    title.append(KV.el('span', 'name', 'workers'));
-    part.append(title);
-
-    const queue = queues.get(pool.state.queueId);
-    const list = KV.el('div', 'workers');
-    // Порядок вставки в Map = порядок создания потоков
-    const workers = [...threads.values()].filter(t => t.factoryId === factoryId);
-    for (const thread of workers) list.append(renderWorker(thread, queue));
-    part.append(list);
-    return part;
-  }
-
-  // Чем занят воркер, видно не по событиям пула, а по событиям задачи (run) и очереди (take / poll) с его именем потока.
-  // Колонка: сверху имя потока, под ним либо его задача — тем же компонентом, что на странице задачи, — либо ожидание
-  function renderWorker(thread, queue) {
-    const column = KV.el('div', 'worker');
-    column.style.setProperty('--thread', KV.threadColor(thread.name));
-    // Пока просто «worker»: различаются цветом (по полному имени потока), полное имя — в подсказке
-    column.append(KV.el('span', 'wname', 'worker'));
-    const now = performance.now();
-
-    const busy = taskRunBy(thread.name);
-    const poll = polling.get(thread.name);
-    if (thread.phase === 'DONE' || thread.phase === 'FAILED') {
-      const failed = thread.phase === 'FAILED';
-      // Только значок — чтобы колонка не расширялась; что случилось, написано в подсказке
-      column.append(KV.el('span', 'wstatus ' + (failed ? 'failed' : 'done'), failed ? '✗' : '✓'));
-      column.title = failed ? `${thread.name} упал: ${thread.error}` : `${thread.name} завершён: вышел из run — keepAlive истёк или пул остановлен`;
-      column.classList.add('ended');
-      column.style.setProperty('--fade', `${failed ? FAILED_FADE_MS : DONE_FADE_MS}ms`);
-      column.style.animationDelay = `${-(now - thread.endedAt)}ms`; // продолжить затухание после перерисовки
-    } else if (busy) {
-      // Конверт с полоской этого потока под ним; имя потока уже над конвертом — на полоске его не дублируем
-      const { task, run } = busy;
-      column.append(KV.renderTask(task, { size: 'mini', thread: thread.name, names: false }));
-      const elapsed = now - run.startedAt;
-      column.title = `${thread.name} выполняет task#${task.id}: ${KV.seconds(Math.min(elapsed, task.durationMs ?? 0))} / ${KV.seconds(task.durationMs)}`;
-    } else if (queue?.methods.inside.take.has(thread.name)) {
-      column.append(KV.el('span', 'wstatus waiting', '⏳ take'));
-      column.title = `${thread.name} ждёт задачу в take() — core-поток, ждёт сколько угодно`;
-    } else if (poll) {
-      column.append(KV.el('span', 'wstatus waiting', '⏳ poll'));
-      const track = KV.el('div', 'track');
-      track.append(bar('poll', 'drain', poll.timeoutMs, now - poll.start));
-      column.append(track);
-      column.title = `${thread.name} ждёт задачу в poll(${KV.seconds(poll.timeoutMs)}) — не дождётся, и поток умрёт (keepAlive)`;
-    } else {
-      // Между задачами: внутри getTask() до take/poll, или поток создан, но ещё не стартовал
-      column.append(KV.el('span', 'wstatus', thread.phase === 'NEW' ? 'создан' : '·'));
-      column.title = thread.phase === 'NEW' ? `${thread.name}: newThread вернул поток, start() ещё не было` : `${thread.name}: между задачами`;
-    }
-    return column;
-  }
-
-  // Полоска едет сама: анимация на всю длительность с отрицательной задержкой — сколько уже прошло
-  function bar(kind, animation, durationMs, elapsedMs) {
-    const b = KV.el('div', `bar ${kind}`);
-    b.style.animation = `${animation} ${durationMs}ms linear ${-Math.min(elapsedMs, durationMs)}ms forwards`;
-    return b;
-  }
-
   // ---------- Синхронизация карточек с состоянием ----------
-
 
   // Карточка на каждый объект, по порядку id: пульт создаётся один раз, состояние справа перерисовывается
   const cards = UI.cardList('pools', {
     create: createCard,
-    update: (pool, { state }) => {
-      if (!pool.state) { state.replaceChildren(renderStatus(pool)); return; }
-      state.replaceChildren(
-        renderStatus(pool),
-        renderNotice(pool),
-        renderQueue(pool.state.queueId),
-        renderWorkers(pool),
-      );
-    },
-    empty: 'нет пулов — нажмите «+ new pool»',
+    update: (pool, { state }) => state.replaceChildren(...Pool.renderState(store, pool)),
+    empty: 'no pools — press «+ new pool»',
   });
 
   function render() {
-    cards.sync(pools);
+    cards.sync(store.pools);
   }
 
   // ---------- WebSocket ----------
   // Подключение, лог событий и переподключение — UI.connect из base.js
 
   render();
-  UI.connect({ onEnvelope: env => { apply(env); render(); }, types: TYPES });
+  UI.connect({ onEnvelope: env => { store.apply(env); render(); }, types: Pool.TYPES });
 </script>
 </body>
 </html>

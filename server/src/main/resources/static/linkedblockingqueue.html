@@ -6,21 +6,10 @@
   <!-- Сначала общий каркас и компоненты: стили страницы ниже могут их уточнять -->
   <link rel="stylesheet" href="base.css">
   <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="blockingqueue.css">
   <style>
-    /* Палитра, шапка, кнопки, карточка, логи — в base.css */
-
     /* --- карточка очереди: .list-card из base.css; ёмкость в заголовке --- */
     .card-title .capacity { color: var(--dim); }
-
-    /* Бейджи методов и цепочка узлов — в components.css */
-
-    /* --- состояние: потоки, которые висят внутри take(). Есть только у блокирующей очереди --- */
-    .waiting { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 6px; min-height: 22px; }
-    .thread-chip {
-      padding: 0 6px; border-radius: 3px; font-weight: bold; color: var(--thread);
-      border: 1px solid color-mix(in srgb, var(--thread) 60%, transparent);
-      background: color-mix(in srgb, var(--thread) 15%, transparent);
-    }
   </style>
 </head>
 <body>
@@ -46,183 +35,49 @@
 
 <script src="base.js"></script>
 <script src="components.js"></script>
+<script src="blockingqueue.js"></script>
 <script>
-  const { $, call } = UI;
-  const base = '/api/linkedblockingqueuerunnable';
-  const tasksBase = '/api/tasks';
-  const QUEUE = 'LINKED_BLOCKING_QUEUE_RUNNABLE';
-  const TASK = 'RUNNABLE_TASK';
+  // Модель, отрисовка состояния и REST — в blockingqueue.js; здесь только форма создания и карточки
+  const { $ } = UI;
+  const View = BlockingQueueView;
   const INT_MAX = 2147483647; // ёмкость LinkedBlockingQueue() без аргумента
 
-  // REST и лог HTTP — UI.call из base.js
-
-  // offer новой задачи — два обычных запроса подряд: сервер не знает такой команды, offer принимает только taskId.
-  // Поэтому в логе честно видно: сначала OBJECT_CREATED задачи, потом offer. offer по taskId добавим позже
-  async function offerNew(queueId, durationMs) {
-    const created = await call('POST', tasksBase, { durationMs });
-    if (created) await call('POST', `${base}/${queueId}/offer`, { taskId: created.objectId });
-  }
-
   // Карточку создаёт не ответ на create, а событие OBJECT_CREATED — так же, как для очередей, созданных извне
-  $('create').onclick = () => call('POST', base, { capacity: Number($('capacity').value) });
+  $('create').onclick = () => View.create({ capacity: Number($('capacity').value) });
 
-  // ---------- State ----------
-
-  const METHODS = ['offer', 'take'];
-
-  // taskId → задача из KV.trackTask: узлы очереди рисуются её конвертом — тем же, что на странице задачи
-  const tasks = new Map();
-
-  // objectId → { id, capacity, elements, methods, nodeEffect }
-  // elements — taskIds от головы к хвосту. methods — KV.methodsState: кто внутри какого метода и затухание бейджей.
-  // methods.inside.take — заодно и «ждут в take»: поток внутри take() висит, пока очередь пуста
-  const lists = new Map();
-
-  // Очередь создаётся и по CREATED, и по любому другому событию: страницу могли открыть уже после CREATED
-  function listOf(id) {
-    if (!lists.has(id)) lists.set(id, { id, capacity: null, elements: [], methods: KV.methodsState(METHODS), nodeEffect: null });
-    return lists.get(id);
-  }
-
-  function apply(env) {
-    const data = env.data;
-    if (data?.objectType === TASK) { KV.trackTask(tasks, env, render); return; }
-    if (data?.objectType !== QUEUE) return;
-    if (env.type === 'OBJECT_REMOVED') { lists.delete(data.objectId); return; }
-
-    // Порядок METHOD_OUT offer и take может перепутаться (TODO на сервере), но state в каждом событии полный —
-    // поэтому просто берём последний
-    const list = listOf(data.objectId);
-    if (data.state) {
-      list.capacity = data.state.capacity;
-      list.elements = data.state.taskIds;
-    }
-
-    const phase = KV.trackMethod(list.methods, env);
-    if (!phase) return;
-    const effect = nodeEffectOf(data.method, phase, data);
-    if (effect) KV.setEffect(list, effect, render); // перерисовать, когда призрак догорит
-  }
-
-  // Что подсветить после этого события (null — ничего). Как в linkedlist.html: offer ≈ offer, take ≈ pop.
-  // side — с какой стороны цепочки призрак: take снимает с головы, отклонённый offer не попал в хвост
-  function nodeEffectOf(method, phase, data) {
-    if (phase === 'OUT_FAILED') {
-      return method === 'take' ? { ghost: '✗', kind: 'failed', side: 'head', title: `${data.thread}: ${data.error}` } : null;
-    }
-    if (phase !== 'OUT') return null;
-    if (method === 'offer') {
-      // При гонке «последний узел» — допущение, а не наблюдение
-      if (data.result === true) return { new: data.state.taskIds.length - 1 };
-      return { value: data.args.taskId, kind: 'failed', side: 'tail', title: `очередь полна: offer вернул false` };
-    }
-    // Снятого узла в state уже нет — его taskId берём из result
-    if (method === 'take') return { value: data.result, kind: 'removed', side: 'head', title: `взял ${data.thread}` };
-    return null;
-  }
-
-  // ---------- Карточка очереди: пульт слева ----------
-
-  // Операции пульта: имя, поля (placeholder + значение по умолчанию) и что вызвать
-  const OPERATIONS = [
-    { name: 'offer', fields: [['сек', 5]], title: id => `POST ${tasksBase} {durationMs}, затем POST ${base}/${id}/offer {taskId} — новая задача`,
-      run: (id, inputs) => offerNew(id, Math.round(Number(inputs['сек'].value) * 1000)) },
-    { name: 'take', fields: [], title: id => `POST ${base}/${id}/take — take() в новом потоке`,
-      run: id => call('POST', `${base}/${id}/take`) },
-  ];
+  const store = View.createStore(render);
 
   const capacityText = capacity => capacity === null ? '?' : capacity === INT_MAX ? '∞' : capacity;
 
-  // Карточка создаётся один раз: поля пульта не пересоздаются, поэтому введённое значение и фокус не теряются
-  function createCard(list) {
-    const id = list.id;
-    const card = document.createElement('div');
-    card.className = 'list-card';
-    card.dataset.id = id;
-
-    const controls = document.createElement('div');
-    controls.className = 'card-controls';
-    const title = Object.assign(document.createElement('div'), { className: 'card-title', textContent: `queue #${id} ` });
+  // Карточка создаётся один раз: пульт не пересоздаётся, поэтому введённые значения и фокус не теряются
+  function createCard(queue) {
+    const card = KV.el('div', 'list-card');
+    const controls = KV.el('div', 'card-controls');
+    const title = KV.el('div', 'card-title', `queue #${queue.id} `);
     // Ёмкость здесь, а не в состоянии: без неё непонятно, почему offer вернул false
-    title.append(Object.assign(document.createElement('span'), { className: 'capacity', textContent: `· capacity ${capacityText(list.capacity)}` }));
-    controls.append(title);
-
-    const ops = document.createElement('div');
-    ops.className = 'ops';
-    for (const op of OPERATIONS) {
-      const name = Object.assign(document.createElement('span'), { className: 'name', textContent: op.name });
-      const args = Object.assign(document.createElement('span'), { className: 'args' });
-      const inputs = {};
-      for (const [field, defaultValue] of op.fields) {
-        const input = Object.assign(document.createElement('input'), { type: 'number', value: defaultValue, placeholder: field, title: field });
-        input.setAttribute('aria-label', field);
-        inputs[field] = input;
-        args.append(input);
-      }
-      const run = Object.assign(document.createElement('button'), { className: 'run', textContent: '▶', title: op.title(id) });
-      run.onclick = () => op.run(id, inputs);
-      // Enter в поле строки — то же, что ▶
-      for (const input of Object.values(inputs)) input.addEventListener('keydown', e => { if (e.key === 'Enter') run.click(); });
-      ops.append(name, args, run);
-    }
-
-    const remove = Object.assign(document.createElement('button'), { className: 'danger', textContent: 'remove queue' });
-    remove.onclick = () => call('DELETE', `${base}/${id}`);
-
-    controls.append(ops, remove);
-
-    const state = document.createElement('div');
-    state.className = 'card-state';
-
+    title.append(KV.el('span', 'capacity', `· capacity ${capacityText(queue.capacity)}`));
+    const remove = KV.el('button', 'danger', 'remove queue');
+    remove.onclick = () => View.remove(store, queue.id);
+    controls.append(title, KV.renderOps(View.operations, queue.id), remove);
+    const state = KV.el('div', 'card-state');
     card.append(controls, state);
     return { card, state };
   }
 
-  // ---------- Карточка очереди: состояние справа ----------
-  // Бейджи и цепочка — общие компоненты из components.js
-
-  // Узел — мини-конверт задачи из общего компонента
-  const taskNode = (taskId, label, index) => KV.taskNode(tasks, taskId, label, index);
-
-  // Есть только у блокирующей очереди: в общий компонент цепочки не входит
-  function renderWaiting(list) {
-    const row = document.createElement('div');
-    row.className = 'waiting';
-    row.append(Object.assign(document.createElement('span'), { className: 'empty', textContent: 'ждут в take:' }));
-    const threads = list.methods.inside.take;
-    if (threads.size === 0) row.append(Object.assign(document.createElement('span'), { className: 'empty', textContent: '—' }));
-    for (const thread of threads) {
-      const chip = Object.assign(document.createElement('span'), { className: 'thread-chip', textContent: thread });
-      chip.style.setProperty('--thread', KV.threadColor(thread));
-      chip.title = `${thread} внутри take(): ждёт, пока в очереди появится задача`;
-      row.append(chip);
-    }
-    return row;
-  }
-
-  // ---------- Синхронизация карточек с состоянием ----------
-
-
   // Карточка на каждый объект, по порядку id: пульт создаётся один раз, состояние справа перерисовывается
   const cards = UI.cardList('lists', {
     create: createCard,
-    update: (list, { state }) => state.replaceChildren(
-      KV.renderBadges(list.methods),
-      KV.renderChain(list.elements, list.nodeEffect, { node: taskNode }),
-      renderWaiting(list),
-    ),
-    empty: 'нет очередей — нажмите «+ new queue»',
+    update: (queue, { state }) => state.replaceChildren(...View.renderState(store, queue)),
+    empty: 'no queues — press «+ new queue»',
   });
 
   function render() {
-    cards.sync(lists);
+    cards.sync(store.items);
   }
 
-  // ---------- WebSocket ----------
   // Подключение, лог событий и переподключение — UI.connect из base.js
-
   render();
-  UI.connect({ onEnvelope: env => { apply(env); render(); }, types: [QUEUE, TASK] });
+  UI.connect({ onEnvelope: env => { store.apply(env); render(); }, types: View.types });
 </script>
 </body>
 </html>

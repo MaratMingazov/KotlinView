@@ -97,12 +97,12 @@ const KV = (() => {
   }
 
   // Призрак тает слева от головы (side: 'head', по умолчанию) или справа от хвоста (side: 'tail')
-  function ghostParts(effect, elapsed, hasElements, makeNode) {
+  function ghostParts(effect, elapsed, hasElements, makeNode, arrows) {
     const ghost = effect.value !== undefined ? makeNode(effect.value, '', '') : node(effect.ghost, '', '');
     ghost.classList.add('ghost', effect.kind);
     ghost.style.animation = glow('fade-out', elapsed);
     if (effect.title) ghost.title = effect.title;
-    if (!hasElements) return [ghost];
+    if (!hasElements || !arrows) return [ghost];
     const arrow = linkArrow();
     arrow.style.animation = glow('fade-out', elapsed);
     return effect.side === 'tail' ? [arrow, ghost] : [ghost, arrow];
@@ -118,21 +118,23 @@ const KV = (() => {
   /**
    * options.node(value, label, index) — как нарисовать узел (и призрак элемента); по умолчанию просто значение.
    * options.capacity — ёмкость: после элементов дорисовать свободные ячейки (options.slot(index)), без стрелок —
-   * это не узлы списка, а место под них. Вместо «head = tail = null» тогда видны пустые ячейки
+   * это не узлы списка, а место под них. Вместо «head = tail = null» тогда видны пустые ячейки.
+   * options.arrows: false — без стрелок ⇄ между узлами (очередь пула: связи узлов там не главное)
    */
   function renderChain(elements, effect, options = {}) {
     const makeNode = options.node ?? node;
-    const chain = el('div', 'chain');
+    const arrows = options.arrows !== false;
+    const chain = el('div', arrows ? 'chain' : 'chain no-arrows');
     const elapsed = effect ? performance.now() - effect.start : Infinity;
     const active = elapsed < NODE_FADE_MS;
     const hasGhost = active && (effect.ghost !== undefined || effect.value !== undefined);
     const hasElements = elements.length > 0;
 
-    if (hasGhost && effect.side !== 'tail') chain.append(...ghostParts(effect, elapsed, hasElements, makeNode));
+    if (hasGhost && effect.side !== 'tail') chain.append(...ghostParts(effect, elapsed, hasElements, makeNode, arrows));
 
     const last = elements.length - 1;
     elements.forEach((value, i) => {
-      if (i > 0) chain.append(linkArrow());
+      if (i > 0 && arrows) chain.append(linkArrow());
       const label = i === 0 && i === last ? 'head·tail' : i === 0 ? 'head' : i === last ? 'tail' : '';
       const n = makeNode(value, label, i);
       if (active && effect.new === i) markNew(n, elapsed);
@@ -142,7 +144,7 @@ const KV = (() => {
     const capacity = options.capacity;
     if (!hasElements && !hasGhost && !capacity) chain.append(el('span', 'empty', 'head = tail = null'));
 
-    if (hasGhost && effect.side === 'tail') chain.append(...ghostParts(effect, elapsed, hasElements, makeNode));
+    if (hasGhost && effect.side === 'tail') chain.append(...ghostParts(effect, elapsed, hasElements, makeNode, arrows));
 
     if (capacity) {
       const makeSlot = options.slot ?? slot;
@@ -332,8 +334,35 @@ const KV = (() => {
 
   const seconds = ms => ms == null ? '?' : (ms / 1000).toFixed(1) + 's';
 
+  // ---------- Пульт операций ----------
+
+  /**
+   * Сетка «метод | поля | ▶» для объекта id. operations: [{ name, fields: [[имя, значение по умолчанию]], title?(id), run(id, values) }],
+   * values — имя поля → число. Создавать один раз на объект: поля не пересоздаются, введённое и фокус не теряются.
+   */
+  function renderOps(operations, id) {
+    const ops = el('div', 'ops');
+    for (const op of operations) {
+      const args = el('span', 'args');
+      const inputs = {};
+      for (const [field, defaultValue] of op.fields ?? []) {
+        const input = Object.assign(document.createElement('input'), { type: 'number', value: defaultValue, placeholder: field, title: field });
+        input.setAttribute('aria-label', field);
+        inputs[field] = input;
+        args.append(input);
+      }
+      const run = el('button', 'run', '▶');
+      run.title = op.title ? op.title(id) : `${op.name} #${id}`;
+      run.onclick = () => op.run(id, Object.fromEntries(Object.entries(inputs).map(([f, input]) => [f, Number(input.value)])));
+      // Enter в любом поле строки — то же, что ▶
+      for (const input of Object.values(inputs)) input.addEventListener('keydown', e => { if (e.key === 'Enter') run.click(); });
+      ops.append(el('span', 'name', op.name), args, run);
+    }
+    return ops;
+  }
+
   return {
-    el, methodsState, trackMethod, renderBadges, node, setEffect, renderChain,
+    el, methodsState, trackMethod, renderBadges, node, setEffect, renderChain, renderOps,
     trackTask, runningThreads, renderEnvelope, renderRuns, renderTask, taskNode, taskSlot,
     threadColor, seconds,
   };

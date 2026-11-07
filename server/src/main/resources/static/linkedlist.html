@@ -32,144 +32,43 @@
 
 <script src="base.js"></script>
 <script src="components.js"></script>
+<script src="linkedlist.js"></script>
 <script>
-  const { $, call } = UI;
-  const base = '/api/linkedlistint';
+  // Модель, отрисовка состояния и REST — в linkedlist.js; здесь только кнопка создания и карточки
+  const { $ } = UI;
+  const View = LinkedListView;
 
-  // REST и лог HTTP — UI.call из base.js
+  // Карточку создаёт не ответ на create, а событие OBJECT_CREATED — так же, как для списков, созданных извне
+  $('create').onclick = () => View.create();
 
-  // Карточку создаёт не ответ на create, а событие CREATED — так же, как для списков, созданных извне
-  $('create').onclick = () => call('POST', base);
+  const store = View.createStore(render);
 
-  // ---------- State ----------
-
-  const METHODS = ['add', 'offer', 'offerFirst', 'offerLast', 'poll', 'pop'];
-
-  // objectId → { id, elements, methods, nodeEffect }
-  // methods — KV.methodsState: кто внутри какого метода и затухание бейджей
-  const lists = new Map();
-
-  // Список создаётся и по CREATED, и по любому другому событию: страницу могли открыть уже после CREATED
-  function listOf(id) {
-    if (!lists.has(id)) lists.set(id, { id, elements: [], methods: KV.methodsState(METHODS), nodeEffect: null });
-    return lists.get(id);
-  }
-
-  function apply(env) {
-    if (env.type === 'OBJECT_CREATED') {
-      if (env.data.objectType !== 'LINKED_LIST_INT') return;
-      const list = listOf(env.data.objectId);
-      if (Array.isArray(env.data.state)) list.elements = env.data.state; // начальное состояние
-      return;
-    }
-    if (env.type === 'OBJECT_REMOVED') { if (env.data.objectType === 'LINKED_LIST_INT') lists.delete(env.data.objectId); return; }
-
-    if (env.data.objectType !== 'LINKED_LIST_INT') return;
-    const list = listOf(env.data.objectId);
-    const phase = KV.trackMethod(list.methods, env);
-    if (!phase) return;
-    list.elements = env.data.state;
-
-    const effect = nodeEffectOf(env.data.method, phase, env.data);
-    if (effect) KV.setEffect(list, effect, render); // перерисовать, когда призрак догорит
-  }
-
-  // Что подсветить после этого события (null — ничего).
-  // В отличие от ArrayList.add(0, e) здесь нет сдвига: offerFirst просто прицепляет новый узел к голове
-  function nodeEffectOf(method, phase, data) {
-    if (phase === 'OUT_FAILED') {
-      return method === 'poll' || method === 'pop' ? { ghost: '✗', kind: 'failed' } : null;
-    }
-    if (phase !== 'OUT') return null;
-    // При гонке «последний узел» для add/offer — допущение, а не наблюдение
-    if (method === 'add' || method === 'offer' || method === 'offerLast') return { new: data.state.length - 1 };
-    if (method === 'offerFirst') return { new: 0 };
-    // Снятого узла в state уже нет — его значение берём из result
-    if (method === 'poll' || method === 'pop') {
-      return data.result == null ? { ghost: 'null', kind: 'null' } : { ghost: data.result, kind: 'removed' };
-    }
-    return null;
-  }
-
-  // ---------- Карточка списка: пульт слева ----------
-
-  // Операции пульта: имя, поля (placeholder + значение по умолчанию). У всех с аргументом тело {element}
-  const OPERATIONS = [
-    { name: 'add', fields: [['element', 10]] },
-    { name: 'offer', fields: [['element', 20]] },
-    { name: 'offerFirst', fields: [['element', 5]] },
-    { name: 'offerLast', fields: [['element', 30]] },
-    { name: 'poll', fields: [] },
-    { name: 'pop', fields: [] },
-  ];
-
-  // Карточка создаётся один раз: поля пульта не пересоздаются, поэтому введённое значение и фокус не теряются
-  function createCard(id) {
-    const card = document.createElement('div');
-    card.className = 'list-card';
-    card.dataset.id = id;
-
-    const controls = document.createElement('div');
-    controls.className = 'card-controls';
-    controls.innerHTML = `<div class="card-title">list #${id}</div>`;
-
-    const ops = document.createElement('div');
-    ops.className = 'ops';
-    for (const op of OPERATIONS) {
-      const name = Object.assign(document.createElement('span'), { className: 'name', textContent: op.name });
-      const args = Object.assign(document.createElement('span'), { className: 'args' });
-      const inputs = {};
-      for (const [field, defaultValue] of op.fields) {
-        const input = Object.assign(document.createElement('input'), { type: 'number', value: defaultValue, placeholder: field, title: field });
-        input.setAttribute('aria-label', field);
-        inputs[field] = input;
-        args.append(input);
-      }
-      const run = Object.assign(document.createElement('button'), { className: 'run', textContent: '▶', title: `${op.name} у списка #${id}` });
-      run.onclick = () => {
-        const url = `${base}/${id}/${op.name}`;
-        const body = op.fields.length ? { element: Number(inputs.element.value) } : undefined;
-        call('POST', url, body);
-      };
-      // Enter в поле строки — то же, что ▶
-      for (const input of Object.values(inputs)) input.addEventListener('keydown', e => { if (e.key === 'Enter') run.click(); });
-      ops.append(name, args, run);
-    }
-
-    const remove = Object.assign(document.createElement('button'), { className: 'danger', textContent: 'remove list' });
-    remove.onclick = () => call('DELETE', `${base}/${id}`);
-
-    controls.append(ops, remove);
-
-    const state = document.createElement('div');
-    state.className = 'card-state';
-
+  // Карточка создаётся один раз: пульт не пересоздаётся, поэтому введённые значения и фокус не теряются
+  function createCard(list) {
+    const card = KV.el('div', 'list-card');
+    const controls = KV.el('div', 'card-controls');
+    const remove = KV.el('button', 'danger', 'remove list');
+    remove.onclick = () => View.remove(store, list.id);
+    controls.append(KV.el('div', 'card-title', `list #${list.id}`), KV.renderOps(View.operations, list.id), remove);
+    const state = KV.el('div', 'card-state');
     card.append(controls, state);
     return { card, state };
   }
 
-  // ---------- Карточка списка: состояние справа ----------
-  // Бейджи и цепочка — общие компоненты из components.js. Призрак снятого узла тает слева от головы
-
-  // ---------- Синхронизация карточек с состоянием ----------
-
-
   // Карточка на каждый объект, по порядку id: пульт создаётся один раз, состояние справа перерисовывается
   const cards = UI.cardList('lists', {
-    create: list => createCard(list.id),
-    update: (list, { state }) => state.replaceChildren(KV.renderBadges(list.methods), KV.renderChain(list.elements, list.nodeEffect)),
-    empty: 'нет списков — нажмите «+ new list»',
+    create: createCard,
+    update: (list, { state }) => state.replaceChildren(...View.renderState(store, list)),
+    empty: 'no lists — press «+ new list»',
   });
 
   function render() {
-    cards.sync(lists);
+    cards.sync(store.items);
   }
 
-  // ---------- WebSocket ----------
   // Подключение, лог событий и переподключение — UI.connect из base.js
-
   render();
-  UI.connect({ onEnvelope: env => { apply(env); render(); }, types: ['LINKED_LIST_INT'] });
+  UI.connect({ onEnvelope: env => { store.apply(env); render(); }, types: View.types });
 </script>
 </body>
 </html>

@@ -16,20 +16,31 @@ const UI = (() => {
 
   // ---------- REST ----------
 
-  /** Запрос с записью в лог HTTP. Возвращает тело ответа (JSON) или null — при ошибке и у 204. */
-  async function call(method, url, body) {
+  /**
+   * Запрос с записью в лог HTTP. Возвращает { ok, status, body }: body — JSON ответа или null (у 204 тела нет).
+   * Нужен, когда важно отличить ошибку от пустого успешного ответа и прочитать текст ошибки.
+   */
+  async function request(method, url, body) {
     const options = { method, headers: { 'Content-Type': 'application/json' } };
     if (body !== undefined) options.body = JSON.stringify(body);
-    const request = `${method} ${url}${body !== undefined ? ' ' + JSON.stringify(body) : ''}`;
+    const line = `${method} ${url}${body !== undefined ? ' ' + JSON.stringify(body) : ''}`;
     try {
       const res = await fetch(url, options);
-      const text = await res.text(); // у 204 тела нет
-      prepend('http', `${request} → ${res.status} ${text}`, !res.ok);
-      return res.ok && text ? JSON.parse(text) : null;
+      const text = await res.text();
+      prepend('http', `${line} → ${res.status} ${text}`, !res.ok);
+      let parsed = null;
+      try { parsed = text ? JSON.parse(text) : null; } catch { /* не JSON — оставляем null */ }
+      return { ok: res.ok, status: res.status, body: parsed };
     } catch (e) {
-      prepend('http', `${request} → ${e}`, true);
-      return null;
+      prepend('http', `${line} → ${e}`, true);
+      return { ok: false, status: 0, body: { error: String(e) } };
     }
+  }
+
+  /** Запрос с записью в лог HTTP. Возвращает тело ответа (JSON) или null — при ошибке и у 204. */
+  async function call(method, url, body) {
+    const res = await request(method, url, body);
+    return res.ok ? res.body : null;
   }
 
   // ---------- WebSocket ----------
@@ -119,5 +130,5 @@ const UI = (() => {
     return { sync };
   }
 
-  return { $, call, prepend, connect, cardList };
+  return { $, call, request, prepend, connect, cardList };
 })();

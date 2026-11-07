@@ -6,32 +6,7 @@
   <!-- Сначала общий каркас и компоненты: стили страницы ниже могут их уточнять -->
   <link rel="stylesheet" href="base.css">
   <link rel="stylesheet" href="components.css">
-  <style>
-    /* Палитра, шапка, кнопки, карточка, логи — в base.css */
-
-    /* Бейджи методов — в components.css */
-
-    /* --- состояние: ячейки с индексами --- */
-    .cells { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; min-height: 50px; }
-    .cell { display: flex; flex-direction: column; align-items: center; }
-    .cell .box {
-      min-width: 40px; height: 32px; padding: 0 6px; display: flex; align-items: center; justify-content: center;
-      border: 2px solid var(--border); border-radius: 3px; color: var(--num); background: var(--panel);
-    }
-    .cell .idx { font-size: 11px; color: var(--dim); }
-    .cell .arrow { color: var(--dim); margin-left: 2px; }
-    .cell.ghost .box { border-style: dashed; border-color: var(--fail); color: var(--fail); background: none; }
-    /* Подсветка ячеек тоже затухает, а не снимается рывком */
-    @keyframes cell-new {
-      from { background: color-mix(in srgb, var(--out) 45%, var(--panel)); border-color: var(--out); }
-      to { background: var(--panel); border-color: var(--border); }
-    }
-    @keyframes cell-read {
-      from { background: color-mix(in srgb, var(--in) 45%, var(--panel)); border-color: var(--in); }
-      to { background: var(--panel); border-color: var(--border); }
-    }
-    /* fade-out — в components.css */
-  </style>
+  <link rel="stylesheet" href="arraylist.css">
 </head>
 <body>
 
@@ -53,199 +28,43 @@
 
 <script src="base.js"></script>
 <script src="components.js"></script>
+<script src="arraylist.js"></script>
 <script>
-  const { $, call } = UI;
-  const base = '/api/arraylistint';
+  // Модель, отрисовка состояния и REST — в arraylist.js; здесь только кнопка создания и карточки
+  const { $ } = UI;
+  const View = ArrayListView;
 
-  // REST и лог HTTP — UI.call из base.js
+  // Карточку создаёт не ответ на create, а событие OBJECT_CREATED — так же, как для списков, созданных извне
+  $('create').onclick = () => View.create();
 
-  // Карточку создаёт не ответ на create, а событие CREATED — так же, как для списков, созданных извне
-  $('create').onclick = () => call('POST', base);
+  const store = View.createStore(render);
 
-  // ---------- State ----------
-
-  const METHODS = ['add', 'addAt', 'get'];
-  const CELL_FADE_MS = 1500; // сколько затухает подсветка ячеек — дольше, чтобы успеть рассмотреть
-
-  // objectId → { id, elements, unreadable, methods, cellEffect }
-  // methods — KV.methodsState: кто внутри какого метода и затухание бейджей
-  const lists = new Map();
-
-  // Список создаётся и по CREATED, и по любому другому событию: страницу могли открыть уже после CREATED
-  function listOf(id) {
-    if (!lists.has(id)) lists.set(id, { id, elements: [], unreadable: false, methods: KV.methodsState(METHODS), cellEffect: null });
-    return lists.get(id);
-  }
-
-  function apply(env) {
-    if (env.type === 'OBJECT_CREATED') {
-      if (env.data.objectType !== 'ARRAY_LIST_INT') return;
-      const list = listOf(env.data.objectId);
-      if (Array.isArray(env.data.state)) list.elements = env.data.state; // начальное состояние
-      return;
-    }
-    if (env.type === 'OBJECT_REMOVED') { if (env.data.objectType === 'ARRAY_LIST_INT') lists.delete(env.data.objectId); return; }
-
-    if (env.data.objectType !== 'ARRAY_LIST_INT') return;
-    const list = listOf(env.data.objectId);
-    const phase = KV.trackMethod(list.methods, env);
-    if (!phase) return;
-    // state == null — сервер не смог прочитать список (гонка): оставляем прошлые элементы и помечаем карточку
-    list.unreadable = !Array.isArray(env.data.state);
-    if (!list.unreadable) list.elements = env.data.state;
-
-    const cells = cellEffectOf(env.data.method, phase, env.data);
-    if (cells) {
-      list.cellEffect = { ...cells, start: performance.now() };
-      setTimeout(render, CELL_FADE_MS); // убрать «призрачную» ячейку, когда она догорит
-    }
-  }
-
-  // Какие ячейки подсветить после этого события (null — ничего)
-  function cellEffectOf(method, phase, data) {
-    if (!Array.isArray(data.state)) return null; // без состояния подсвечивать нечего
-    if (phase === 'OUT_FAILED') {
-      // Индекс за концом массива — «призрачная» ячейка
-      const index = data.args.index;
-      return index !== undefined && index >= data.state.length ? { ghost: index } : null;
-    }
-    if (phase !== 'OUT') return null;
-    // При гонке «последняя ячейка» для add — допущение, а не наблюдение
-    if (method === 'add') return { new: data.state.length - 1 };
-    if (method === 'addAt') return { new: data.args.index, shiftedFrom: data.args.index + 1 };
-    if (method === 'get') return { read: data.args.index };
-    return null;
-  }
-
-  // ---------- Карточка списка: пульт слева ----------
-
-  // Операции пульта: имя, поля (placeholder + значение по умолчанию), как собрать запрос
-  const OPERATIONS = [
-    { name: 'add', fields: [['element', 10]], request: id => [`${base}/${id}/add`, v => ({ element: v.element })] },
-    { name: 'addAt', fields: [['index', 0], ['element', 7]], request: id => [`${base}/${id}/addAt`, v => ({ index: v.index, element: v.element })] },
-    { name: 'get', fields: [['index', 0]], request: id => [`${base}/${id}/get`, v => ({ index: v.index })] },
-  ];
-
-  // Карточка создаётся один раз: поля пульта не пересоздаются, поэтому введённое значение и фокус не теряются
-  function createCard(id) {
-    const card = document.createElement('div');
-    card.className = 'list-card';
-    card.dataset.id = id;
-
-    const controls = document.createElement('div');
-    controls.className = 'card-controls';
-    controls.innerHTML = `<div class="card-title">list #${id}</div>`;
-
-    const ops = document.createElement('div');
-    ops.className = 'ops';
-    for (const op of OPERATIONS) {
-      const name = Object.assign(document.createElement('span'), { className: 'name', textContent: op.name });
-      const args = Object.assign(document.createElement('span'), { className: 'args' });
-      const inputs = {};
-      for (const [field, defaultValue] of op.fields) {
-        const input = Object.assign(document.createElement('input'), { type: 'number', value: defaultValue, placeholder: field, title: field });
-        input.setAttribute('aria-label', field);
-        inputs[field] = input;
-        args.append(input);
-      }
-      const run = Object.assign(document.createElement('button'), { className: 'run', textContent: '▶', title: `${op.name} у списка #${id}` });
-      run.onclick = () => {
-        const values = Object.fromEntries(Object.entries(inputs).map(([f, input]) => [f, Number(input.value)]));
-        const [url, body] = op.request(id);
-        call('POST', url, body(values));
-      };
-      // Enter в любом поле строки — то же, что ▶
-      for (const input of Object.values(inputs)) input.addEventListener('keydown', e => { if (e.key === 'Enter') run.click(); });
-      ops.append(name, args, run);
-    }
-
-    const remove = Object.assign(document.createElement('button'), { className: 'danger', textContent: 'remove list' });
-    remove.onclick = () => call('DELETE', `${base}/${id}`);
-
-    controls.append(ops, remove);
-
-    const state = document.createElement('div');
-    state.className = 'card-state';
-
+  // Карточка создаётся один раз: пульт не пересоздаётся, поэтому введённые значения и фокус не теряются
+  function createCard(list) {
+    const card = KV.el('div', 'list-card');
+    const controls = KV.el('div', 'card-controls');
+    const remove = KV.el('button', 'danger', 'remove list');
+    remove.onclick = () => View.remove(store, list.id);
+    controls.append(KV.el('div', 'card-title', `list #${list.id}`), KV.renderOps(View.operations, list.id), remove);
+    const state = KV.el('div', 'card-state');
     card.append(controls, state);
     return { card, state };
   }
 
-  // ---------- Карточка списка: состояние справа ----------
-  // Бейджи — общий компонент из components.js. Ячейки массива — свои: это не цепочка, у них свои эффекты
-
-  // Ячейка массива: значение и индекс под ним
-  function cell(value, index) {
-    const el = document.createElement('div');
-    el.className = 'cell';
-    const box = document.createElement('div');
-    box.className = 'box';
-    box.textContent = value;
-    const idx = document.createElement('div');
-    idx.className = 'idx';
-    idx.textContent = index;
-    el.append(box, idx);
-    return el;
-  }
-
-  // Анимация, продолженная с того места, где она была до пересоздания элемента
-  const glow = (name, elapsed) => `${name} ${CELL_FADE_MS}ms ease-out ${-elapsed}ms forwards`;
-
-  function renderCells(list) {
-    const cells = document.createElement('div');
-    cells.className = 'cells';
-    const effect = list.cellEffect;
-    const elapsed = effect ? performance.now() - effect.start : Infinity;
-    const active = elapsed < CELL_FADE_MS;
-
-    list.elements.forEach((value, i) => {
-      const el = cell(value, i);
-      if (active) {
-        const box = el.querySelector('.box');
-        if (effect.new === i) box.style.animation = glow('cell-new', elapsed);
-        if (effect.read === i) box.style.animation = glow('cell-read', elapsed);
-        if (effect.shiftedFrom !== undefined && i >= effect.shiftedFrom) {
-          const arrow = Object.assign(document.createElement('span'), { className: 'arrow', textContent: '→' });
-          arrow.style.animation = glow('fade-out', elapsed);
-          box.append(arrow);
-        }
-      }
-      cells.append(el);
-    });
-
-    if (active && effect.ghost !== undefined) {
-      const ghost = cell('✗', effect.ghost);
-      ghost.classList.add('ghost');
-      ghost.style.animation = glow('fade-out', elapsed);
-      cells.append(ghost);
-    }
-    if (list.unreadable) {
-      cells.append(Object.assign(document.createElement('span'), {
-        className: 'error', textContent: '⚠ состояние не прочитать — структура повреждена гонкой (показан последний снимок)',
-      }));
-    }
-    return cells;
-  }
-
-  // ---------- Синхронизация карточек с состоянием ----------
-
-
   // Карточка на каждый объект, по порядку id: пульт создаётся один раз, состояние справа перерисовывается
   const cards = UI.cardList('lists', {
-    create: list => createCard(list.id),
-    update: (list, { state }) => state.replaceChildren(KV.renderBadges(list.methods), renderCells(list)),
-    empty: 'нет списков — нажмите «+ new list»',
+    create: createCard,
+    update: (list, { state }) => state.replaceChildren(...View.renderState(store, list)),
+    empty: 'no lists — press «+ new list»',
   });
 
   function render() {
-    cards.sync(lists);
+    cards.sync(store.items);
   }
 
-  // ---------- WebSocket ----------
   // Подключение, лог событий и переподключение — UI.connect из base.js
-
   render();
-  UI.connect({ onEnvelope: env => { apply(env); render(); }, types: ['ARRAY_LIST_INT'] });
+  UI.connect({ onEnvelope: env => { store.apply(env); render(); }, types: View.types });
 </script>
 </body>
 </html>

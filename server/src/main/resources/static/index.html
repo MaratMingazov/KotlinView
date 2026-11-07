@@ -1,396 +1,177 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>KotlinView — ThreadPoolExecutor</title>
+  <title>KotlinView</title>
+  <link rel="stylesheet" href="base.css">
+  <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="pool.css">
+  <link rel="stylesheet" href="arraylist.css">
+  <link rel="stylesheet" href="blockingqueue.css">
   <style>
-    body { font-family: system-ui, sans-serif; margin: 24px; background: #f6f7f9; color: #222; }
-    button { padding: 6px 14px; cursor: pointer; }
-    #status { font-size: 13px; }
-    #status.on { color: #2e7d32; }
-    #status.off { color: #c62828; }
+    /* Плитки в две колонки; на узком экране — в одну */
+    .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 12px; }
+    @media (max-width: 900px) { .tiles { grid-template-columns: 1fr; } }
 
-    .row { display: flex; align-items: flex-start; gap: 16px; margin-top: 24px; }
-    .controls { display: flex; flex-direction: column; gap: 8px; width: 110px; }
-
-    .pool {
-      width: 860px; min-height: 260px; padding: 12px; box-sizing: border-box;
-      border: 2px dashed #bbb; border-radius: 10px; background: #fff;
-      display: flex; flex-direction: column; gap: 12px;
+    .tile {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+      padding: 10px 14px; min-height: 260px;
     }
-    .pool.bound { border-style: solid; border-color: #2e7d32; }
+    .tile.live { border-color: color-mix(in srgb, var(--out) 40%, var(--border)); }
+    .tile-title { color: var(--keyword); white-space: nowrap; margin-bottom: 8px; }
+    /* Параметры создания в спящей плитке: каждый своей строкой, «имя поле» */
+    .tile-params { display: flex; flex-direction: column; gap: 4px; }
+    .tile-params .param { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+    .tile-params .name { color: var(--fn); }
+    .tile-params input { width: 48px; }
+    /* Как карточка на threadpoolexecutor.html: слева команды, справа визуализация */
+    .tile-main { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 16px; align-items: start; }
+    /* Тонкая сплошная черта между командами и визуализацией — на всю высоту плитки.
+       Сплошная, а не пунктир: пунктиром уже разделены queue и workers внутри визуализации */
+    .tile-controls { padding-right: 16px; border-right: 1px solid var(--border); align-self: stretch; }
+    /* Шапка живой плитки: название слева, ✕ (remove) справа */
+    .tile-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+    .tile-head .tile-title { margin-bottom: 0; }
+    .tile button.close { background: none; border: none; padding: 0 2px; color: var(--fail); font-size: 15px; line-height: 1; opacity: .8; }
+    .tile button.close:hover { opacity: 1; }
+    /* Внутри плитки фон уже --panel: поля и кнопки — на тон темнее, чтобы не сливались */
+    .tile button, .tile input { background: var(--bg); }
 
-    .header { display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 16px; font-weight: bold; }
-    .dot { width: 12px; height: 12px; border-radius: 50%; background: #ccc; }
-    .dot.RUNNING { background: #2e7d32; }
-    .dot.SHUTDOWN { background: #ef6c00; }
-    .dot.TERMINATED { background: #616161; }
-    .state { font-size: 12px; font-weight: normal; color: #777; }
+    /* Спящая плитка: только название (с параметрами создания) и start — по центру */
+    .tile.sleeping { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+    .tile.sleeping .tile-title { margin-bottom: 0; }
 
-    .config { font-family: monospace; font-size: 13px; color: #555;
-              display: grid; grid-template-columns: max-content max-content; gap: 2px 16px; }
-
-    .methods { display: flex; gap: 8px; }
-    .method {
-      width: 160px; min-height: 56px; padding: 8px; box-sizing: border-box;
-      border: 2px solid #ccc; border-radius: 8px; background: #fafafa; color: #999;
-      transition: background .15s, border-color .15s;
-    }
-    .method .name { font-family: monospace; font-size: 14px; font-weight: bold; }
-    .method .threads { margin-top: 4px; font-family: monospace; font-size: 12px; }
-    .method.active { background: #c8f7c5; border-color: #2e7d32; color: #222; }  /* поток внутри метода */
-    .method.done { border-color: #999; color: #555; }                              /* поток уже вышел */
-
-    .section { border: 1px solid #ddd; border-radius: 8px; padding: 8px; }
-    .section .title { font-size: 12px; color: #777; margin-bottom: 6px; }
-    .placeholder { font-size: 12px; color: #aaa; font-style: italic; }
-
-    .queue-row { display: flex; align-items: flex-start; gap: 8px; }
-    .cells { display: flex; gap: 4px; padding: 6px; border: 2px dashed #bbb; border-radius: 8px; }
-    .cell { width: 32px; height: 32px; border: 2px solid #999; border-radius: 6px; background: #fff; }
-    .cell.filled { background: #90caf9; border-color: #1565c0; }
-    .queue-size { font-family: monospace; font-size: 12px; color: #555; margin-top: 4px; text-align: center; }
-
-    .workers { display: flex; flex-wrap: wrap; gap: 8px; }
-    .worker {
-      width: 200px; padding: 8px; box-sizing: border-box; font-family: monospace; font-size: 12px;
-      border: 2px solid #ccc; border-radius: 8px; background: #fafafa; color: #555;
-      transition: background .15s, border-color .15s;
-    }
-    .worker .wname { font-size: 13px; font-weight: bold; color: #222; word-break: break-all; }
-    .worker .wstate { margin-top: 4px; font-weight: bold; }
-    .worker .wmeta { margin-top: 4px; color: #777; }
-    .worker.CREATED { border-style: dashed; color: #999; }                  /* поток создан, но ещё не запущен */
-    .worker.IDLE { border-color: #1565c0; background: #e3f2fd; }            /* живой, задачи нет */
-    .worker.BUSY { border-color: #2e7d32; background: #c8f7c5; }            /* выполняет задачу */
-    .worker.TERMINATED { border-color: #bbb; background: #eee; opacity: .6; }
-    .worker.TERMINATED .wname { text-decoration: line-through; }
-    .worker.error { border-color: #c62828; background: #ffcdd2; opacity: 1; }
-
-    #log { margin-top: 32px; height: 200px; overflow: auto; background: #fff; border: 1px solid #ddd;
-           font-family: monospace; font-size: 12px; padding: 8px; white-space: pre; }
+    details { margin-top: 24px; }
+    summary { color: var(--dim); cursor: pointer; }
   </style>
 </head>
 <body>
 
-<span id="status" class="off">● disconnected</span>
+<header>
+  <h2>KotlinView</h2>
+  <span id="status" class="off">● ws disconnected</span>
+</header>
 
-<div class="row">
-  <div class="controls">
-    <button id="create">create</button>
-    <button id="execute">execute</button>
-    <button id="shutdown">shutdown</button>
-  </div>
+<div id="tiles" class="tiles"></div>
 
-  <div id="pool" class="pool">
-    <div class="header">
-      <span id="dot" class="dot"></span><span id="poolId">нет пула</span><span id="state" class="state"></span>
-    </div>
-    <div id="config" class="config"></div>
-    <div class="methods">
-      <div id="shutdownMethod" class="method">
-        <div class="name">shutdown()</div>
-        <div class="threads"></div>
-      </div>
-    </div>
-    <div class="section">
-      <div class="title">queue <span id="queueId"></span></div>
-      <div class="queue-row">
-        <div id="offerMethod" class="method">
-          <div class="name">offer()</div>
-          <div class="threads"></div>
-        </div>
-        <div>
-          <div id="cells" class="cells"></div>
-          <div id="queueSize" class="queue-size"></div>
-        </div>
-        <div id="takeMethod" class="method">
-          <div class="name">take()</div>
-          <div class="threads"></div>
-        </div>
-        <div id="pollMethod" class="method">
-          <div class="name">poll()</div>
-          <div class="threads"></div>
-        </div>
-      </div>
-    </div>
-    <div class="section">
-      <div class="title">threads <span id="workersCount"></span></div>
-      <div id="workers" class="workers"></div>
-    </div>
-  </div>
-</div>
+<!-- Логи нужны UI.call / UI.connect; свёрнуты — открыть при отладке -->
+<details>
+  <summary>logs</summary>
+  <h3>HTTP <button class="link" id="clearHttp">clear</button></h3>
+  <div id="http" class="log"></div>
+  <h3>WebSocket <button class="link" id="clearWs">clear</button></h3>
+  <div id="ws" class="log"></div>
+</details>
 
-<div id="log"></div>
-
+<script src="base.js"></script>
+<script src="components.js"></script>
+<script src="pool.js"></script>
+<script src="arraylist.js"></script>
+<script src="linkedlist.js"></script>
+<script src="blockingqueue.js"></script>
 <script>
-  const state = {
-    poolId: null,       // какой пул визуализирует прямоугольник (из CreateThreadPoolResponse)
-    pending: false,     // нажали create, ждём ответ
-    pools: {},          // poolId -> { config, state, methods }
-    queues: {},         // все очереди: queueId -> { size, methods }. Пул ссылается на свою через config.queueId
-    workers: {},        // все потоки фабрик: threadName -> { threadFactoryId, name, parent, state, taskId, completed, error }
-  };
+  // Плитка — один живой объект. Пока его нет, плитка спит: только название, параметры создания и start;
+  // по start объект создаётся, плитка запоминает его id и показывает только его. remove — DELETE; плитка засыпает
+  // по OBJECT_REMOVED (пул сервер удалит только TERMINATED — отказ видно в плитке).
+  // Перезагрузка страницы: объект остаётся на сервере, плитка снова спит (пока так).
+  //
+  // Плитка ничего не знает о конкретной структуре — всё берёт из её описания (view):
+  // title, params, types, createStore(render), create(values), remove(store, id), operations, renderState(store, item)
+  const VIEWS = [Pool.single, Pool.fixed, ArrayListView, LinkedListView, BlockingQueueView];
 
-  const $ = id => document.getElementById(id);
+  // Состояние плитки: id — её объект (null — спит); seen — объект уже приходил в событиях; starting — ждём ответ на create.
+  // Заголовок и поля параметров создаются один раз: спящая и живая плитка просто ставят их к себе, введённое не теряется
+  const tiles = VIEWS.map(view => {
+    const tile = { view, store: null, id: null, seen: false, starting: false, mode: null };
+    tile.store = view.createStore(render);
+    tile.el = KV.el('div', 'tile');
+    tile.title = KV.el('div', 'tile-title', view.title);
+    // Каждый параметр — своей строкой: имя и поле
+    tile.inputs = {};
+    tile.params = KV.el('div', 'tile-params');
+    for (const [name, value] of view.params) {
+      const input = Object.assign(document.createElement('input'), { type: 'number', value, min: 1 });
+      input.setAttribute('aria-label', name);
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') start(tile); });
+      tile.inputs[name] = input;
+      const row = KV.el('label', 'param');
+      row.append(KV.el('span', 'name', name), input);
+      tile.params.append(row);
+    }
+    tile.controls = KV.el('div', 'tile-controls');
+    tile.body = KV.el('div', 'tile-body');
+    tile.main = KV.el('div', 'tile-main');
+    tile.main.append(tile.controls, tile.body);
+    document.getElementById('tiles').append(tile.el);
+    return tile;
+  });
 
-  const newMethod = () => ({ threads: new Set(), done: false });
-
-  function poolOf(poolId) {
-    return state.pools[poolId] ??= {
-      config: null,     // CreateThreadPoolResponse
-      state: null,      // RUNNING → SHUTDOWN → TERMINATED
-      methods: { shutdown: newMethod() },
-    };
+  async function start(tile) {
+    if (tile.starting || tile.id != null) return; // Enter в поле, пока ждём ответ, — не второй объект
+    tile.starting = true;
+    render();
+    const values = Object.fromEntries(Object.entries(tile.inputs).map(([name, input]) => [name, Number(input.value)]));
+    const created = await tile.view.create(values);
+    tile.starting = false;
+    // Объект появится в store по OBJECT_CREATED — может и раньше ответа, это не важно
+    if (created) Object.assign(tile, { id: created.objectId, seen: false });
+    render();
   }
 
-  function queueOf(queueId) {
-    return state.queues[queueId] ??= {
-      size: 0,
-      methods: { offer: newMethod(), take: newMethod(), poll: newMethod() },
-    };
+  // Спящая плитка: название, параметры создания (если есть) и start — по центру, больше ничего
+  function renderSleeping(tile) {
+    const startButton = KV.el('button', 'primary', tile.starting ? 'starting…' : '▶ start');
+    startButton.title = `create ${tile.view.title}`;
+    startButton.disabled = tile.starting;
+    startButton.onclick = () => start(tile);
+    tile.el.replaceChildren(tile.title, ...(tile.view.params.length ? [tile.params] : []), startButton);
   }
 
-  // поток вошёл в метод / вышел из него
-  const enter = (method, thread) => method.threads.add(thread);
-  const exit = (method, thread) => { method.threads.delete(thread); method.done = true; };
-
-  function renderMethod(el, method) {
-    const threads = method ? [...method.threads] : [];
-    el.classList.toggle('active', threads.length > 0);
-    el.classList.toggle('done', !!method?.done && threads.length === 0);
-    el.querySelector('.threads').innerHTML =
-      threads.length > 0 ? threads.join('<br>') : (method?.done ? 'вышел ✓' : '');
+  // Живая плитка: название сверху, под ним слева пульт (сетка «метод | поля | ▶»), справа объект
+  function renderLive(tile) {
+    const id = tile.id;
+    // remove — красный ✕ в правом верхнем углу, в одной строке с названием
+    const remove = KV.el('button', 'close', '✕');
+    remove.title = `remove ${tile.view.title} #${id} (DELETE)`;
+    remove.setAttribute('aria-label', 'remove');
+    remove.onclick = async () => { await tile.view.remove(tile.store, id); render(); };
+    const head = KV.el('div', 'tile-head');
+    head.append(tile.title, remove);
+    tile.controls.replaceChildren(KV.renderOps(tile.view.operations, id));
+    tile.body.replaceChildren();
+    tile.el.replaceChildren(head, tile.main);
   }
 
-  // ---------- Рендер ----------
+  function renderTile(tile) {
+    const item = tile.id != null ? tile.store.items.get(tile.id) : null;
+    if (item) tile.seen = true;
+    // Объект пропал после того, как мы его видели, — удалён (нами или извне): плитка засыпает
+    if (tile.id != null && !item && tile.seen) Object.assign(tile, { id: null, seen: false });
+
+    const live = tile.id != null;
+    tile.el.classList.toggle('live', live);
+    tile.el.classList.toggle('sleeping', !live);
+    for (const input of Object.values(tile.inputs)) input.disabled = tile.starting;
+
+    // Пульт пересоздаём, только когда меняется режим плитки: render идёт на каждое событие,
+    // и кнопка, пересозданная между mousedown и mouseup, теряет клик (а поля — введённое)
+    const mode = live ? `live:${tile.id}` : `sleep:${tile.starting}`;
+    if (tile.mode !== mode) {
+      tile.mode = mode;
+      if (live) renderLive(tile); else renderSleeping(tile);
+    }
+    // Состояние живого объекта — на каждое событие
+    if (live) tile.body.replaceChildren(...(item ? tile.view.renderState(tile.store, item) : []));
+  }
 
   function render() {
-    const pool = state.poolId && state.pools[state.poolId];
-    const config = pool?.config;
-    $('create').disabled = state.pending || state.poolId !== null;
-    // execute после shutdown не блокируем: пусть будет видно, как пул отклоняет задачу
-    $('execute').disabled = !pool?.state;
-    $('shutdown').disabled = pool?.state !== 'RUNNING';
-    $('pool').classList.toggle('bound', !!config);
-    $('dot').className = 'dot ' + (pool?.state ?? '');
-    $('poolId').textContent = state.poolId ?? (state.pending ? 'создаётся…' : 'нет пула');
-    $('state').textContent = pool?.state ?? '';
-
-    $('config').innerHTML = !config ? '' : [
-      ['corePoolSize', config.corePoolSize],
-      ['maximumPoolSize', config.maximumPoolSize],
-      ['keepAliveMs', config.keepAliveMs],
-      ['queueType', config.queueType],
-      ['queueCapacity', config.queueCapacity ?? '∞'],
-      ['threadFactory', config.threadFactoryId],
-    ].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
-
-    renderMethod($('shutdownMethod'), pool?.methods.shutdown);
-    renderQueue(config);
-    renderWorkers(config);
+    for (const tile of tiles) renderTile(tile);
   }
-
-  function renderWorkers(config) {
-    const queue = config?.queueId ? state.queues[config.queueId] : null;
-    // порядок вставки в объект = порядок ThreadCreated, то есть порядок создания воркеров
-    const workers = !config ? [] :
-      Object.values(state.workers).filter(w => w.threadFactoryId === config.threadFactoryId);
-    const alive = workers.filter(w => w.state !== 'TERMINATED').length;
-    $('workersCount').textContent = !config ? '' :
-      `живых: ${alive} / core: ${config.corePoolSize} / max: ${config.maximumPoolSize}`;
-
-    $('workers').innerHTML = workers.map(w => {
-      // IDLE уточняем по очереди: воркер без задачи обычно сидит в take() или poll()
-      let label = w.state;
-      if (w.state === 'BUSY') label = `BUSY · task-${w.taskId}`;
-      else if (w.state === 'IDLE' && queue?.methods.take.threads.has(w.name)) label = 'IDLE · ждёт в take()';
-      else if (w.state === 'IDLE' && queue?.methods.poll.threads.has(w.name)) label = 'IDLE · ждёт в poll()';
-      return `
-        <div class="worker ${w.state} ${w.error ? 'error' : ''}">
-          <div class="wname">${w.name}</div>
-          <div class="wstate">${label}</div>
-          <div class="wmeta">created by ${w.parent}</div>
-          <div class="wmeta">completed: ${w.completed}</div>
-          ${w.error ? `<div class="wmeta">error: ${w.error}</div>` : ''}
-        </div>`;
-    }).join('');
-  }
-
-  function renderQueue(config) {
-    const queue = config?.queueId ? state.queues[config.queueId] : null;
-    $('queueId').textContent = config?.queueId ?? '';
-    renderMethod($('offerMethod'), queue?.methods.offer);
-    renderMethod($('takeMethod'), queue?.methods.take);
-    renderMethod($('pollMethod'), queue?.methods.poll);
-
-    const size = queue?.size ?? 0;
-    const capacity = config?.queueCapacity;
-    const cells = $('cells');
-    cells.innerHTML = '';
-    // для безграничной очереди (capacity = null) ячейки не рисуем, только число
-    if (capacity) {
-      // tail слева (рядом с offer), head справа (рядом с take) — заполняем справа налево
-      for (let i = 0; i < capacity; i++) {
-        const cell = document.createElement('div');
-        cell.className = 'cell' + (i >= capacity - size ? ' filled' : '');
-        cells.appendChild(cell);
-      }
-    }
-    cells.style.display = cells.childElementCount ? '' : 'none';
-    $('queueSize').textContent = !config ? '' : `${size} / ${capacity ?? '∞'}`;
-  }
-
-  function log(text) {
-    const el = $('log');
-    el.textContent += text + '\n';
-    el.scrollTop = el.scrollHeight;
-  }
-
-  // ---------- События ----------
-
-  const handlers = {
-    PoolShutdownIn(e) {
-      enter(poolOf(e.poolId).methods.shutdown, e.thread);
-    },
-    PoolShutdownOut(e) {
-      const pool = poolOf(e.poolId);
-      exit(pool.methods.shutdown, e.thread);
-      // если воркеров нет, PoolTerminated приходит раньше (изнутри super.shutdown) — не откатываем состояние назад
-      if (pool.state === 'RUNNING') pool.state = 'SHUTDOWN';
-    },
-    PoolTerminated(e) {
-      poolOf(e.poolId).state = 'TERMINATED';
-    },
-
-    // Очередь: Before* — поток вошёл в метод, After* — вышел. queueSize обновляем по обоим.
-    BeforeOffer: e => queueEnter('offer', e),
-    AfterOffer: e => queueExit('offer', e),
-    BeforeTake: e => queueEnter('take', e),
-    AfterTake: e => queueExit('take', e),
-    BeforePoll: e => queueEnter('poll', e),
-    AfterPoll: e => queueExit('poll', e),
-
-    // Воркеры: CREATED → IDLE ⇄ BUSY → TERMINATED
-    ThreadCreated(e) {
-      state.workers[e.threadName] = {
-        threadFactoryId: e.threadFactoryId, name: e.threadName, parent: e.parentThreadName,
-        state: 'CREATED', taskId: null, completed: 0, error: null,
-      };
-    },
-    ThreadStarted(e) {
-      workerOf(e.threadName).state = 'IDLE';
-    },
-    TaskStarted(e) {
-      const w = workerOf(e.thread);
-      w.state = 'BUSY';
-      w.taskId = e.taskId;
-    },
-    TaskCompleted(e) {
-      const w = workerOf(e.thread);
-      w.state = 'IDLE';
-      w.taskId = null;
-      w.completed++;
-    },
-    TaskFailed(e) {
-      const w = workerOf(e.thread);
-      w.state = 'IDLE';
-      w.taskId = null;
-    },
-    ThreadTerminated(e) {
-      const w = workerOf(e.threadName);
-      w.state = 'TERMINATED';
-      w.taskId = null;
-      w.error = e.error;
-    },
-  };
-
-  // ThreadCreated мог прийти до открытия страницы: не падаем. Такой воркер не рисуется — фабрика неизвестна
-  function workerOf(name) {
-    return state.workers[name] ??= {
-      threadFactoryId: null, name, parent: '?', state: 'IDLE', taskId: null, completed: 0, error: null,
-    };
-  }
-
-  function queueEnter(method, e) {
-    const queue = queueOf(e.queueId);
-    queue.size = e.queueSize;
-    enter(queue.methods[method], e.thread);
-  }
-
-  function queueExit(method, e) {
-    const queue = queueOf(e.queueId);
-    queue.size = e.queueSize;
-    exit(queue.methods[method], e.thread);
-  }
-
-  function onEnvelope(env) {
-    log(`#${env.seq} ${env.type} ${JSON.stringify(env.data)}`);
-    const handler = handlers[env.type];
-    if (!handler) return;
-    handler(env.data);
-    render();
-  }
-
-  function connect() {
-    const ws = new WebSocket(`ws://${location.host}/ws/events`);
-    ws.onopen = () => {
-      $('status').textContent = '● web-socket connected';
-      $('status').className = 'on'; }; //  'on' зеленый цвет //
-    ws.onclose = () => {
-      $('status').textContent = '● websocket disconnected';
-      $('status').className = 'off';
-      setTimeout(connect, 1000);
-    };
-    // обрабатываем каждый web socket message
-    ws.onmessage = msg => onEnvelope(JSON.parse(msg.data));
-  }
-
-  // ---------- Кнопки ----------
-
-  $('create').onclick = async () => {
-    const CREATE_REQUEST = { corePoolSize: 1, maximumPoolSize: 1, keepAliveMs: 2000, queueType: 'LINKED', queueCapacity: 2 };
-    state.pending = true;
-    render();
-    const res = await fetch('/api/executors', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(CREATE_REQUEST),
-    });
-    state.pending = false;
-    if (!res.ok) {
-      log(`create failed: ${res.status}`);
-      render();
-      return;
-    }
-    // событий о создании пула нет: всё про пул — в ответе
-    const config = await res.json();
-    log(`created ${JSON.stringify(config)}`);
-    const pool = poolOf(config.poolId);
-    pool.config = config;
-    pool.state = 'RUNNING';
-    state.poolId = config.poolId;
-    render();
-  };
-
-  // Не ждём ответа: несколько быстрых нажатий — несколько параллельных потоков Tomcat в execute()
-  $('execute').onclick = async () => {
-    const res = await fetch(`/api/executors/${state.poolId}/execute`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ durationMs: 3000 }),
-    });
-    if (!res.ok) log(`execute failed: ${res.status}`);
-  };
-
-  // результат узнаём из событий PoolShutdownIn / PoolShutdownOut / PoolTerminated
-  $('shutdown').onclick = async () => {
-    const res = await fetch(`/api/executors/${state.poolId}/shutdown`, { method: 'POST' });
-    if (!res.ok) log(`shutdown failed: ${res.status}`);
-  };
 
   render();
-  connect();
+  // Лог WebSocket — по событиям всех структур на странице
+  const types = [...new Set(VIEWS.flatMap(view => view.types))];
+  UI.connect({ onEnvelope: env => { for (const tile of tiles) tile.store.apply(env); render(); }, types });
 </script>
 </body>
 </html>

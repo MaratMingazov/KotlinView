@@ -1,0 +1,40 @@
+/* Состояние пула ThreadPoolExecutor (pool.js): статус, уведомление, очередь, воркеры.
+   Подключать после base.css и components.css */
+
+/* --- статус пула --- */
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; background: var(--dim); }
+.dot.RUNNING { background: var(--out); }
+.dot.SHUTDOWN, .dot.TIDYING { background: var(--keyword); }
+.run-state { color: var(--text); }
+/* Отказ execute, задачи, возвращённые shutdownNow: строка вспыхивает и тает */
+.notice { min-height: 20px; }
+.notice.failed { color: var(--fail); }
+.notice.info { color: var(--keyword); }
+
+/* Подблоки состояния: очередь и воркеры — у каждого свой заголовок и бейджи */
+.part { margin-top: 10px; padding-top: 6px; border-top: 1px dashed var(--border); }
+.part-title { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.part-title .name { color: var(--keyword); }
+
+/* --- воркеры: колонка на поток фабрики пула --- */
+/* Воркеры рядом, как узлы цепочки: сверху подпись, под ней задача (конверт + полоска) или ожидание */
+.workers { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-start; margin-top: 6px; }
+.worker { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 56px; } /* чуть шире мини-конверта (52px) */
+.worker .wname { font-weight: bold; color: var(--thread); white-space: nowrap; }
+.worker .wstatus { white-space: nowrap; }
+.worker .wstatus.waiting { color: var(--fn); }
+.worker .wstatus.failed { color: var(--fail); }
+/* Полоска выполнения — по ширине тела мини-конверта (48px), а не 96px, как на странице задачи */
+.worker .runs { width: 48px; }
+/* Свободное место под воркера (до maximumPoolSize) */
+.worker.slot .wname { color: var(--dim); font-weight: normal; }
+.worker.ended { animation: fade-out var(--fade) ease-in forwards; }
+.track {
+  position: relative; width: 48px; height: 14px; overflow: hidden; box-sizing: border-box;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+}
+.track .bar { position: absolute; top: 0; bottom: 0; left: 0; width: 0; }
+.track .bar.poll { background: color-mix(in srgb, var(--fn) 30%, transparent); }
+/* Полоски едут сами: анимация на всю длительность, отрицательная задержка — сколько уже прошло.
+   fill-up — в components.css, drain (обратный отсчёт keepAlive) — здесь */
+@keyframes drain { from { width: 100%; } to { width: 0; } }
