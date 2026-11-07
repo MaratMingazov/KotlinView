@@ -156,7 +156,7 @@ const Pool = (() => {
       if (phase !== 'OUT' || method !== 'offer') return null;
       // При гонке «последний узел» — допущение, а не наблюдение
       if (d.result === true) return { new: d.state.taskIds.length - 1 };
-      return { value: d.args.taskId, kind: 'failed', side: 'tail', title: 'queue is full: offer returned false' };
+      return { value: d.args.taskId, kind: 'failed', title: 'queue is full: offer returned false' };
     }
 
     function applyFactory(env, d) {
@@ -195,21 +195,27 @@ const Pool = (() => {
   // ---------- Отрисовка ----------
 
   /** Состояние пула — элементы подряд: статус, строка-уведомление, очередь, воркеры. */
-  function renderState(store, pool) {
-    if (!pool.state) return [renderStatus(pool)];
-    return [renderStatus(pool), renderNotice(pool), renderQueue(store, pool.state.queueId), renderWorkers(store, pool)];
+  // options.status: false — без runState в ряду бейджей (плитка index.html показывает его рядом с названием)
+  function renderState(store, pool, options = {}) {
+    const status = renderStatus(pool, options.status !== false);
+    if (!pool.state) return [status];
+    return [status, renderNotice(pool), renderQueue(store, pool.state.queueId), renderWorkers(store, pool)];
   }
 
   // Один ряд: бейджи методов пула и его runState. Счётчики — в подсказке к статусу
-  function renderStatus(pool) {
+  function renderStatus(pool, withRunState) {
     const row = KV.renderBadges(pool.methods);
+    if (withRunState && pool.state) row.append(renderRunState(pool));
+    return row;
+  }
+
+  // Точка и runState (RUNNING / SHUTDOWN / …); счётчики — в подсказке
+  function renderRunState(pool) {
     const s = pool.state;
-    if (!s) return row;
     const status = KV.el('span', 'run-state');
     status.append(KV.el('span', `dot ${s.runState}`), s.runState);
     status.title = `threads ${s.poolSize} / core ${s.corePoolSize} / max ${s.maximumPoolSize} · active ${s.activeCount} · completed ${s.completedTaskCount}`;
-    row.append(status);
-    return row;
+    return status;
   }
 
   function renderNotice(pool) {
@@ -231,7 +237,7 @@ const Pool = (() => {
     const capacity = queue.capacity != null && queue.capacity !== INT_MAX ? queue.capacity : undefined;
     // Узел — мини-конверт задачи из общего компонента
     const node = (taskId, label, index) => KV.taskNode(store.tasks, taskId, label, index);
-    part.append(title, KV.renderChain(queue.elements, queue.nodeEffect, { node, slot: KV.taskSlot, capacity, arrows: false }));
+    part.append(title, KV.renderChain(queue.elements, queue.nodeEffect, { node, slot: KV.taskSlot, capacity }));
     return part;
   }
 
@@ -331,7 +337,12 @@ const Pool = (() => {
   // Как у ArrayListView / LinkedListView: title, params, types, createStore, create(values), remove, operations, renderState
 
   const operations = ['execute', 'shutdown', 'shutdownNow'].map(name => ({ name, fields: [], title: titles[name], run: id => api[name](id) }));
-  const view = (title, params, create) => ({ title, params, types: TYPES, createStore, create, remove: api.remove, operations, renderState });
+  // В плитке runState стоит сразу после названия (renderTitleExtra), поэтому в ряду бейджей его нет
+  const view = (title, params, create) => ({
+    title, params, types: TYPES, createStore, create, remove: api.remove, operations,
+    renderState: (store, pool) => renderState(store, pool, { status: false }),
+    renderTitleExtra: (store, pool) => pool.state ? [renderRunState(pool)] : [],
+  });
   const single = view('SingleThreadExecutor', [], () => api.createSingle());
   const fixed = view('FixedThreadPool', [['nThreads', 2]], values => api.createFixed(values.nThreads));
 

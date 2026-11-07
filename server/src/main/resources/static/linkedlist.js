@@ -52,32 +52,26 @@ const LinkedListView = (() => {
       list.elements = d.state;
 
       const effect = nodeEffectOf(d.method, phase, d);
-      if (effect) KV.setEffect(list, effect, render); // перерисовать, когда призрак догорит
+      if (effect) KV.setEffect(list, effect, render); // перерисовать, когда подсветка догорит
     }
 
     return { items, apply };
   }
 
-  // Что подсветить после этого события (null — ничего).
-  // В отличие от ArrayList.add(0, e) здесь нет сдвига: offerFirst просто прицепляет новый узел к голове
+  // Что подсветить после этого события (null — ничего): только новый узел.
+  // Снятые poll / pop узлы не рисуем призраком в голове — общий вид цепочек (см. KV.renderChain)
   function nodeEffectOf(method, phase, data) {
-    if (phase === 'OUT_FAILED') {
-      return method === 'poll' || method === 'pop' ? { ghost: '✗', kind: 'failed' } : null;
-    }
     if (phase !== 'OUT') return null;
     // При гонке «последний узел» для add/offer — допущение, а не наблюдение
     if (method === 'add' || method === 'offer' || method === 'offerLast') return { new: data.state.length - 1 };
+    // В отличие от ArrayList.add(0, e) здесь нет сдвига: offerFirst просто прицепляет новый узел к голове
     if (method === 'offerFirst') return { new: 0 };
-    // Снятого узла в state уже нет — его значение берём из result
-    if (method === 'poll' || method === 'pop') {
-      return data.result == null ? { ghost: 'null', kind: 'null' } : { ghost: data.result, kind: 'removed' };
-    }
     return null;
   }
 
   // ---------- Отрисовка ----------
 
-  /** Состояние списка — элементы подряд: бейджи методов и цепочка узлов. Призрак снятого узла тает слева от головы */
+  /** Состояние списка — элементы подряд: бейджи методов и цепочка узлов (общий вид — KV.renderChain) */
   function renderState(store, list) {
     return [KV.renderBadges(list.methods), KV.renderChain(list.elements, list.nodeEffect)];
   }

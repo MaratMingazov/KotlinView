@@ -10,7 +10,8 @@
   <link rel="stylesheet" href="blockingqueue.css">
   <style>
     /* Плитки в две колонки; на узком экране — в одну */
-    .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 12px; }
+    /* Ширина ограничена: на широком мониторе плитки не растягиваются на весь экран (~540px каждая) */
+    .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; max-width: 1100px; margin: 12px auto 0; } /* по центру страницы */
     @media (max-width: 900px) { .tiles { grid-template-columns: 1fr; } }
 
     .tile {
@@ -32,6 +33,7 @@
     /* Шапка живой плитки: название слева, ✕ (remove) справа */
     .tile-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
     .tile-head .tile-title { margin-bottom: 0; }
+    .tile-head-left { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
     .tile button.close { background: none; border: none; padding: 0 2px; color: var(--fail); font-size: 15px; line-height: 1; opacity: .8; }
     .tile button.close:hover { opacity: 1; }
     /* Внутри плитки фон уже --panel: поля и кнопки — на тон темнее, чтобы не сливались */
@@ -76,7 +78,8 @@
   // Перезагрузка страницы: объект остаётся на сервере, плитка снова спит (пока так).
   //
   // Плитка ничего не знает о конкретной структуре — всё берёт из её описания (view):
-  // title, params, types, createStore(render), create(values), remove(store, id), operations, renderState(store, item)
+  // title, params, types, createStore(render), create(values), remove(store, id), operations, renderState(store, item),
+  // renderTitleExtra?(store, item) — что показать сразу после названия
   const VIEWS = [Pool.single, Pool.fixed, ArrayListView, LinkedListView, BlockingQueueView];
 
   // Состояние плитки: id — её объект (null — спит); seen — объект уже приходил в событиях; starting — ждём ответ на create.
@@ -86,6 +89,7 @@
     tile.store = view.createStore(render);
     tile.el = KV.el('div', 'tile');
     tile.title = KV.el('div', 'tile-title', view.title);
+    tile.titleExtra = KV.el('span', 'tile-title-extra');
     // Каждый параметр — своей строкой: имя и поле
     tile.inputs = {};
     tile.params = KV.el('div', 'tile-params');
@@ -135,8 +139,11 @@
     remove.title = `remove ${tile.view.title} #${id} (DELETE)`;
     remove.setAttribute('aria-label', 'remove');
     remove.onclick = async () => { await tile.view.remove(tile.store, id); render(); };
+    // Шапка: название, сразу за ним то, что структура хочет показать рядом (у пула — runState), справа ✕
     const head = KV.el('div', 'tile-head');
-    head.append(tile.title, remove);
+    const left = KV.el('div', 'tile-head-left');
+    left.append(tile.title, tile.titleExtra);
+    head.append(left, remove);
     tile.controls.replaceChildren(KV.renderOps(tile.view.operations, id));
     tile.body.replaceChildren();
     tile.el.replaceChildren(head, tile.main);
@@ -161,7 +168,10 @@
       if (live) renderLive(tile); else renderSleeping(tile);
     }
     // Состояние живого объекта — на каждое событие
-    if (live) tile.body.replaceChildren(...(item ? tile.view.renderState(tile.store, item) : []));
+    if (live) {
+      tile.body.replaceChildren(...(item ? tile.view.renderState(tile.store, item) : []));
+      tile.titleExtra.replaceChildren(...(item && tile.view.renderTitleExtra ? tile.view.renderTitleExtra(tile.store, item) : []));
+    }
   }
 
   function render() {

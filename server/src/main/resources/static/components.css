@@ -18,26 +18,20 @@
   to { background: transparent; border-color: var(--border); color: var(--dim); }
 }
 
-/* --- цепочка узлов head ⇄ … ⇄ tail --- */
-.chain { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 0; margin-top: 8px; min-height: 66px; }
+/* --- цепочка узлов head … tail: общий вид LinkedList, LinkedBlockingQueue и очереди пула --- */
+/* Ячейки квадратные, как у ArrayList, без стрелок — просто через равный промежуток */
+.chain { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 8px; min-height: 66px; }
 .chain .empty { color: var(--dim); }
 .node { display: flex; flex-direction: column; align-items: center; }
 .node .label { font-size: 11px; color: var(--keyword); height: 16px; }
 .node .box {
   min-width: 40px; height: 32px; padding: 0 6px; display: flex; align-items: center; justify-content: center;
-  border: 2px solid var(--border); border-radius: 16px; color: var(--num); background: var(--panel);
+  border: 2px solid var(--border); border-radius: 3px; color: var(--num); background: var(--panel);
 }
 .node .idx { font-size: 11px; color: var(--dim); height: 16px; }
-.link-arrow { color: var(--dim); padding: 0 6px; margin-bottom: 0; }
-/* Призраки: снятый узел, «ничего не снято», неудача */
-.node.removed .box { border-style: dashed; border-color: var(--dim); color: var(--text); background: none; }
-.node.null .box { border-style: dashed; border-color: var(--border); color: var(--dim); background: none; }
+/* Призрак справа от хвоста: то, что в цепочку не попало */
 .node.failed .box { border-style: dashed; border-color: var(--fail); color: var(--fail); background: none; }
-/* Свободная ячейка ограниченной очереди: стрелки перед ней нет, поэтому отступ вместо неё */
-.node.slot { margin-left: 8px; }
-/* Цепочка без стрелок: узлы и ячейки просто через равный промежуток */
-.chain.no-arrows { column-gap: 8px; }
-.chain.no-arrows .node.slot { margin-left: 0; }
+/* Свободная ячейка ограниченной очереди */
 .node.slot .box { border-style: dashed; background: none; }
 /* По размеру тела мини-конверта (48×40) с местом под клапан сверху, как у svg (52×56) */
 .envelope-slot {
@@ -91,7 +85,6 @@
 .envelope.new rect, .envelope.new path { animation: envelope-new var(--glow) ease-out var(--glow-delay, 0ms) forwards; }
 @keyframes envelope-new { from { stroke: var(--out); fill: color-mix(in srgb, var(--out) 30%, var(--panel)); } to { stroke: var(--border); fill: var(--panel); } }
 .node.ghost .envelope rect, .node.ghost .envelope path { stroke-dasharray: 4 3; fill: none; }
-.node.removed .envelope rect, .node.removed .envelope path { stroke: var(--dim); }
 .node.failed .envelope rect, .node.failed .envelope path { stroke: var(--fail); }
 .node.failed .envelope text { fill: var(--fail); }
 

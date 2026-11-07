@@ -3,8 +3,7 @@
  * Общий для linkedblockingqueue.html и плиток index.html.
  * Подключение: после base.js и components.js. Стили — blockingqueue.css. Всё лежит в объекте BlockingQueueView.
  *
- * Вид — как у очереди внутри пула (pool.js): мини-конверты задач, пустые ячейки до capacity, без стрелок
- * и без призраков в голове (с пустыми ячейками ряд на время затухания становился длиннее и потом сжимался)
+ * Вид — как у очереди внутри пула (pool.js): мини-конверты задач, пустые ячейки до capacity; общий вид цепочки — KV.renderChain
  */
 const BlockingQueueView = (() => {
   const base = '/api/linkedblockingqueuerunnable';
@@ -78,7 +77,7 @@ const BlockingQueueView = (() => {
     if (phase !== 'OUT' || method !== 'offer') return null;
     // При гонке «последний узел» — допущение, а не наблюдение
     if (d.result === true) return { new: d.state.taskIds.length - 1 };
-    return { value: d.args.taskId, kind: 'failed', side: 'tail', title: 'queue is full: offer returned false' };
+    return { value: d.args.taskId, kind: 'failed', title: 'queue is full: offer returned false' };
   }
 
   // ---------- Отрисовка ----------
@@ -90,17 +89,16 @@ const BlockingQueueView = (() => {
     const node = (taskId, label, index) => KV.taskNode(store.tasks, taskId, label, index);
     return [
       KV.renderBadges(queue.methods),
-      KV.renderChain(queue.elements, queue.nodeEffect, { node, slot: KV.taskSlot, capacity, arrows: false }),
+      KV.renderChain(queue.elements, queue.nodeEffect, { node, slot: KV.taskSlot, capacity }),
       renderWaiting(queue),
     ];
   }
 
-  // Есть только у блокирующей очереди: потоки, которые висят внутри take()
+  // Есть только у блокирующей очереди: потоки, которые висят внутри take(). Без подписи — минималистично:
+  // что это за потоки, сказано в подсказке к каждому; пока никто не ждёт, строка пустая
   function renderWaiting(queue) {
     const row = KV.el('div', 'waiting');
-    row.append(KV.el('span', 'empty', 'waiting in take:'));
     const threads = queue.methods.inside.take;
-    if (threads.size === 0) row.append(KV.el('span', 'empty', '—'));
     for (const thread of threads) {
       const chip = KV.el('span', 'thread-chip', thread);
       chip.style.setProperty('--thread', KV.threadColor(thread));

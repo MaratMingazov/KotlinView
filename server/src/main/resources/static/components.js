@@ -68,23 +68,22 @@ const KV = (() => {
     return n;
   }
 
-  const linkArrow = () => el('span', 'link-arrow', '⇄');
-
   // Анимация, продолженная с того места, где она была до пересоздания элемента
   const glow = (name, elapsed) => `${name} ${NODE_FADE_MS}ms ease-out ${-elapsed}ms forwards`;
 
   /**
    * Запомнить эффект и перерисовать, когда он догорит.
    * effect: { new: index } — подсветить узел;
-   *         { ghost, kind: 'removed' | 'null' | 'failed', side?: 'head' | 'tail', title? } — призрак с текстом;
-   *         { value, kind, side?, title? } — призрак элемента: рисуется тем же options.node, что и живые узлы
+   *         { ghost, kind: 'failed', title? } — призрак с текстом справа от хвоста;
+   *         { value, kind: 'failed', title? } — призрак элемента справа от хвоста (например, отклонённый offer):
+   *         рисуется тем же options.node, что и живые узлы
    */
   function setEffect(holder, effect, render) {
     holder.nodeEffect = { ...effect, start: performance.now() };
     setTimeout(render, NODE_FADE_MS);
   }
 
-  // Подсветить новый узел: у обычного узла — фон кружка, у конверта — его контур
+  // Подсветить новый узел: у обычного узла — фон ячейки, у конверта — его контур
   function markNew(n, elapsed) {
     const box = n.querySelector('.box');
     if (box) { box.style.animation = glow('node-new', elapsed); return; }
@@ -96,16 +95,13 @@ const KV = (() => {
     }
   }
 
-  // Призрак тает слева от головы (side: 'head', по умолчанию) или справа от хвоста (side: 'tail')
-  function ghostParts(effect, elapsed, hasElements, makeNode, arrows) {
+  // Призрак тает справа от хвоста — то, что в цепочку не попало
+  function ghostNode(effect, elapsed, makeNode) {
     const ghost = effect.value !== undefined ? makeNode(effect.value, '', '') : node(effect.ghost, '', '');
     ghost.classList.add('ghost', effect.kind);
     ghost.style.animation = glow('fade-out', elapsed);
     if (effect.title) ghost.title = effect.title;
-    if (!hasElements || !arrows) return [ghost];
-    const arrow = linkArrow();
-    arrow.style.animation = glow('fade-out', elapsed);
-    return effect.side === 'tail' ? [arrow, ghost] : [ghost, arrow];
+    return ghost;
   }
 
   // Свободное место ограниченной очереди: пунктирная рамка без значения
@@ -116,25 +112,23 @@ const KV = (() => {
   }
 
   /**
+   * Общий вид всех цепочек (LinkedList, LinkedBlockingQueue, очередь пула): квадратные ячейки через равный промежуток,
+   * без стрелок ⇄ и без призраков снятых из головы узлов (с пустыми ячейками ряд на время затухания становился длиннее
+   * и потом сжимался). Призрак бывает только справа от хвоста — то, что в цепочку не попало.
    * options.node(value, label, index) — как нарисовать узел (и призрак элемента); по умолчанию просто значение.
-   * options.capacity — ёмкость: после элементов дорисовать свободные ячейки (options.slot(index)), без стрелок —
-   * это не узлы списка, а место под них. Вместо «head = tail = null» тогда видны пустые ячейки.
-   * options.arrows: false — без стрелок ⇄ между узлами (очередь пула: связи узлов там не главное)
+   * options.capacity — ёмкость: после элементов дорисовать свободные ячейки (options.slot(index)).
+   * Вместо «head = tail = null» тогда видны пустые ячейки
    */
   function renderChain(elements, effect, options = {}) {
     const makeNode = options.node ?? node;
-    const arrows = options.arrows !== false;
-    const chain = el('div', arrows ? 'chain' : 'chain no-arrows');
+    const chain = el('div', 'chain');
     const elapsed = effect ? performance.now() - effect.start : Infinity;
     const active = elapsed < NODE_FADE_MS;
     const hasGhost = active && (effect.ghost !== undefined || effect.value !== undefined);
     const hasElements = elements.length > 0;
 
-    if (hasGhost && effect.side !== 'tail') chain.append(...ghostParts(effect, elapsed, hasElements, makeNode, arrows));
-
     const last = elements.length - 1;
     elements.forEach((value, i) => {
-      if (i > 0 && arrows) chain.append(linkArrow());
       const label = i === 0 && i === last ? 'head·tail' : i === 0 ? 'head' : i === last ? 'tail' : '';
       const n = makeNode(value, label, i);
       if (active && effect.new === i) markNew(n, elapsed);
@@ -144,7 +138,7 @@ const KV = (() => {
     const capacity = options.capacity;
     if (!hasElements && !hasGhost && !capacity) chain.append(el('span', 'empty', 'head = tail = null'));
 
-    if (hasGhost && effect.side === 'tail') chain.append(...ghostParts(effect, elapsed, hasElements, makeNode, arrows));
+    if (hasGhost) chain.append(ghostNode(effect, elapsed, makeNode));
 
     if (capacity) {
       const makeSlot = options.slot ?? slot;
@@ -254,7 +248,7 @@ const KV = (() => {
       svg('rect', { x: 0, y: 0, width: g.w, height: g.h, rx: g.rx }),
       svg('path', { class: 'flap-closed', d: g.flapClosed }),
     );
-    const texts = { id: `#${task.id}`, dur: seconds(task.durationMs) };
+    const texts = { id: String(task.id), dur: seconds(task.durationMs) }; // номер без «#» — минималистично
     for (const [kind, y] of g.lines) envelope.append(svg('text', { class: kind, x: g.w / 2, y, 'text-anchor': 'middle' }, texts[kind]));
 
     const title = `task#${task.id}, ${seconds(task.durationMs)}` + (inside.length ? `\nвнутри run(): ${inside.join(', ')}` : '');
