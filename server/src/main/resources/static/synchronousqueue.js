@@ -105,8 +105,9 @@ const SynchronousQueueView = (() => {
     return [KV.renderBadges(queue.methods), renderHandoff(store, queue)];
   }
 
-  // Ряд «отдают → передача → получают». Стрелки — направление передачи, это суть SynchronousQueue
-  function renderHandoff(store, queue) {
+  // Ряд «отдают → передача → получают». Стрелки — направление передачи, это суть SynchronousQueue.
+  // options.neutralReject — offer → false не красным: в CachedThreadPool это не ошибка, а сигнал пулу создать поток
+  function renderHandoff(store, queue, options = {}) {
     const row = KV.el('div', 'handoff');
 
     // Ждущие — плашки как есть, только что вышедшие — тают (ближе к середине: они только что были там)
@@ -127,12 +128,12 @@ const SynchronousQueueView = (() => {
       }
     }
 
-    row.append(givers, KV.el('span', 'flow', '→'), renderMiddle(store, queue), KV.el('span', 'flow', '→'), takers);
+    row.append(givers, KV.el('span', 'flow', '→'), renderMiddle(store, queue, options), KV.el('span', 'flow', '→'), takers);
     return row;
   }
 
   // Посередине: передаваемая задача (вспыхивает), отклонённая offer (тает красным) или пустое место — ёмкость 0
-  function renderMiddle(store, queue) {
+  function renderMiddle(store, queue, options) {
     const f = queue.flash;
     const elapsed = f ? performance.now() - f.start : Infinity;
     if (elapsed >= FLASH_MS) {
@@ -148,9 +149,13 @@ const SynchronousQueueView = (() => {
       envelope.style.setProperty('--glow-delay', `${-elapsed}ms`);
       n.title = `task#${f.taskId} handed over to ${f.to}`;
     } else {
-      n.classList.add('ghost', 'failed');
+      // Пунктирный конверт тает; красный — только на отдельной странице очереди, где false значит «никто не взял»
+      n.classList.add('ghost');
+      if (!options.neutralReject) n.classList.add('failed');
       n.style.animation = `fade-out ${FLASH_MS}ms ease-out ${-elapsed}ms forwards`;
-      n.title = `offer(task#${f.taskId}) returned false: nobody waits in take`;
+      n.title = options.neutralReject
+        ? `offer(task#${f.taskId}) returned false: no idle worker — the pool starts a new thread`
+        : `offer(task#${f.taskId}) returned false: nobody waits in take`;
     }
     return n;
   }
@@ -172,5 +177,6 @@ const SynchronousQueueView = (() => {
     return c;
   }
 
-  return { title: 'SynchronousQueue', params: [], types: [QUEUE, TASK], createStore, create, remove, operations, renderState };
+  // renderHandoff — отдельно: им рисует очередь CachedThreadPool (pool.js), без своих бейджей
+  return { title: 'SynchronousQueue', params: [], types: [QUEUE, TASK], createStore, create, remove, operations, renderState, renderHandoff };
 })();

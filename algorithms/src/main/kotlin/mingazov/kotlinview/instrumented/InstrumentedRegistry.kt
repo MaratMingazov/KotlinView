@@ -30,6 +30,9 @@ open class InstrumentedRegistry<T : Instrumented>(
 
     fun get(id: Long): T = items[id] ?: throw ObjectNotFoundException(objectType, id)
 
+    /** Есть ли объект с таким id. С общим IdGenerator id уникальны, поэтому по нему можно понять, чей это объект. */
+    fun contains(id: Long): Boolean = items.containsKey(id)
+
     fun remove(id: Long) {
         items.remove(id) ?: throw ObjectNotFoundException(objectType, id)
         sink.emit(ObjectRemoved(objectType, id, Thread.currentThread().name))

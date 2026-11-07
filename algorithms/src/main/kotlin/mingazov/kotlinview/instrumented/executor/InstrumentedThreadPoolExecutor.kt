@@ -5,6 +5,7 @@ import mingazov.kotlinview.event.MethodIn
 import mingazov.kotlinview.event.MethodOut
 import mingazov.kotlinview.event.MethodOutFailed
 import mingazov.kotlinview.event.ObjectType
+import java.util.concurrent.BlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
@@ -18,16 +19,20 @@ import java.util.concurrent.TimeUnit
  *   Пул в своём state только ссылается на них (queueId, threadFactoryId), клиент собирает картинку сам.
  *   Что делает воркер, видно по событиям задачи (METHOD_IN run с именем потока) и очереди (take/poll) —
  *   поэтому beforeExecute/afterExecute не переопределяем.
+ *
+ *   Очередь — любая наша инструментированная: LinkedBlockingQueue (fixed / single) или SynchronousQueue (cached).
+ *   Отдельный интерфейс не нужен: требуем сразу оба — BlockingQueue<Runnable> для ThreadPoolExecutor и Instrumented ради id
  */
-class InstrumentedThreadPoolExecutor(
+class InstrumentedThreadPoolExecutor<Q>(
     override val id: Long,
     private val sink: EventSink,
     corePoolSize: Int,
     maximumPoolSize: Int,
     private val keepAliveMs: Long,
-    private val queue: InstrumentedLinkedBlockingQueueRunnable,
+    private val queue: Q,
     private val threadFactory: InstrumentedThreadFactory,
-) : ThreadPoolExecutor(corePoolSize, maximumPoolSize, keepAliveMs, TimeUnit.MILLISECONDS, queue, threadFactory), Instrumented {
+) : ThreadPoolExecutor(corePoolSize, maximumPoolSize, keepAliveMs, TimeUnit.MILLISECONDS, queue, threadFactory), Instrumented
+        where Q : BlockingQueue<Runnable>, Q : Instrumented {
 
     // Чьи части — фасаду, чтобы удалить их вместе с пулом. Сами части наружу не отдаём
     val queueId: Long get() = queue.id

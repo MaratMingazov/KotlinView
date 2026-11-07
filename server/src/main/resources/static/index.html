@@ -68,11 +68,12 @@
 
 <script src="base.js"></script>
 <script src="components.js"></script>
-<script src="pool.js"></script>
 <script src="arraylist.js"></script>
 <script src="linkedlist.js"></script>
 <script src="blockingqueue.js"></script>
 <script src="synchronousqueue.js"></script>
+<!-- pool.js — после synchronousqueue.js: очередь CachedThreadPool рисуется им -->
+<script src="pool.js"></script>
 <script>
   // Плитка — один живой объект. Пока его нет, плитка спит: только название, параметры создания и start;
   // по start объект создаётся, плитка запоминает его id и показывает только его. remove — DELETE; плитка засыпает
@@ -82,7 +83,7 @@
   // Плитка ничего не знает о конкретной структуре — всё берёт из её описания (view):
   // title, params, types, createStore(render), create(values), remove(store, id), operations, renderState(store, item),
   // renderTitleExtra?(store, item) — что показать сразу после названия
-  const VIEWS = [Pool.single, Pool.fixed, ArrayListView, LinkedListView, BlockingQueueView, SynchronousQueueView];
+  const VIEWS = [Pool.single, Pool.fixed, Pool.cached, ArrayListView, LinkedListView, BlockingQueueView, SynchronousQueueView];
 
   // Состояние плитки: id — её объект (null — спит); seen — объект уже приходил в событиях; starting — ждём ответ на create.
   // Заголовок и поля параметров создаются один раз: спящая и живая плитка просто ставят их к себе, введённое не теряется

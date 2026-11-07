@@ -1,7 +1,8 @@
 /*
  * ThreadPoolExecutor: модель по событиям WebSocket, отрисовка состояния пула и REST-вызовы.
  * Общий для threadpoolexecutor.html и плиток index.html.
- * Подключение: после base.js и components.js. Стили — pool.css. Всё лежит в объекте Pool.
+ * Подключение: после base.js, components.js и synchronousqueue.js (очередь CachedThreadPool).
+ * Стили — pool.css и synchronousqueue.css. Всё лежит в объекте Pool.
  *
  * Пул — составной объект: очередь, фабрика и потоки приходят отдельными объектами.
  * Пул ссылается на них через state.queueId / state.threadFactoryId, воркеры склеиваются по имени потока.
@@ -10,11 +11,12 @@ const Pool = (() => {
   const base = '/api/threadpoolexecutor';
   const tasksBase = '/api/tasks';
   const POOL = 'THREAD_POOL_EXECUTOR';
-  const QUEUE = 'LINKED_BLOCKING_QUEUE_RUNNABLE';
+  const QUEUE = 'LINKED_BLOCKING_QUEUE_RUNNABLE';     // очередь fixed / single
+  const SYNC_QUEUE = 'SYNCHRONOUS_QUEUE_RUNNABLE';   // очередь cached
   const FACTORY = 'THREAD_FACTORY';
   const THREAD = 'THREAD';
   const TASK = 'RUNNABLE_TASK';
-  const TYPES = [POOL, QUEUE, FACTORY, THREAD, TASK];
+  const TYPES = [POOL, QUEUE, SYNC_QUEUE, FACTORY, THREAD, TASK];
   const INT_MAX = 2147483647;    // ёмкость LinkedBlockingQueue() без аргумента
   const DONE_FADE_MS = 1500;     // сколько тает колонка завершившегося потока
   const FAILED_FADE_MS = 4000;   // упавшего — дольше, чтобы успеть прочитать ошибку
@@ -29,6 +31,7 @@ const Pool = (() => {
     create: config => UI.call('POST', base, config),
     createSingle: () => UI.call('POST', `${base}/single`),
     createFixed: nThreads => UI.call('POST', `${base}/fixed`, { nThreads }),
+    createCached: () => UI.call('POST', `${base}/cached`),
     // execute новой задачи — два обычных запроса подряд: сервер принимает только taskId
     async execute(poolId, durationMs = TASK_DURATION_MS) {
       const created = await UI.call('POST', tasksBase, { durationMs });
@@ -57,9 +60,14 @@ const Pool = (() => {
   };
 
   // Узнать готовую конфигурацию Executors по параметрам: сервер не помечает пул, но набор параметров однозначен.
-  // Очередь — как в пресетах сервера (PRESET_QUEUE_CAPACITY = 5), а не бесконечная, как в JDK
+  // Очередь — как в пресетах сервера (PRESET_QUEUE_CAPACITY = 5), а не бесконечная, как в JDK.
+  // Cached — как на сервере: не больше 5 потоков и keepAlive 10 с (в JDK — Integer.MAX_VALUE и 60 с)
   const PRESET_QUEUE_CAPACITY = 5;
+  const CACHED_MAX_THREADS = 5;
+  const CACHED_KEEP_ALIVE_MS = 10000;
   function presetOf(s, queueCapacity) {
+    const cached = s.corePoolSize === 0 && s.maximumPoolSize === CACHED_MAX_THREADS && s.keepAliveMs === CACHED_KEEP_ALIVE_MS && queueCapacity === 0;
+    if (cached) return 'newCachedThreadPool()';
     const fixed = s.corePoolSize === s.maximumPoolSize && s.keepAliveMs === 0 && queueCapacity === PRESET_QUEUE_CAPACITY;
     if (!fixed) return null;
     return s.corePoolSize === 1 ? 'newSingleThreadExecutor()' : `newFixedThreadPool(${s.corePoolSize})`;
@@ -102,16 +110,34 @@ const Pool = (() => {
       return factories.get(id);
     }
 
+    // Очереди cached-пулов (SynchronousQueue) — своя модель из synchronousqueue.js: место передачи вместо ячеек.
+    // id общие на все реестры, поэтому очередь пула ищется по queueId сразу в обеих моделях (queueById)
+    const sync = SynchronousQueueView.createStore(render);
+
     function apply(env) {
       const d = env.data;
       switch (d?.objectType) {
         case POOL: applyPool(env, d); break;
         case QUEUE: applyQueue(env, d); break;
+        case SYNC_QUEUE: sync.apply(env); trackPoll(env, d); break;
         case FACTORY: applyFactory(env, d); break;
         case THREAD: applyThread(env, d); break;
-        case TASK: KV.trackTask(tasks, env, render); break;
+        // Задачи нужны обеим моделям: конверты в ячейках и вспышка передачи посередине
+        case TASK: KV.trackTask(tasks, env, render); sync.apply(env); break;
       }
     }
+
+    // Воркер ждёт в poll(keepAlive) — для полоски обратного отсчёта у воркера. У LBQ это делает applyQueue
+    function trackPoll(env, d) {
+      if (d.method !== 'poll') return;
+      if (env.type === 'METHOD_IN') polling.set(d.thread, { timeoutMs: d.args.timeoutMs, start: performance.now() });
+      else if (env.type !== 'METHOD_PROGRESS') polling.delete(d.thread);
+    }
+
+    // Очередь пула любого типа: LinkedBlockingQueue (ячейки) или SynchronousQueue (место передачи)
+    const queueById = id => queues.get(id) ?? sync.items.get(id);
+    // Ёмкость очереди пула: у SynchronousQueue всегда 0; undefined — очередь ещё не пришла
+    const queueCapacity = id => queues.has(id) ? queues.get(id).capacity : sync.items.has(id) ? 0 : undefined;
 
     function applyPool(env, d) {
       if (env.type === 'OBJECT_REMOVED') { pools.delete(d.objectId); return; }
@@ -189,7 +215,7 @@ const Pool = (() => {
     }
 
     // items — то же, что pools: под этим именем store читают плитки index.html (общее описание структуры)
-    return { pools, items: pools, queues, factories, threads, polling, tasks, apply, notify };
+    return { pools, items: pools, queues, sync, factories, threads, polling, tasks, apply, notify, queueById, queueCapacity };
   }
 
   // ---------- Отрисовка ----------
@@ -229,10 +255,16 @@ const Pool = (() => {
 
   function renderQueue(store, queueId) {
     const part = KV.el('div', 'part');
-    const queue = store.queues.get(queueId);
+    const queue = store.queueById(queueId);
     if (!queue) { part.append(KV.el('span', 'empty', `queue #${queueId} — no data`)); return part; }
     const title = KV.el('div', 'part-title');
     title.append(KV.el('span', 'name', 'queue'), KV.renderBadges(queue.methods));
+    // SynchronousQueue (cached): ячеек нет — место передачи из synchronousqueue.js.
+    // offer → false здесь нейтральный: это не ошибка, а сигнал пулу создать новый поток
+    if (store.sync.items.has(queueId)) {
+      part.append(title, SynchronousQueueView.renderHandoff(store.sync, queue, { neutralReject: true }));
+      return part;
+    }
     // Свободные ячейки — только для ограниченной очереди: ∞ (INT_MAX) и «ещё не знаем» не рисуем
     const capacity = queue.capacity != null && queue.capacity !== INT_MAX ? queue.capacity : undefined;
     // Узел — мини-конверт задачи из общего компонента
@@ -248,7 +280,7 @@ const Pool = (() => {
     title.append(KV.el('span', 'name', 'workers'));
     part.append(title);
 
-    const queue = store.queues.get(pool.state.queueId);
+    const queue = store.queueById(pool.state.queueId);
     const list = KV.el('div', 'workers');
     // Порядок вставки в Map = порядок создания потоков
     let shown = 0;
@@ -345,6 +377,7 @@ const Pool = (() => {
   });
   const single = view('SingleThreadExecutor', [], () => api.createSingle());
   const fixed = view('FixedThreadPool', [['nThreads', 2]], values => api.createFixed(values.nThreads));
+  const cached = view('CachedThreadPool', [], () => api.createCached());
 
-  return { TYPES, PRESET_QUEUE_CAPACITY, api, titles, presetOf, createStore, renderState, single, fixed };
+  return { TYPES, PRESET_QUEUE_CAPACITY, api, titles, presetOf, createStore, renderState, single, fixed, cached };
 })();

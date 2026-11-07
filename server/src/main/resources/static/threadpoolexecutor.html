@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="base.css">
   <link rel="stylesheet" href="components.css">
   <link rel="stylesheet" href="pool.css">
+  <link rel="stylesheet" href="synchronousqueue.css">
   <style>
     /* Палитра, шапка, кнопки, карточка, логи — в base.css; состояние пула — в pool.css */
 
@@ -42,6 +43,7 @@
   <span>newFixedThreadPool( <input id="nThreads" type="number" value="2" min="1"> )
     <button id="createFixed" class="primary" title="POST /api/threadpoolexecutor/fixed {nThreads} — core = max = n, keepAlive 0, очередь на 5 (в JDK — неограниченная)">+ fixed</button></span>
   <button id="createSingle" class="primary" title="POST /api/threadpoolexecutor/single — fixed(1): один поток, задачи строго по очереди; очередь на 5 (в JDK — неограниченная)">+ newSingleThreadExecutor()</button>
+  <button id="createCached" class="primary" title="POST /api/threadpoolexecutor/cached — core 0, SynchronousQueue: a task goes to an idle worker or a new thread; max 5 threads, keepAlive 10 s (JDK: unbounded, 60 s)">+ newCachedThreadPool()</button>
 </div>
 
 <!-- Карточка на каждый пул: слева управляем им, справа смотрим результат -->
@@ -55,6 +57,7 @@
 
 <script src="base.js"></script>
 <script src="components.js"></script>
+<script src="synchronousqueue.js"></script>
 <script src="pool.js"></script>
 <script>
   // Модель, отрисовка состояния пула и REST — в pool.js; здесь только форма создания и карточки
@@ -74,6 +77,7 @@
     });
   };
   $('createFixed').onclick = () => api.createFixed(Number($('nThreads').value));
+  $('createCached').onclick = () => api.createCached();
   $('createSingle').onclick = () => api.createSingle();
 
   const store = Pool.createStore(render);
@@ -93,7 +97,7 @@
     // Конфиг пула (core / max / keepAlive / queue) пока не выводим — минималистичный дизайн.
     // Остаётся только пометка пресета Executors. Конфиг не меняется — рисуем один раз
     const config = KV.el('div', 'config');
-    const preset = s && Pool.presetOf(s, store.queues.get(s.queueId)?.capacity);
+    const preset = s && Pool.presetOf(s, store.queueCapacity(s.queueId));
     if (preset) config.append(KV.el('span', 'preset', `= Executors.${preset}`));
     controls.append(KV.el('div', 'card-title', `pool #${id}`), config);
 

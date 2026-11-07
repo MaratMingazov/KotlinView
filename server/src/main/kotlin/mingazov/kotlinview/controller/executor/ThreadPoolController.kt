@@ -57,6 +57,11 @@ class ThreadPoolController(
         return response
     }
 
+    // Как Executors.newCachedThreadPool: SynchronousQueue, потоки создаются по требованию (у нас не больше 5)
+    @PostMapping("/cached")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    fun createCached(): CreatedResponse = CreatedResponse(poolService.newCachedThreadPool().id)
+
     // Что пул сделал с задачей (новый поток, очередь, отказ) — в событиях между METHOD_IN и METHOD_OUT execute
     @PostMapping("/{poolId}/execute")
     @ResponseStatus(HttpStatus.NO_CONTENT)

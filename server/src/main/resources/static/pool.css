@@ -18,7 +18,7 @@
 
 /* --- воркеры: колонка на поток фабрики пула --- */
 /* Воркеры рядом, как узлы цепочки: сверху подпись, под ней задача (конверт + полоска) или ожидание */
-.workers { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-start; margin-top: 6px; }
+.workers { display: flex; flex-wrap: wrap; gap: 12px 8px; align-items: flex-start; margin-top: 6px; }
 .worker { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 56px; } /* чуть шире мини-конверта (52px) */
 .worker .wname { font-weight: bold; color: var(--thread); white-space: nowrap; }
 .worker .wstatus { white-space: nowrap; }
