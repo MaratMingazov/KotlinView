@@ -5,23 +5,24 @@ import mingazov.kotlinview.event.ObjectCreated
 import mingazov.kotlinview.event.ObjectRemoved
 import mingazov.kotlinview.event.ObjectType
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Жизненный цикл объектов одного типа: выдать id, хранить, найти, удалить — и сообщить об этом OBJECT_CREATED / OBJECT_REMOVED.
  * Наследник добавляет только свой create(...) поверх register: как построить объект, знает он, а не реестр.
  * Объекта нет — ObjectNotFoundException: в server он один на все реестры превращается в 404 (ErrorHandlers).
+ * idGenerator — общий на все реестры (бин в server), чтобы id не совпадали у объектов разных типов.
+ * По умолчанию свой: одиночному реестру (тесты, playground) ничего передавать не нужно.
  */
 open class InstrumentedRegistry<T : Instrumented>(
     private val objectType: ObjectType,
     protected val sink: EventSink,
+    private val idGenerator: IdGenerator = IdGenerator(),
 ) {
     private val items = ConcurrentHashMap<Long, T>()
-    private val ids = AtomicLong()
 
     /** Выдать id, построить объект, запомнить и сообщить OBJECT_CREATED с его начальным состоянием. */
     protected fun register(create: (id: Long) -> T): T {
-        val item = create(ids.incrementAndGet())
+        val item = create(idGenerator.nextId())
         items[item.id] = item
         sink.emit(ObjectCreated(objectType, item.id, Thread.currentThread().name, item.state()))
         return item

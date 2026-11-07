@@ -1,7 +1,3 @@
-/* LinkedBlockingQueue (blockingqueue.js): потоки, которые висят внутри take(). Подключать после base.css и components.css */
+/* LinkedBlockingQueue (blockingqueue.js): строка потоков, которые висят внутри take(); сама плашка — .thread-chip в components.css.
+   Подключать после base.css и components.css */
 .waiting { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 6px; min-height: 22px; }
-.thread-chip {
-  padding: 0 6px; border-radius: 3px; font-weight: bold; color: var(--thread);
-  border: 1px solid color-mix(in srgb, var(--thread) 60%, transparent);
-  background: color-mix(in srgb, var(--thread) 15%, transparent);
-}

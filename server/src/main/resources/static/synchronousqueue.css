@@ -1,0 +1,11 @@
+/* SynchronousQueue (synchronousqueue.js): место передачи «отдают → передача → получают».
+   Подключать после base.css и components.css; плашка потока — .thread-chip в components.css */
+.handoff { display: flex; align-items: center; gap: 12px; margin-top: 8px; min-height: 92px; }
+/* Стороны растут поровну: середина остаётся на месте, сколько бы потоков ни ждало */
+.handoff .side { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.handoff .givers { justify-content: flex-end; }
+.handoff .flow { color: var(--dim); }
+/* Только что вышедший поток: плашка тает (fade-out — components.css); рамка — чем кончилось */
+.thread-chip.leaving.ok { border-color: var(--out); }
+.thread-chip.leaving.failed { border-color: var(--fail); }
+.thread-chip.leaving.empty-handed { border-style: dashed; }
