@@ -1,7 +1,12 @@
-package mingazov.kotlinview.instrumented
+package mingazov.kotlinview.instrumented.executor.registry
 
 import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.event.ObjectType
+import mingazov.kotlinview.instrumented.IdGenerator
+import mingazov.kotlinview.instrumented.Instrumented
+import mingazov.kotlinview.instrumented.InstrumentedRegistry
+import mingazov.kotlinview.instrumented.executor.InstrumentedThreadFactory
+import mingazov.kotlinview.instrumented.executor.InstrumentedThreadPoolExecutor
 import java.util.concurrent.BlockingQueue
 
 class InstrumentedThreadPoolExecutorRegistry(sink: EventSink, idGenerator: IdGenerator = IdGenerator()) :

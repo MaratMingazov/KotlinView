@@ -1,4 +1,4 @@
-package mingazov.kotlinview.instrumented
+package mingazov.kotlinview.instrumented.executor
 
 import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.event.MethodIn
@@ -6,6 +6,7 @@ import mingazov.kotlinview.event.MethodOut
 import mingazov.kotlinview.event.MethodOutFailed
 import mingazov.kotlinview.event.MethodProgress
 import mingazov.kotlinview.event.ObjectType
+import mingazov.kotlinview.instrumented.Instrumented
 
 /**
  * Задача, которая «работает» durationMs: спит отрезками по секунде и после каждой сообщает прогресс.

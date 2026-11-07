@@ -1,9 +1,6 @@
-package mingazov.kotlinview.controller
+package mingazov.kotlinview.controller.collection
 
-import mingazov.kotlinview.controller.collection.CreatedResponse
-import mingazov.kotlinview.controller.collection.ResultResponse
-import mingazov.kotlinview.controller.collection.ThreadResponse
-import mingazov.kotlinview.service.SynchronousQueueRunnableService
+import mingazov.kotlinview.service.collection.SynchronousQueueRunnableService
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PathVariable

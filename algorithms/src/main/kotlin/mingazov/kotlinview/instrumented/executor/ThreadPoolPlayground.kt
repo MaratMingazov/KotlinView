@@ -1,6 +1,7 @@
-package mingazov.kotlinview.instrumented
+package mingazov.kotlinview.instrumented.executor
 
 import mingazov.kotlinview.event.EventSink
+import mingazov.kotlinview.instrumented.collection.InstrumentedLinkedBlockingQueueRunnable
 import java.util.concurrent.ForkJoinPool
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit

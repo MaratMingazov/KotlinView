@@ -1,8 +1,8 @@
-package mingazov.kotlinview.controller
+package mingazov.kotlinview.controller.executor
 
 import mingazov.kotlinview.controller.collection.CreatedResponse
 import mingazov.kotlinview.controller.collection.ThreadResponse
-import mingazov.kotlinview.service.InstrumentedRunnableTaskService
+import mingazov.kotlinview.service.executor.InstrumentedRunnableTaskService
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PathVariable

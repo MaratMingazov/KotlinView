@@ -1,6 +1,6 @@
 package mingazov.kotlinview.service.collection
 
-import mingazov.kotlinview.instrumented.collection.InstrumentedLinkedListIntRegistry
+import mingazov.kotlinview.instrumented.collection.registry.InstrumentedLinkedListIntRegistry
 import org.springframework.stereotype.Service
 
 @Service

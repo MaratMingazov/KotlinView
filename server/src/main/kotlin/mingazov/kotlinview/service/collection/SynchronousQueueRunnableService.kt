@@ -1,8 +1,8 @@
-package mingazov.kotlinview.service
+package mingazov.kotlinview.service.collection
 
-import mingazov.kotlinview.instrumented.InstrumentedRunnableTaskRegistry
-import mingazov.kotlinview.instrumented.InstrumentedSynchronousQueueRunnable
-import mingazov.kotlinview.instrumented.InstrumentedSynchronousQueueRunnableRegistry
+import mingazov.kotlinview.instrumented.collection.InstrumentedSynchronousQueueRunnable
+import mingazov.kotlinview.instrumented.collection.registry.InstrumentedSynchronousQueueRunnableRegistry
+import mingazov.kotlinview.instrumented.executor.registry.InstrumentedRunnableTaskRegistry
 import org.springframework.stereotype.Service
 import java.util.concurrent.atomic.AtomicLong
 

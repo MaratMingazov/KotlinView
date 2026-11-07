@@ -1,4 +1,4 @@
-package mingazov.kotlinview.instrumented
+package mingazov.kotlinview.instrumented.executor
 
 import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.event.MethodIn
@@ -7,6 +7,7 @@ import mingazov.kotlinview.event.MethodOutFailed
 import mingazov.kotlinview.event.ObjectCreated
 import mingazov.kotlinview.event.ObjectRemoved
 import mingazov.kotlinview.event.ObjectType
+import mingazov.kotlinview.instrumented.Instrumented
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.atomic.AtomicInteger
 

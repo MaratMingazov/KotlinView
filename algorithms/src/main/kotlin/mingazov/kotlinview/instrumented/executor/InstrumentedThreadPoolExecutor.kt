@@ -1,10 +1,11 @@
-package mingazov.kotlinview.instrumented
+package mingazov.kotlinview.instrumented.executor
 
 import mingazov.kotlinview.event.EventSink
 import mingazov.kotlinview.event.MethodIn
 import mingazov.kotlinview.event.MethodOut
 import mingazov.kotlinview.event.MethodOutFailed
 import mingazov.kotlinview.event.ObjectType
+import mingazov.kotlinview.instrumented.Instrumented
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit

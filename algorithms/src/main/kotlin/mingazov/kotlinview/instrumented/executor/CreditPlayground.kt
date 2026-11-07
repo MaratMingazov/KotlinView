@@ -1,4 +1,4 @@
-package mingazov.kotlinview.instrumented
+package mingazov.kotlinview.instrumented.executor
 
 import java.util.concurrent.Callable
 import java.util.concurrent.CompletableFuture.runAsync

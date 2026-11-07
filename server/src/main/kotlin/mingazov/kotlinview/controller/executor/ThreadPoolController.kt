@@ -1,9 +1,10 @@
-package mingazov.kotlinview.controller
+package mingazov.kotlinview.controller.executor
 
 import mingazov.kotlinview.controller.collection.CreatedResponse
 import mingazov.kotlinview.controller.collection.ErrorResponse
 import mingazov.kotlinview.controller.collection.ResultResponse
-import mingazov.kotlinview.service.ThreadPoolExecutorService
+import mingazov.kotlinview.controller.collection.TaskIdRequest
+import mingazov.kotlinview.service.executor.ThreadPoolExecutorService
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.ExceptionHandler

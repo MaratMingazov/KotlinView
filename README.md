@@ -1,6 +1,6 @@
 # KotlinView
 
-> Рабочее название. Учебный проект: бэкенд запускает настоящие алгоритмы и структуры данных,
+> Учебный проект: бэкенд запускает настоящие алгоритмы и структуры данных,
 > транслирует всё, что происходит у них внутри, а фронт это визуализирует.
 
 ## Идея
@@ -12,9 +12,9 @@
 Проект — это бэкенд на Spring Boot, который:
 
 1. запускает **настоящие** реализации (не имитацию): `ThreadPoolExecutor` из JDK, реальные потоки, реальные очереди;
-2. инструментирует их (хуки, свои очереди, `ThreadFactory` и т.п.) и превращает всё, что происходит внутри,
+2. инструментирует их (наследование, делегирование, своя `ThreadFactory`) и превращает всё, что происходит внутри,
    в поток **событий**;
-3. отдаёт события клиенту по **WebSocket**, а команды («создай пул», «отправь 5 задач», «shutdown»)
+3. отдаёт события клиенту по **WebSocket**, а команды («создай пул», «отправь задачу», «shutdown»)
    принимает по **REST**.
 
 Фронт получает события и рисует, как задачи едут в очередь, как воркеры их забирают,
@@ -24,7 +24,7 @@
 
 Первая тема — `ThreadPoolExecutor` и фабрики `Executors.*`. На визуализации должно быть видно:
 
-- как задача проходит путь `submit → очередь → воркер → выполнение`;
+- как задача проходит путь `execute → очередь → воркер → выполнение`;
 - что первая задача воркера (`firstTask`) идёт ему **напрямую, мимо очереди**;
 - алгоритм `execute`: **core → очередь → воркеры сверх core до max → reject**;
 - что у `newFixedThreadPool` с неограниченной очередью параметр `max` фактически ни на что не влияет;
@@ -33,7 +33,7 @@
 - разницу `shutdown()` и `shutdownNow()`, `execute` и `submit` (исключение убивает воркер или нет);
 - `newCachedThreadPool` с `SynchronousQueue`: очередь всегда пуста, задача передаётся из рук в руки.
 
-Протокол для executor'ов описан подробно в [PROTOCOL.md](PROTOCOL.md).
+Что из этого уже работает — в разделе [План работ](#план-работ).
 
 ## Что может быть дальше
 
@@ -43,7 +43,7 @@
   `CompletableFuture`-цепочки, блокировки (`ReentrantLock`, `ReadWriteLock`, `synchronized`), `Semaphore`,
   `CountDownLatch`, `CyclicBarrier`, producer/consumer на разных `BlockingQueue`, корутины Kotlin.
 - **Структуры данных:** `HashMap` (бакеты, коллизии, resize, treeify), `ConcurrentHashMap`, кучи, деревья.
-- **Классические алгоритмы:** сортировки, обходы графов, кратчайшие пути — задачи из этого же репозитория.
+- **Классические алгоритмы:** сортировки, обходы графов, кратчайшие пути.
 
 Для каждой новой темы действует один и тот же принцип: реальная реализация → инструментирование →
 события → визуализация.
@@ -52,78 +52,146 @@
 
 ```
 ┌──────────────────────────── Браузер ────────────────────────────┐
-│  Визуализация (HTML/JS/CSS, позже React)                        │
+│  Визуализация (HTML/JS/CSS)                                     │
 │     ▲ события (WebSocket)                 │ команды (REST)      │
 └─────┼─────────────────────────────────────┼─────────────────────┘
       │                                     ▼
 ┌─────┴──────────────────── server (Spring Boot) ─────────────────┐
-│  /ws/events — снимок + поток событий    /api/... — команды      │
-│  seq, серверное состояние (reducer), рассылка подписчикам       │
+│  /ws/events — поток событий             /api/... — команды      │
+│  Broadcaster: seq, ts, JSON, рассылка   сервисы-фасады          │
 └─────▲─────────────────────────────────────┬─────────────────────┘
       │ EventSink.emit(event)               │ вызовы
-┌─────┴──────────────── algorithms/* (без Spring) ────────────────┐
-│  executors: инструментированный ThreadPoolExecutor              │
-│  (своя очередь, хуки before/afterExecute, своя ThreadFactory)   │
+┌─────┴──────────────────── algorithms (без Spring) ──────────────┐
+│  Instrumented-объекты + реестры: коллекции, очереди,            │
+│  задачи, ThreadFactory, ThreadPoolExecutor                      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 Ключевые решения:
 
-- **События — это факты, а не команды UI.** Сервер пишет `TASK_QUEUED`, а не «передвинь карточку».
-  Поэтому визуализацию можно переделывать, не трогая бэкенд.
-- **Снимок + поток изменений через WebSocket.** При подключении клиент получает полное состояние (`SNAPSHOT`),
-  потом только события с номером `seq`. Снимок идёт первым сообщением в том же сокете, чтобы между ним
-  и событиями ничего не потерялось.
-- **Команды — через REST.** Их удобно отлаживать `curl`'ом. Результат команды приходит событиями,
-  HTTP-ответ лишь подтверждает приём (`202`).
-- **Алгоритмы не знают про Spring.** Модули с алгоритмами зависят только от интерфейса `EventSink`.
-  Их можно запускать из `main` с выводом в консоль и тестировать без поднятия сервера.
+- **Одна модель событий на все темы.** Нет событий вроде `TASK_QUEUED` — есть объекты и вызовы их методов:
+  «объект создан», «поток вошёл в метод», «вышел с результатом», «упал с ошибкой». Новая структура данных
+  не требует новых типов событий, а визуализацию можно переделывать, не трогая бэкенд.
+- **Составные объекты ссылаются на части по id.** Пул не вкладывает в себя очередь и фабрику, а хранит
+  в `state` их `queueId` и `threadFactoryId`. У каждой части свои события, картинку собирает клиент.
+  Id выдаёт один `IdGenerator` на все реестры, поэтому ссылка однозначна, какого бы типа ни был объект.
+- **Имя потока связывает события разных объектов.** Воркер `factory-3-worker-1` виден в событиях
+  своего потока (`THREAD.run`), очереди (`take` / `poll`) и задачи (`run`) — так клиент понимает, что делает воркер.
+- **Команды — через REST.** Их удобно отлаживать `curl`'ом. Что команда сделала внутри, видно по событиям.
+- **Алгоритмы не знают про Spring.** Модуль `algorithms` зависит только от интерфейса `EventSink`.
+  Его можно запускать из `main` (см. `*Playground.kt`) и тестировать без поднятия сервера.
+
+### Как инструментируем
+
+- **Делегирование** — для коллекций и очередей: `BlockingQueue<Runnable> by delegate`, переопределены только
+  интересные методы (`offer`, `put`, `take`, `poll`, `drainTo`). Остальные уходят в настоящую реализацию без событий.
+  Delegate создаётся внутри, чтобы никто не мог менять структуру в обход событий.
+- **Наследование** — для `ThreadPoolExecutor`: путь `addWorker → runWorker → getTask` целиком внутри пула,
+  декоратор его не увидит. Переопределены `execute`, `shutdown`, `shutdownNow` и хук `terminated`.
+- **Своя `ThreadFactory`** — каждый созданный поток становится объектом `THREAD`, его жизнь — это метод `run`.
+
+## Протокол
+
+Сервер шлёт по WebSocket `/ws/events` сообщения-конверты:
+
+```json
+{ "seq": 42, "ts": 1762543431743, "type": "METHOD_OUT", "data": { ... } }
+```
+
+- `seq` — монотонный номер события: по нему клиент видит пропуски и дубли. Номер выдаётся и сообщение
+  отправляется под одним замком, поэтому события приходят строго по возрастанию `seq`.
+- `ts` — серверное время события (не отправки).
+- `type` — что лежит в `data`. Jackson берёт его из `@JsonTypeName` класса payload'а, так что `type` и `data` не расходятся.
+
+Типы событий (`data`):
+
+| type | Когда | Поля, кроме общих |
+|---|---|---|
+| `OBJECT_CREATED` | реестр создал объект | `state` — начальное состояние |
+| `OBJECT_REMOVED` | объект удалён, событий от него больше не будет | — |
+| `METHOD_IN` | поток вошёл в метод | `method`, `args`, `state` |
+| `METHOD_OUT` | метод вернул результат | `method`, `args`, `result`, `state` |
+| `METHOD_OUT_FAILED` | метод бросил исключение | `method`, `args`, `error`, `state` |
+| `METHOD_PROGRESS` | поток всё ещё внутри метода | `method`, `progress`, `state` |
+
+Общие поля всех событий: `objectType`, `objectId`, `thread` — имя потока, в котором произошло событие.
+
+`objectType`: `ARRAY_LIST_INT`, `LINKED_LIST_INT`, `RUNNABLE_TASK`, `LINKED_BLOCKING_QUEUE_RUNNABLE`,
+`SYNCHRONOUS_QUEUE_RUNNABLE`, `THREAD_FACTORY`, `THREAD`, `THREAD_POOL_EXECUTOR`.
+У `THREAD` `objectId` — это `threadId()` JVM, а не id из общего генератора.
+
+`state` — снимок состояния объекта в момент события, клиент рисует объект по последнему полученному снимку.
+Если снимок и отправку нужно делать атомарно (как в `LinkedBlockingQueue`, где `offer` и `take` идут параллельно),
+объект берёт свой замок на время снятия `state` и `emit`.
+
+Список событий закрыт: `Event` — sealed-интерфейс, и `WebSocketMapper` не скомпилируется,
+пока новое событие не получит свой payload. Версия протокола — `PROTOCOL_VERSION` в `Envelope.kt`.
+
+### REST
+
+Создание возвращает `{"objectId": …}`, остальные команды — результат метода, если он есть; подробности приходят событиями.
+Обращение к несуществующему объекту — `404`.
+
+| Ресурс | Команды |
+|---|---|
+| `/api/arraylistint` | `POST` создать, `/{id}/add`, `/{id}/addAt`, `/{id}/get`, `DELETE /{id}` |
+| `/api/linkedlistint` | `POST` создать, `/{id}/add`, `/offer`, `/offerFirst`, `/offerLast`, `/poll`, `/pop`, `DELETE /{id}` |
+| `/api/linkedblockingqueuerunnable` | `POST` создать, `/{id}/offer`, `/{id}/take`, `DELETE /{id}` |
+| `/api/synchronousqueuerunnable` | `POST` создать, `/{id}/offer`, `/{id}/put`, `/{id}/take`, `DELETE /{id}` |
+| `/api/tasks` | `POST` создать задачу на `durationMs`, `/{id}/run`, `DELETE /{id}` |
+| `/api/threadpoolexecutor` | `POST` создать с параметрами, `/fixed`, `/single`, `/cached`, `/{id}/execute`, `/{id}/shutdown`, `/{id}/shutdownNow`, `DELETE /{id}` |
+
+Пул создаётся вместе со своей очередью и фабрикой (клиент получит три `OBJECT_CREATED`: очередь, фабрика, пул)
+и удаляется вместе с ними — только после `TERMINATED`. Отказ `execute` (`RejectedExecutionException`) — `409`.
+
+Пресеты отличаются от JDK, чтобы граничное поведение было видно на экране:
+у `fixed` / `single` очередь на 5 задач вместо неограниченной, у `cached` не больше 5 потоков
+и `keepAlive` 10 с вместо 60.
 
 ## Структура репозитория
 
-Один репозиторий, Gradle multi-module:
+Gradle multi-module:
 
 ```
-algorithm-visualizer/
+KotlinView/
 ├── settings.gradle.kts              ← список модулей
-├── build.gradle.kts                 ← общие настройки (опционально)
+├── build.gradle.kts
 ├── gradle/libs.versions.toml        ← версии всех зависимостей в одном месте
-├── gradlew, gradlew.bat, gradle/    ← Gradle wrapper, отдельно ставить Gradle не нужно
+├── gradlew, gradlew.bat, gradle/    ← Gradle wrapper
 │
-├── visualizer-core/                 ← общее для всех тем: конверт события, EventSink, seq
-├── algorithms/
-│   └── executors/                   ← инструментированный ThreadPoolExecutor + события + reducer
-│       └── PROTOCOL.md
-├── server/                          ← Spring Boot: REST + WebSocket, собирает всё вместе
-└── web/                             ← фронт
+├── algorithms/                      ← без Spring
+│   └── src/main/kotlin/mingazov/kotlinview/
+│       ├── event/                   ← Event (sealed), EventSink, ObjectType
+│       └── instrumented/            ← Instrumented, InstrumentedRegistry, IdGenerator
+│           ├── collection/          ← ArrayList, LinkedList, LinkedBlockingQueue, SynchronousQueue
+│           │   └── registry/
+│           └── executor/            ← RunnableTask, ThreadFactory, ThreadPoolExecutor, playground'ы
+│               └── registry/
+└── server/                          ← Spring Boot
+    └── src/main/
+        ├── kotlin/mingazov/kotlinview/
+        │   ├── config/              ← реестры из algorithms как бины, общий IdGenerator
+        │   ├── controller/          ← REST: collection/, executor/, ErrorHandlers
+        │   ├── service/             ← фасады: collection/, executor/ (правила владения частями пула)
+        │   └── ws/                  ← WebSocket, Broadcaster (EventSink), protocol/ (конверт и payload'ы)
+        └── resources/static/        ← фронт: по странице на структуру + общие base.js / components.js
 ```
 
-- `visualizer-core` — маленький модуль без зависимостей: общий конверт (`seq`, `ts`, `type`, `data`),
-  `EventSink`, базовые типы.
-- `algorithms/<тема>` — по модулю на тему. Зависит только от `visualizer-core`.
-  Для начала есть только `executors`.
-- `server` — зависит от всех `algorithms/*`, отдаёт их наружу.
-- `web` — фронт. Для Gradle это просто папка; позже в сборку можно добавить плагин,
-  который соберёт фронт и положит его в jar сервера.
-
-Если на старте такое деление покажется лишним, можно начать с двух модулей (`core` + `server`)
-и выделить `visualizer-core` и `algorithms/*`, когда появится вторая тема.
+У каждого инструментированного типа одна и та же связка: класс в `algorithms` → реестр → сервис → контроллер
+→ страница в `static/`.
 
 ## Стек
 
 | Часть | Выбор | Почему |
 |---|---|---|
-| Язык бэкенда | Kotlin (JVM) | основной язык проекта; всё, что визуализируем, есть только на JVM |
-| Сборка | Gradle, Kotlin DSL, version catalog | стандарт для Kotlin; короче, чем Maven; открывает дорогу к Compose/KMP, если понадобится |
-| JDK | 21+ (у автора 25) | Spring Boot 3; у `ExecutorService` есть `close()` (с 19) |
-| Бэкенд | Spring Boot: `spring-boot-starter-web` + `spring-boot-starter-websocket` | стандарт индустрии; альтернатива — Ktor, модули с алгоритмами от этого выбора не зависят |
-| Сериализация | Jackson (идёт со Spring) | sealed-классы событий → JSON с полем `type` |
-| Фронт, этап 1 | чистые HTML + JS + CSS, анимации через View Transitions API | без Node и сборки; все силы — на алгоритмы; видно, как всё устроено на самом деле |
-| Фронт, этап 2 | React + Vite + TypeScript + Framer Motion | когда логика экрана станет сложной; бэкенд при этом не меняется |
+| Язык бэкенда | Kotlin 2.3 (JVM) | основной язык проекта; всё, что визуализируем, есть только на JVM |
+| Сборка | Gradle, Kotlin DSL, version catalog | стандарт для Kotlin; версии в одном месте |
+| JDK | 25 (`jvmToolchain(25)`) | `Thread.threadId()`, свежая JVM |
+| Бэкенд | Spring Boot 4.1: `spring-boot-starter-webmvc` + `spring-boot-starter-websocket` | стандарт индустрии; модуль `algorithms` от этого выбора не зависит |
+| Сериализация | Jackson 3 (`tools.jackson`) + `jackson-module-kotlin` | sealed-payload'ы → JSON с полем `type` |
+| Фронт | чистые HTML + JS + CSS | без Node и сборки; все силы — на алгоритмы |
 
-## Как это запускается
-
-### Этап 1 (чистый JS)
+## Как запустить
 
 Фронт лежит статикой внутри `server` (`src/main/resources/static`). Один процесс:
 
@@ -132,54 +200,58 @@ algorithm-visualizer/
 # открыть http://localhost:8080
 ```
 
-### Этап 2 (React)
+Замедленный режим: `kotlinview.events.sleep-millis` в `application.yml` — пауза перед отправкой каждого события,
+чтобы быстрые процессы можно было разглядеть.
 
-В разработке — два процесса, браузер открывается на Vite:
-
-```bash
-./gradlew :server:bootRun        # бэкенд на :8080
-cd web && npm run dev            # фронт на :5173, проксирует /api и /ws на :8080
-# открыть http://localhost:5173
-```
-
-Для готовой сборки — один jar: Gradle собирает фронт (`npm run build`) и кладёт его в статику сервера.
+Пример из консоли:
 
 ```bash
-./gradlew build
-java -jar server/build/libs/server.jar
-# открыть http://localhost:8080
+curl -X POST localhost:8080/api/threadpoolexecutor/cached              # {"objectId":3}
+curl -X POST localhost:8080/api/tasks -H 'Content-Type: application/json' -d '{"durationMs":3000}'   # {"objectId":4}
+curl -X POST localhost:8080/api/threadpoolexecutor/3/execute -H 'Content-Type: application/json' -d '{"taskId":4}'
 ```
 
-В IntelliJ оба процесса удобно запускать одной кнопкой через Compound Run Configuration.
+Посмотреть сырые события — в консоли браузера:
+
+```js
+const ws = new WebSocket("ws://localhost:8080/ws/events");
+ws.onmessage = e => console.log(JSON.parse(e.data));
+```
 
 ## План работ
 
-1. **Каркас.** Gradle multi-module, wrapper, version catalog, пустые модули, `./gradlew build` проходит.
-2. **Executors без UI.** Инструментированный пул в `algorithms/executors`: своя очередь (`offer`/`take`/`poll`),
-   хуки `beforeExecute`/`afterExecute`/`terminated`, своя `ThreadFactory`, sealed-классы событий из PROTOCOL.md,
-   `EventSink` с выводом в консоль. Проверка: сценарий из раздела 10 протокола даёт ожидаемый лог.
-3. **Reducer и снимок.** Состояние по событиям, сборка `SNAPSHOT`. Юнит-тесты: последовательность событий → ожидаемое состояние.
-4. **Сервер.** Spring Boot: REST-команды из протокола, WebSocket `/ws/events` со снимком и потоком событий,
-   `seq` и рассылка без блокировки потоков пула.
-5. **Фронт v1.** Статическая страница: сырые события списком → три зоны (входящие, очередь, воркеры)
-   → анимация переходов → панель управления.
-6. **Больше executor'ов.** Несколько пулов рядом для сравнения (fixed / cached / single), изменение настроек на лету.
-7. **Фронт v2.** Переписать на React, когда экран станет сложным.
-8. **Следующие темы.** `ForkJoinPool`, блокировки, структуры данных — каждая отдельным модулем в `algorithms/`.
+Сделано:
 
-На каждом шаге есть что-то работающее, и при поломке понятно, в каком слое искать.
+1. **Каркас.** Gradle multi-module, wrapper, version catalog.
+2. **Модель событий.** Универсальные `OBJECT_*` / `METHOD_*`, `Instrumented`, реестры с общим `IdGenerator`.
+3. **Сервер.** REST-команды, WebSocket `/ws/events`, `seq` и рассылка.
+4. **Коллекции.** `ArrayList<Int>`, `LinkedList<Int>` — страницы с визуализацией.
+5. **Очереди.** `LinkedBlockingQueue<Runnable>`, `SynchronousQueue<Runnable>` — отдельно и как очередь пула.
+6. **Executors.** `ThreadPoolExecutor` с произвольными параметрами и пресеты `fixed` / `single` / `cached`,
+   `shutdown` / `shutdownNow`, отказ по `ABORT`.
+
+Дальше:
+
+1. **Тесты.** `EventSink`, собирающий события в список, и проверки последовательностей:
+   «execute на cached-пуле без ждущих воркеров → newThread → поток стартовал → poll».
+2. **Снимок при подключении.** Сейчас клиент видит только события после подключения.
+   Нужен `SNAPSHOT` первым сообщением в сокете с `seq`, от которого продолжается поток.
+3. **Остальное по Executors.** Политики отказа кроме `ABORT`; `submit` (сейчас `FutureTask` ломает `taskIdOf`);
+   задача, бросающая исключение (смерть и замена воркера).
+4. **Блокировки.** `ReentrantLock` (владелец, `holdCount`, очередь ждущих) и `Condition` как отдельный объект —
+   чтобы было видно, что `await` отпускает замок; producer/consumer на двух условиях.
+5. **Следующие темы.** `ForkJoinPool`, `HashMap`, сортировки.
+
+## Известные ограничения
+
+- В замедленном режиме события одной `LinkedBlockingQueue` отправляются строго по одному: пауза `Broadcaster`
+  попадает внутрь `emitLock` очереди.
+- Поток, который пул создал, но не запустил (shutdown во время `addWorker`), останется у клиента без `OBJECT_REMOVED`.
+- Очередь пула можно удалить в обход фасада через `DELETE /api/linkedblockingqueuerunnable/{id}`
+  (или `synchronousqueuerunnable`).
 
 ## Открытые вопросы
 
-1. **Название проекта и репозитория.** Пока `algorithm-visualizer`.
-2. **Общий конверт для разных тем.** В PROTOCOL.md у событий есть `executorId`. Когда появятся
-   другие темы, в общем конверте удобнее иметь нейтральное поле (например, `sourceId` — id
-   экземпляра визуализируемой штуки) и поле `topic` (`executors`, `locks`, `hashmap`…),
-   а специфичные для темы поля держать в `data`. Решить до того, как появится вторая тема.
-3. **Где живёт состояние для визуализации алгоритмов, которые работают мгновенно** (сортировки):
-   нужен ли пошаговый режим с паузой и перемоткой, и как он ложится на модель «снимок + события».
-4. **Spring Boot или Ktor** для сервера — пока Spring Boot, но модули с алгоритмами от выбора не зависят.
-
-## Документы
-
-- [PROTOCOL.md](PROTOCOL.md) — протокол для executor'ов: модель, события, команды, пример сценария.
+1. **Алгоритмы, которые работают мгновенно** (сортировки): нужен ли пошаговый режим с паузой и перемоткой,
+   и как он ложится на модель «объект + вызовы методов».
+2. **Фронт на React**, когда логика экранов станет сложной: бэкенд при этом не меняется.

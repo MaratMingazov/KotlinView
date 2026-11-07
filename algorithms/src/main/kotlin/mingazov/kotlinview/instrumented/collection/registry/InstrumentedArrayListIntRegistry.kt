@@ -1,9 +1,10 @@
-package mingazov.kotlinview.instrumented.collection
+package mingazov.kotlinview.instrumented.collection.registry
 
 import mingazov.kotlinview.event.EventSink
-import mingazov.kotlinview.instrumented.IdGenerator
 import mingazov.kotlinview.event.ObjectType
+import mingazov.kotlinview.instrumented.IdGenerator
 import mingazov.kotlinview.instrumented.InstrumentedRegistry
+import mingazov.kotlinview.instrumented.collection.InstrumentedArrayListInt
 
 class InstrumentedArrayListIntRegistry(sink: EventSink, idGenerator: IdGenerator = IdGenerator()) :
     InstrumentedRegistry<InstrumentedArrayListInt>(ObjectType.ARRAY_LIST_INT, sink, idGenerator) {

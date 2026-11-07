@@ -1,7 +1,7 @@
-package mingazov.kotlinview.service
+package mingazov.kotlinview.service.executor
 
-import mingazov.kotlinview.instrumented.InstrumentedRunnableTask
-import mingazov.kotlinview.instrumented.InstrumentedRunnableTaskRegistry
+import mingazov.kotlinview.instrumented.executor.InstrumentedRunnableTask
+import mingazov.kotlinview.instrumented.executor.registry.InstrumentedRunnableTaskRegistry
 import org.springframework.stereotype.Service
 import java.util.concurrent.atomic.AtomicLong
 
