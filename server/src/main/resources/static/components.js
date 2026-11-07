@@ -108,7 +108,18 @@ const KV = (() => {
     return effect.side === 'tail' ? [arrow, ghost] : [ghost, arrow];
   }
 
-  /** options.node(value, label, index) — как нарисовать узел (и призрак элемента); по умолчанию просто значение. */
+  // Свободное место ограниченной очереди: пунктирная рамка без значения
+  function slot(index) {
+    const n = el('div', 'node slot');
+    n.append(el('div', 'label'), el('div', 'box'), el('div', 'idx', String(index)));
+    return n;
+  }
+
+  /**
+   * options.node(value, label, index) — как нарисовать узел (и призрак элемента); по умолчанию просто значение.
+   * options.capacity — ёмкость: после элементов дорисовать свободные ячейки (options.slot(index)), без стрелок —
+   * это не узлы списка, а место под них. Вместо «head = tail = null» тогда видны пустые ячейки
+   */
   function renderChain(elements, effect, options = {}) {
     const makeNode = options.node ?? node;
     const chain = el('div', 'chain');
@@ -128,9 +139,15 @@ const KV = (() => {
       chain.append(n);
     });
 
-    if (!hasElements && !hasGhost) chain.append(el('span', 'empty', 'head = tail = null'));
+    const capacity = options.capacity;
+    if (!hasElements && !hasGhost && !capacity) chain.append(el('span', 'empty', 'head = tail = null'));
 
     if (hasGhost && effect.side === 'tail') chain.append(...ghostParts(effect, elapsed, hasElements, makeNode));
+
+    if (capacity) {
+      const makeSlot = options.slot ?? slot;
+      for (let i = elements.length; i < capacity; i++) chain.append(makeSlot(i));
+    }
     return chain;
   }
 
@@ -254,6 +271,13 @@ const KV = (() => {
     return n;
   }
 
+  // Свободная ячейка очереди задач — по размеру мини-конверта, чтобы ряд не прыгал при offer / take
+  function taskSlot(index) {
+    const n = el('div', 'node slot');
+    n.append(el('div', 'label'), el('div', 'envelope-slot'), el('div', 'idx', String(index)));
+    return n;
+  }
+
   /**
    * Полоска на каждый поток внутри run(): заливка — прогресс, поверх — имя потока; цифры — в подсказке.
    * options.thread — только полоска этого потока; options.names: false — без имени поверх (имя уже есть рядом)
@@ -310,7 +334,7 @@ const KV = (() => {
 
   return {
     el, methodsState, trackMethod, renderBadges, node, setEffect, renderChain,
-    trackTask, runningThreads, renderEnvelope, renderRuns, renderTask, taskNode,
+    trackTask, runningThreads, renderEnvelope, renderRuns, renderTask, taskNode, taskSlot,
     threadColor, seconds,
   };
 })();

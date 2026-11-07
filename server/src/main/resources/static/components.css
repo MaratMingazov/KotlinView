@@ -33,6 +33,14 @@
 .node.removed .box { border-style: dashed; border-color: var(--dim); color: var(--text); background: none; }
 .node.null .box { border-style: dashed; border-color: var(--border); color: var(--dim); background: none; }
 .node.failed .box { border-style: dashed; border-color: var(--fail); color: var(--fail); background: none; }
+/* Свободная ячейка ограниченной очереди: стрелки перед ней нет, поэтому отступ вместо неё */
+.node.slot { margin-left: 8px; }
+.node.slot .box { border-style: dashed; background: none; }
+/* По размеру тела мини-конверта (48×40) с местом под клапан сверху, как у svg (52×56) */
+.node.slot .envelope-slot {
+  width: 48px; height: 40px; margin: 12px 2px 4px; box-sizing: border-box;
+  border: 2px dashed var(--border); border-radius: 3px;
+}
 /* Подсветка тоже затухает, а не снимается рывком */
 @keyframes node-new {
   from { background: color-mix(in srgb, var(--out) 45%, var(--panel)); border-color: var(--out); }

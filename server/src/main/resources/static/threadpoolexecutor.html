@@ -18,8 +18,6 @@
     .config { color: var(--dim); margin-bottom: 8px; }
 
     /* --- состояние пула --- */
-    .counters { margin-top: 6px; color: var(--dim); }
-    .counters b { color: var(--num); font-weight: normal; }
     .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; background: var(--dim); }
     .dot.RUNNING { background: var(--out); }
     .dot.SHUTDOWN, .dot.TIDYING { background: var(--keyword); }
@@ -67,7 +65,7 @@
   <span>core <input id="core" type="number" value="1" min="0"></span>
   <span>max <input id="max" type="number" value="2" min="1"></span>
   <span>keepAlive, сек <input id="keepAlive" type="number" value="3" min="0" step="0.5"></span>
-  <span>queue capacity <input id="capacity" type="number" value="1" min="1" placeholder="∞" title="пусто — неограниченная очередь"></span>
+  <span>queue capacity <input id="capacity" type="number" value="1" min="1" required title="ёмкость очереди — обязательна, чтобы было видно свободные места"></span>
   <button id="create" class="primary" title="POST /api/threadpoolexecutor — создать пул вместе с его очередью и фабрикой; карточка появится по событию OBJECT_CREATED">+ new pool</button>
 </div>
 
@@ -115,13 +113,15 @@
   }
 
   // Карточку создаёт не ответ на create, а событие OBJECT_CREATED — так же, как для пулов, созданных извне
+  // Ёмкость обязательна: пустое или < 1 поле не отправляем, браузер подсветит его и покажет подсказку
   $('create').onclick = () => {
-    const capacity = $('capacity').value.trim();
+    const capacityInput = $('capacity');
+    if (!capacityInput.reportValidity()) return;
     call('POST', base, {
       corePoolSize: Number($('core').value),
       maximumPoolSize: Number($('max').value),
       keepAliveMs: Math.round(Number($('keepAlive').value) * 1000),
-      queueCapacity: capacity === '' ? null : Number(capacity),
+      queueCapacity: Number(capacityInput.value),
     });
   };
   $('createFixed').onclick = () => call('POST', `${base}/fixed`, { nThreads: Number($('nThreads').value) });
@@ -208,26 +208,14 @@
     if (effect) KV.setEffect(queue, effect, render);
   }
 
-  // Что подсветить в цепочке очереди после этого события (null — ничего). Как на linkedblockingqueue.html, плюс poll и drainTo
+  // Что подсветить в цепочке очереди после этого события (null — ничего). Только offer:
+  // призраков в голове (снятый take/poll, прерванный take/poll, drainTo) пока не рисуем — с пустыми ячейками
+  // ряд на время затухания становился на ячейку длиннее и потом сжимался
   function queueEffectOf(method, phase, d) {
-    if (phase === 'OUT_FAILED') {
-      // Например, прерванный take/poll при shutdown
-      return method === 'take' || method === 'poll' ? { ghost: '✗', kind: 'failed', side: 'head', title: `${d.thread}: ${d.error}` } : null;
-    }
-    if (phase !== 'OUT') return null;
-    if (method === 'offer') {
-      // При гонке «последний узел» — допущение, а не наблюдение
-      if (d.result === true) return { new: d.state.taskIds.length - 1 };
-      return { value: d.args.taskId, kind: 'failed', side: 'tail', title: 'очередь полна: offer вернул false' };
-    }
-    // Снятого узла в state уже нет — его taskId берём из result. poll вернул null — таймаут, снимать нечего
-    if ((method === 'take' || method === 'poll') && d.result != null) {
-      return { value: d.result, kind: 'removed', side: 'head', title: `взял ${d.thread}` };
-    }
-    if (method === 'drainTo' && d.result.length > 0) {
-      return { ghost: d.result.map(id => '#' + id).join(' '), kind: 'removed', side: 'head', title: 'забрал shutdownNow' };
-    }
-    return null;
+    if (phase !== 'OUT' || method !== 'offer') return null;
+    // При гонке «последний узел» — допущение, а не наблюдение
+    if (d.result === true) return { new: d.state.taskIds.length - 1 };
+    return { value: d.args.taskId, kind: 'failed', side: 'tail', title: 'очередь полна: offer вернул false' };
   }
 
   function applyFactory(env, d) {
@@ -342,15 +330,16 @@
 
   // ---------- Карточка пула: состояние справа ----------
 
-  function renderCounters(pool) {
+  // Один ряд: бейджи методов пула и его runState. Счётчики не выводим — дизайн минималистичный,
+  // чтобы рядом помещалось несколько пулов; они остаются в подсказке к статусу
+  function renderStatus(pool) {
+    const row = KV.renderBadges(pool.methods);
     const s = pool.state;
-    const row = KV.el('div', 'counters');
     if (!s) return row;
-    const dot = KV.el('span', `dot ${s.runState}`);
-    row.append(dot, KV.el('span', 'run-state', s.runState), ' · потоков ');
-    row.append(KV.el('b', '', s.poolSize), ` / core ${s.corePoolSize} / max ${s.maximumPoolSize} · активных `);
-    row.append(KV.el('b', '', s.activeCount), ' · выполнено ');
-    row.append(KV.el('b', '', s.completedTaskCount));
+    const status = KV.el('span', 'run-state');
+    status.append(KV.el('span', `dot ${s.runState}`), s.runState);
+    status.title = `потоков ${s.poolSize} / core ${s.corePoolSize} / max ${s.maximumPoolSize} · активных ${s.activeCount} · выполнено ${s.completedTaskCount}`;
+    row.append(status);
     return row;
   }
 
@@ -372,7 +361,9 @@
     if (!queue) { part.append(KV.el('span', 'empty', `queue #${queueId} — нет данных`)); return part; }
     const title = KV.el('div', 'part-title');
     title.append(KV.el('span', 'name', `queue #${queue.id} · capacity ${capacityText(queue.capacity)}`), KV.renderBadges(queue.methods));
-    part.append(title, KV.renderChain(queue.elements, queue.nodeEffect, { node: taskNode }));
+    // Свободные ячейки — только для ограниченной очереди: ∞ (INT_MAX) и «ещё не знаем» не рисуем
+    const capacity = queue.capacity != null && queue.capacity !== INT_MAX ? queue.capacity : undefined;
+    part.append(title, KV.renderChain(queue.elements, queue.nodeEffect, { node: taskNode, slot: KV.taskSlot, capacity }));
     return part;
   }
 
@@ -382,14 +373,13 @@
     const title = KV.el('div', 'part-title');
     title.append(KV.el('span', 'name', `workers · factory #${factoryId}`));
     const factory = factories.get(factoryId);
-    if (factory) title.append(KV.renderBadges(factory.methods), KV.el('span', 'empty', `создано потоков: ${factory.createdCount}`));
+    if (factory) title.append(KV.renderBadges(factory.methods));
     part.append(title);
 
     const queue = queues.get(pool.state.queueId);
     const list = KV.el('div', 'workers');
     // Порядок вставки в Map = порядок создания потоков
     const workers = [...threads.values()].filter(t => t.factoryId === factoryId);
-    if (workers.length === 0) list.append(KV.el('span', 'empty', 'потоков нет — появятся при первом execute'));
     for (const thread of workers) list.append(renderWorker(thread, queue));
     part.append(list);
     return part;
@@ -449,10 +439,9 @@
   const cards = UI.cardList('pools', {
     create: createCard,
     update: (pool, { state }) => {
-      if (!pool.state) { state.replaceChildren(KV.renderBadges(pool.methods)); return; }
+      if (!pool.state) { state.replaceChildren(renderStatus(pool)); return; }
       state.replaceChildren(
-        KV.renderBadges(pool.methods),
-        renderCounters(pool),
+        renderStatus(pool),
         renderNotice(pool),
         renderQueue(pool.state.queueId),
         renderWorkers(pool),
