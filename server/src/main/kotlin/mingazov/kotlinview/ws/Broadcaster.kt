@@ -20,15 +20,20 @@ class Broadcaster(
 ) : EventSink {
 
     private val log = LoggerFactory.getLogger(javaClass)
-    private var seq = 0L
+    private val sendLock = Any()
+    private var seq = 0L // меняется только под sendLock
 
+    // emit зовут разные потоки: HTTP, воркеры пула, потоки задач
     override fun emit(event: Event) {
         log.info("event: {}", event)
-        val time = System.currentTimeMillis()
+        val time = System.currentTimeMillis() // время события, а не отправки
         val payload = WebSocketMapper.toPayload(event)
-        val message = toMessage(++seq, payload, time)
+        // Пауза — вне замка: в замедленном режиме потоки спят параллельно, а не по очереди на весь сервер
         Thread.sleep(sleepMillis)
-        sessionRegistry.sendToAll(message)
+        // Номер и отправка — один шаг: клиент получает события строго по возрастанию seq, без повторов
+        synchronized(sendLock) {
+            sessionRegistry.sendToAll(toMessage(++seq, payload, time))
+        }
     }
 
     private fun toMessage(seq: Long, data: Payload, time: Long) : TextMessage {
