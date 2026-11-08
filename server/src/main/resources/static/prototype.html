@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>KotlinView — dioramas</title>
+  <!-- Только палитра страницы и шрифт из base.css. Ни сервера, ни WebSocket: статичные снимки -->
+  <link rel="stylesheet" href="base.css">
+  <style>
+    body { max-width: 1100px; margin: 16px auto; }
+    section { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 12px 16px 16px; margin-top: 16px; }
+    .dim { color: var(--dim); }
+    .diorama-title { color: var(--keyword); }
+    .legend { color: var(--dim); font-size: 11px; margin: 2px 0 8px; }
+    .diorama { display: block; }
+    .diorama text { font-family: inherit; }
+    .diorama .hoverable { cursor: pointer; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h2>Dioramas</h2>
+  <span class="dim">static snapshots, no server · hover objects for details</span>
+</header>
+
+<section>
+  <div class="diorama-title">Car wash = fixed thread pool</div>
+  <div class="legend">car = task · road marks = queue slots · wash bay = worker thread (awning in its color)</div>
+  <div id="washRoot"></div>
+</section>
+
+<section>
+  <div class="diorama-title">Barrier = semaphore guarding a task</div>
+  <div class="legend">car = runner thread (in its color) · barrier + traffic light = semaphore · house = task</div>
+  <div id="barrierRoot"></div>
+</section>
+
+<!-- Порядок важен: движок → объекты → сцены -->
+<script src="iso-scene.js"></script>
+<script src="iso-objects.js"></script>
+<script src="diorama.js"></script>
+<script>
+  Diorama.mount({ washRoot: document.getElementById('washRoot'), barrierRoot: document.getElementById('barrierRoot') });
+</script>
+</body>
+</html>
