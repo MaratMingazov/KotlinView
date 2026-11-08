@@ -1,6 +1,6 @@
 /*
  * Semaphore: модель по событиям WebSocket, отрисовка разрешений и ждущих потоков, REST-вызовы.
- * Общий для semaphore.html и плиток index.html (пресеты SemaphoreView.nonfair / SemaphoreView.fair).
+ * Страница semaphore.html; модель (createStore) переиспользует semaphoretask.js — плитка Semaphore на index.html.
  * Подключение: после base.js и components.js. Стили — semaphore.css. Всё лежит в объекте SemaphoreView.
  *
  * Что рисуем сверху вниз:
@@ -206,16 +206,6 @@ const SemaphoreView = (() => {
     return c;
   }
 
-  // ---------- Описания для плиток index.html ----------
-  // Плитка умеет только числовые параметры, поэтому fair — два пресета, как пулы в pool.js. Рядом — удобно сравнивать
-
-  const common = { types: [SEMAPHORE], createStore, remove, operations, renderState };
-  const preset = fair => ({
-    ...common,
-    title: `Semaphore (${fair ? 'fair' : 'nonfair'})`,
-    params: [['permits', 2]],
-    create: values => create(values.permits, fair),
-  });
-
-  return { ...common, create, nonfair: preset(false), fair: preset(true) };
+  // createStore — отдельно: его модель (waiting, state) переиспользует semaphoretask.js со своей отрисовкой
+  return { types: [SEMAPHORE], createStore, create, remove, operations, renderState };
 })();

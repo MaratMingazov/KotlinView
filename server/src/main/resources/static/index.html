@@ -27,6 +27,7 @@
     .tile-params .param { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
     .tile-params .name { color: var(--fn); }
     .tile-params input { width: 48px; }
+    .tile-params input[type=checkbox] { width: auto; margin: 0; }
     /* Как карточка на threadpoolexecutor.html: слева команды, справа визуализация */
     .tile-main { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 16px; align-items: start; }
     /* Тонкая сплошная черта между командами и визуализацией — на всю высоту плитки.
@@ -76,6 +77,8 @@
 <!-- pool.js — после synchronousqueue.js: очередь CachedThreadPool рисуется им -->
 <script src="pool.js"></script>
 <script src="semaphore.js"></script>
+<!-- semaphoretask.js — после semaphore.js: семафор задачи рисуется им -->
+<script src="semaphoretask.js"></script>
 <script>
   // Плитка — один живой объект. Пока его нет, плитка спит: только название, параметры создания и start;
   // по start объект создаётся, плитка запоминает его id и показывает только его. remove — DELETE; плитка засыпает
@@ -85,9 +88,8 @@
   // Плитка ничего не знает о конкретной структуре — всё берёт из её описания (view):
   // title, params, types, createStore(render), create(values), remove(store, id), operations, renderState(store, item),
   // renderTitleExtra?(store, item) — что показать сразу после названия
-  // Семафор — двумя плитками рядом: nonfair и fair, чтобы сравнивать (плитка умеет только числовые параметры)
   const VIEWS = [Pool.single, Pool.fixed, Pool.cached, ArrayListView, LinkedListView, BlockingQueueView, SynchronousQueueView,
-    SemaphoreView.nonfair, SemaphoreView.fair];
+    SemaphoreTaskView];
 
   // Состояние плитки: id — её объект (null — спит); seen — объект уже приходил в событиях; starting — ждём ответ на create.
   // Заголовок и поля параметров создаются один раз: спящая и живая плитка просто ставят их к себе, введённое не теряется
@@ -101,7 +103,10 @@
     tile.inputs = {};
     tile.params = KV.el('div', 'tile-params');
     for (const [name, value] of view.params) {
-      const input = Object.assign(document.createElement('input'), { type: 'number', value, min: 1 });
+      // Булев параметр (например, fair у семафора) — чекбокс, остальные — числа
+      const input = typeof value === 'boolean'
+        ? Object.assign(document.createElement('input'), { type: 'checkbox', checked: value })
+        : Object.assign(document.createElement('input'), { type: 'number', value, min: 1 });
       input.setAttribute('aria-label', name);
       input.addEventListener('keydown', e => { if (e.key === 'Enter') start(tile); });
       tile.inputs[name] = input;
@@ -121,7 +126,8 @@
     if (tile.starting || tile.id != null) return; // Enter в поле, пока ждём ответ, — не второй объект
     tile.starting = true;
     render();
-    const values = Object.fromEntries(Object.entries(tile.inputs).map(([name, input]) => [name, Number(input.value)]));
+    const values = Object.fromEntries(Object.entries(tile.inputs)
+      .map(([name, input]) => [name, input.type === 'checkbox' ? input.checked : Number(input.value)]));
     const created = await tile.view.create(values);
     tile.starting = false;
     // Объект появится в store по OBJECT_CREATED — может и раньше ответа, это не важно
