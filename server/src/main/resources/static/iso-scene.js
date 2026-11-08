@@ -155,11 +155,18 @@ const Iso = (() => {
       bounds.minY = Math.min(bounds.minY, sy); bounds.maxY = Math.max(bounds.maxY, sy);
     };
     const ground = [], shadows = [], contacts = [], objects = [], labels = [];
+    const layers = { shadows, contacts, objects, labels };
+    // Пока строится актёр (actor()), сюда указывает его собственный набор слоёв: тени, таблички и объекты — его,
+    // в начале координат, и границы сцены он не расширяет. В остальное время — null: всё идёт в слои сцены
+    let sink = null;
+    const into = name => (sink ?? layers)[name];
+    let stage = null;            // контейнеры отрисованной сцены: появляются в render(), нужны актёрам
+    const actors = new Map();
     const uid = fixedUid ?? `d${++sceneCount}`; // уникален на странице: диорам несколько
     let land = null, hud = null, labelCount = 0;
 
     // Точки мира → атрибут points; заодно расширяют границы сцены
-    const pts = list => list.map(([x, y, z]) => { const [sx, sy] = P(x, y, z); track(sx, sy); return `${sx.toFixed(1)},${sy.toFixed(1)}`; }).join(' ');
+    const pts = list => list.map(([x, y, z]) => { const [sx, sy] = P(x, y, z); if (!sink) track(sx, sy); return `${sx.toFixed(1)},${sy.toFixed(1)}`; }).join(' ');
     // Контур грани — её же цветом: так между соседними гранями нет «волосяных» щелей
     const faceStyle = (fill, opacity = 1) =>
       `fill: ${fill}; fill-opacity: ${opacity}; stroke: ${fill}; stroke-width: ${C.faceStroke}; stroke-linejoin: round`;
@@ -247,7 +254,7 @@ const Iso = (() => {
     // Круглая тень (крона, куст, лодка): эллипс, сдвинутый от основания по солнцу на высоту h
     function shadow(cx, cy, r, h = 0.4, z = 0) {
       const [sx, sy] = P(cx + SUN[0] * h, cy + SUN[1] * h, z);
-      shadows.push(svg('ellipse', { cx: sx, cy: sy, rx: r * S, ry: r * S * 0.5 }));
+      into('shadows').push(svg('ellipse', { cx: sx, cy: sy, rx: r * S, ry: r * S * 0.5 }));
     }
 
     // Тень коробки (x, y, w, d) высотой h: выпуклая оболочка основания и его копии, сдвинутой по солнцу
@@ -255,14 +262,14 @@ const Iso = (() => {
       const dx = SUN[0] * h, dy = SUN[1] * h;
       const corners = [[x, y], [x + w, y], [x + w, y + d], [x, y + d]];
       const hull = convexHull([...corners, ...corners.map(([cx, cy]) => [cx + dx, cy + dy])]);
-      shadows.push(svg('polygon', { points: pts(hull.map(([hx, hy]) => [hx, hy, z])) }));
+      into('shadows').push(svg('polygon', { points: pts(hull.map(([hx, hy]) => [hx, hy, z])) }));
       contact(x, y, w, d, z);
     }
 
     // Контактная тень: тёмная кромка прямо под основанием — объект стоит на земле, а не висит
     function contact(x, y, w, d, z = 0) {
       const e = 0.04;
-      contacts.push(svg('polygon', { points: pts([[x - e, y - e, z], [x + w + e, y - e, z], [x + w + e, y + d + e, z], [x - e, y + d + e, z]]) }));
+      into('contacts').push(svg('polygon', { points: pts([[x - e, y - e, z], [x + w + e, y - e, z], [x + w + e, y + d + e, z], [x - e, y + d + e, z]]) }));
     }
 
     // ---------- Таблички: постоянные (короткие счётчики) видны всегда, остальные — при наведении ----------
@@ -272,16 +279,42 @@ const Iso = (() => {
      * (цвет потока или машины); bar — полоска прогресса внутри { fraction, color }.
      * permanent — видна всегда («3 / 5», «✓ 17»); иначе — только при наведении на объект, к которому её привязали hover()
      */
+    // Размер и место таблички по её строкам: над якорем, по центру
+    function measure(l) {
+      const textW = Math.max(...l.lines.map((t, i) => t.length * LABEL.char * (i === 0 ? 1 : LABEL.small / LABEL.font)));
+      l.w = Math.round(textW + 2 * LABEL.padX + (l.dot ? LABEL.dot * 2 + 5 : 0));
+      l.h = l.lines.length * LABEL.lineH + 2 * LABEL.padY + (l.bar ? 8 : 0);
+      l.rect = { x: l.ax - l.w / 2, y: l.ay - LABEL.lift - l.h, w: l.w, h: l.h };
+      return l;
+    }
+
     function label(x, y, z, lines, { color, bar, permanent = false } = {}) {
       const [ax, ay] = P(x, y, z);
       const dot = color && color !== C.text ? color : null;
-      const textW = Math.max(...lines.map((l, i) => l.length * LABEL.char * (i === 0 ? 1 : LABEL.small / LABEL.font)));
-      const w = Math.round(textW + 2 * LABEL.padX + (dot ? LABEL.dot * 2 + 5 : 0));
-      const h = lines.length * LABEL.lineH + 2 * LABEL.padY + (bar ? 8 : 0);
-      const l = { id: `${uid}-l${++labelCount}`, ax, ay, w, h, lines, dot, bar, permanent, rect: { x: ax - w / 2, y: ay - LABEL.lift - h, w, h } };
-      if (permanent) { track(l.rect.x, l.rect.y); track(l.rect.x + w, l.rect.y + h); }
-      labels.push(l);
+      // id у таблички актёра — от его ключа: после перестройки актёра табличка под курсором та же
+      const id = sink ? `${uid}-a${sink.slug}-l${++sink.labelCount}` : `${uid}-l${++labelCount}`;
+      const l = measure({ id, ax, ay, lines, dot, bar, permanent });
+      if (permanent && !sink) { track(l.rect.x, l.rect.y); track(l.rect.x + l.w, l.rect.y + l.h); }
+      into('labels').push(l);
       return l;
+    }
+
+    /**
+     * Заменить текст таблички на отрисованной сцене (счётчик «2 / 5», табличка бокса): узел перестраивается на месте,
+     * видимость — как была. options — { color, bar }: если переданы, меняются и они
+     */
+    function relabel(l, lines, options = {}) {
+      if ('color' in options) l.dot = options.color && options.color !== C.text ? options.color : null;
+      if ('bar' in options) l.bar = options.bar;
+      l.lines = lines;
+      measure(l);
+      if (stage && !l.inActor) clamp(l, stage.vb);
+      const old = l.node;
+      if (!old) return;
+      const shown = old.style.display !== 'none';
+      const fresh = labelNode(l);
+      fresh.style.display = shown ? '' : 'none';
+      old.replaceWith(fresh);
     }
 
     // Объект показывает табличку при наведении: на узел вешается ссылка, обработчик — один на сцену (wireHover)
@@ -291,8 +324,16 @@ const Iso = (() => {
       return node;
     }
 
-    // Заголовок диорамы в углу — вместо табличек, плавающих над сценой
+    // Заголовок диорамы в углу — вместо табличек, плавающих над сценой. retitle — то же на уже отрисованной сцене
+    let hudG = null;
     const title = lines => { hud = lines; };
+    function retitle(lines) {
+      hud = lines;
+      if (!stage || !hudG) return;
+      const fresh = hudNode(stage.vb);
+      hudG.replaceWith(fresh);
+      hudG = fresh;
+    }
 
     // Табличка целиком внутри viewBox: у края сцены всплывающая не уезжает за рамку
     function clamp(l, vb) {
@@ -304,6 +345,7 @@ const Iso = (() => {
     function labelNode(l) {
       const { x, y, w, h } = l.rect, L = C.label;
       const g = svg('g', { id: l.id, class: l.permanent ? 'dlabel permanent' : 'dlabel', style: `pointer-events: none${l.permanent ? '' : '; display: none'}` });
+      l.node = g;
       // Хвостик к якорю — если табличку не пришлось сдвигать у края
       if (Math.abs(l.ax - (x + w / 2)) < w / 2 - 6) {
         g.append(svg('polygon', { points: `${l.ax - 5},${y + h - 1} ${l.ax + 5},${y + h - 1} ${l.ax},${y + h + 6}`, style: `fill: ${L.bg}` }));
@@ -369,7 +411,7 @@ const Iso = (() => {
 
     // ---------- Сборка ----------
 
-    const add = (depth, node) => objects.push({ depth, node });
+    const add = (depth, node) => into('objects').push({ depth, node });
     const setLand = polygon => { land = polygon; };
     const onLand = (x, y) => !land || inside(land, x, y);
 
@@ -404,23 +446,101 @@ const Iso = (() => {
       const root = svg('svg', { viewBox: `${vb.x} ${vb.y} ${vb.w} ${vb.h}`, width: '100%', class: 'diorama' });
       root.append(defs(), svg('rect', { x: vb.x, y: vb.y, width: vb.w, height: vb.h, rx: 6, style: `fill: url(#${uid}-water)` }));
       root.append(...ground);
-      root.append(shadowLayer(shadows, C.shadow, `${uid}-soft`), shadowLayer(contacts, Math.min(C.shadow * 1.8, 0.5), `${uid}-contact`));
-      root.append(...objects.sort((a, b) => a.depth - b.depth).map(o => o.node));
+      const shadowsG = shadowLayer(shadows, C.shadow, `${uid}-soft`), contactsG = shadowLayer(contacts, Math.min(C.shadow * 1.8, 0.5), `${uid}-contact`);
+      root.append(shadowsG, contactsG);
+      // Объекты — по глубине; глубина запомнена на узле: по ней между ними встают движущиеся актёры
+      const objectsG = svg('g', { class: 'objects' });
+      for (const o of objects.sort((a, b) => a.depth - b.depth)) { o.node.__depth = o.depth; objectsG.append(o.node); }
+      root.append(objectsG);
       // Таблички — поверх всего; всплывающие не выходят за рамку
       for (const l of labels) clamp(l, vb);
-      root.append(...[...labels].sort((a, b) => a.ay - b.ay).map(labelNode));
-      if (hud) root.append(hudNode(vb));
+      const labelsG = svg('g', { class: 'labels' });
+      labelsG.append(...[...labels].sort((a, b) => a.ay - b.ay).map(labelNode));
+      root.append(labelsG);
+      if (hud) { hudG = hudNode(vb); root.append(hudG); }
       wireHover(root, options);
+      stage = { root, vb, shadowsG, contactsG, objectsG, labelsG };
       return root;
     }
 
-    return {
-      P, S, pts, faceStyle, ground, add, setLand, onLand, render,
+    // ---------- Актёры: движущиеся объекты поверх неподвижной сцены ----------
+
+    // Поставить узел в контейнер объектов по глубине: перед первым, кто глубже. Если место не изменилось — не трогать DOM
+    function place(node, depth) {
+      node.__depth = depth;
+      const parent = stage.objectsG;
+      const prev = node.previousSibling, next = node.nextSibling;
+      if (node.parentNode === parent && (!prev || prev.__depth <= depth) && (!next || next.__depth >= depth)) return;
+      let before = null;
+      for (const child of parent.children) {
+        if (child !== node && child.__depth > depth) { before = child; break; }
+      }
+      parent.insertBefore(node, before);
+    }
+
+    /**
+     * Актёр — объект, который двигается (машина). build(s) рисует его теми же примитивами, но в начале координат
+     * (x = y = z = 0) и в его собственные слои: тень, контактная тень, таблички. Строится один раз; moveTo(x, y, z)
+     * сдвигает всё вместе через transform — изометрия линейна, сдвиг в мире — это просто сдвиг на экране.
+     * Глубина актёра = глубина его объектов в начале координат + x + y: по ней он встаёт между неподвижными.
+     * Вызывать после render(). key — постоянный ключ (id задачи, имя потока): от него id табличек
+     */
+    function actor(key, build) {
+      if (!stage) throw new Error('actor(): сначала render() — актёры живут на отрисованной сцене');
+      if (actors.has(key)) return actors.get(key);
+      sink = { shadows: [], contacts: [], objects: [], labels: [], slug: String(key).replace(/[^\w-]/g, '_'), labelCount: 0 };
+      let own;
+      try { build(scene); } finally { own = sink; sink = null; }
+
+      const node = svg('g', { class: 'actor' });
+      own.objects.sort((a, b) => a.depth - b.depth).forEach(o => node.append(o.node));
+      const baseDepth = own.objects.length ? own.objects[0].depth : 0;
+      const shadowNode = svg('g'), contactNode = svg('g'), labelGroup = svg('g');
+      shadowNode.append(...own.shadows);
+      contactNode.append(...own.contacts);
+      for (const l of own.labels) l.inActor = true;
+      labelGroup.append(...own.labels.map(labelNode));
+      stage.shadowsG.append(shadowNode);
+      stage.contactsG.append(contactNode);
+      stage.labelsG.append(labelGroup);
+
+      const a = {
+        key, x: 0, y: 0, z: 0, depth: baseDepth,
+        // Тени — на земле: при подъёме (z) остаются под актёром, а не взлетают вместе с ним
+        moveTo(x, y, z = 0) {
+          Object.assign(a, { x, y, z });
+          const [sx, sy] = P(x, y, z), [gx, gy] = P(x, y, 0);
+          const t = `translate(${sx.toFixed(2)} ${sy.toFixed(2)})`, tg = `translate(${gx.toFixed(2)} ${gy.toFixed(2)})`;
+          node.setAttribute('transform', t);
+          labelGroup.setAttribute('transform', t);
+          shadowNode.setAttribute('transform', tg);
+          contactNode.setAttribute('transform', tg);
+          a.depth = baseDepth + x + y;
+          place(node, a.depth);
+          return a;
+        },
+        // Скрыть или показать целиком — с тенями и табличками (у машины три модели, видна одна)
+        show(visible) {
+          for (const n of [node, shadowNode, contactNode, labelGroup]) n.style.display = visible ? '' : 'none';
+          return a;
+        },
+        remove() {
+          for (const n of [node, shadowNode, contactNode, labelGroup]) n.remove();
+          actors.delete(key);
+        },
+      };
+      actors.set(key, a);
+      return a.moveTo(0, 0, 0);
+    }
+
+    const scene = {
+      P, S, pts, faceStyle, ground, add, setLand, onLand, render, actor, actors,
       box, prism, disc, panel, gableRoof, flat, line,
       shadow, castShadow, contact,
-      label, hover, title,
+      label, relabel, hover, title, retitle,
       shore: null, shoreCenter: null, // контур берега и центр острова — их задаёт island() в iso-objects.js
     };
+    return scene;
   }
 
   return { svg, shade, mix, hsl, threadColor, PALETTE, createScene, inside, blob, scaled, roundedRect, rng };

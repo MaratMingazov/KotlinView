@@ -107,8 +107,9 @@ const IsoObjects = (() => {
     for (let x = x0 + 0.15; x < x1; x += 0.3) g.append(s.line([x, y0 - 0.15, deck + 0.1], [x, y1 + 0.15, deck + 0.1], shade(C.wood, -0.18)));
     g.append(s.box(x0, y0 - 0.15, deck + 0.1, x1 - x0, 0.06, 0.22, shade(C.wood, -0.08)));
     s.ground.push(g);
-    // Ближние перила — объектом: машины на мосту должны быть за ними
-    s.add(x0 + y1 + 0.2, s.box(x0, y1 + 0.09, deck + 0.1, x1 - x0, 0.06, 0.22, shade(C.wood, -0.08)));
+    // Ближние перила — объектом: машины на мосту должны быть за ними. Глубина — по дальнему концу:
+    // по ближнему машина у середины моста оказывалась «глубже» и рисовалась поверх перил
+    s.add(x1 + y1 + 0.2, s.box(x0, y1 + 0.09, deck + 0.1, x1 - x0, 0.06, 0.22, shade(C.wood, -0.08)));
   }
 
   // «Зебра»: полосы вдоль движения, через всю ширину дороги
@@ -139,7 +140,7 @@ const IsoObjects = (() => {
   function sign(s, x, y, text, color) {
     s.castShadow(x, y, 0.08, 0.08, 0.9);
     s.add(x + y + 0.2, s.box(x, y, 0, 0.08, 0.08, 0.9, C.post));
-    s.label(x + 0.04, y + 0.04, 0.95, [text], { color, permanent: true });
+    return s.label(x + 0.04, y + 0.04, 0.95, [text], { color, permanent: true });
   }
 
   // ---------- Машины ----------
@@ -173,55 +174,166 @@ const IsoObjects = (() => {
     return node;
   }
 
+  const CAR = { L: 0.92, W: 0.52 }; // длина и ширина машины (клетки)
+
+  /**
+   * Машина вдоль y — для въезда в бокс и выезда из него. facing: '-y' — едет от зрителя (к нам задом: видны красные
+   * фонари), '+y' — к зрителю (видны фары). Колёса — на ближнем боку +x. Основание: x … x + W, y … y + L
+   */
+  function carNodeY(s, x, y, color, { faded = false, rack = false, facing = '-y' } = {}) {
+    const g = svg('g'), body = faded ? mix(color, C.sand, 0.45) : color, { L, W } = CAR;
+    g.append(s.prism(roundedRect(x, y, W, L, 0.13), 0.1, 0.22, body));
+    g.append(s.prism(roundedRect(x + 0.07, y + 0.21, W - 0.14, 0.5, 0.1), 0.32, 0.14, C.glass));
+    g.append(s.prism(roundedRect(x + 0.08, y + 0.22, W - 0.16, 0.48, 0.1), 0.46, 0.04, body));
+    if (rack) g.append(s.box(x + 0.13, y + 0.3, 0.5, W - 0.26, 0.32, 0.05, shade(body, -0.35)));
+    for (const wy of [y + 0.2, y + L - 0.2]) {
+      g.append(s.disc(x + W + 0.005, wy, 0.11, 0.1, 'x', C.wheel), s.disc(x + W + 0.01, wy, 0.11, 0.04, 'x', shade(C.wheel, 0.5)));
+    }
+    const light = facing === '+y' ? '#fff5c8' : C.fail;
+    for (const wx of [x + 0.13, x + W - 0.13]) g.append(s.disc(wx, y + L + 0.005, 0.22, 0.045, 'y', light));
+    return g;
+  }
+
+  /**
+   * Модель машины для актёра: вокруг начала координат (центр машины — в 0, 0), в ориентации dir:
+   * 'x' — вдоль дороги, 'y-' — в бокс, 'y+' — из бокса. Тень и табличка — свои у каждой модели
+   */
+  function carModel(s, color, dir, { faded, rack, label } = {}) {
+    const { L, W } = CAR;
+    if (dir === 'x') { car(s, -L / 2, -W / 2, color, { faded, rack, label }); return; }
+    const x = -W / 2, y = -L / 2;
+    s.castShadow(x + 0.04, y + 0.04, W - 0.08, L - 0.08, 0.45);
+    const node = carNodeY(s, x, y, color, { faded, rack, facing: dir === 'y+' ? '+y' : '-y' });
+    if (label) s.hover(node, s.label(0, 0, 0.62, label.lines, label));
+    s.add(x + y + 0.7, node);
+  }
+
+  // Плавный разгон и торможение на всём маршруте
+  const easeInOut = t => t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+
+  // Направление перегона → модель машины: по дороге (+x), в бокс (−y), из бокса (+y)
+  const dirOf = (dx, dy) => Math.abs(dx) >= Math.abs(dy) ? 'x' : dy < 0 ? 'y-' : 'y+';
+
+  /**
+   * Машина-актёр на отрисованной сцене s: три модели (dir), видна одна. Позиция — центр машины.
+   * go(points) — проехать через точки [x, y] с постоянной скоростью (speed клеток в секунду), но не быстрее minMs:
+   * даже короткий перегон виден глазу. Плавный разгон и торможение. update(now) — на каждом кадре; true — ещё едет
+   */
+  function carActor(s, key, color, options = {}) {
+    const models = Object.fromEntries(['x', 'y-', 'y+'].map(dir => [dir, s.actor(`${key}~${dir}`, sc => carModel(sc, color, dir, options))]));
+    let dir = null, route = null;
+    const pos = { x: 0, y: 0 };
+
+    function moveTo(x, y, d = dir ?? 'x') {
+      Object.assign(pos, { x, y });
+      if (d !== dir) {
+        for (const [k, m] of Object.entries(models)) m.show(k === d);
+        dir = d;
+      }
+      models[d].moveTo(x, y);
+    }
+
+    function go(points, { speed = 6, minMs = 450, now = performance.now() } = {}) {
+      const path = [[pos.x, pos.y], ...points];
+      const legs = [];
+      let total = 0;
+      for (let i = 1; i < path.length; i++) {
+        const [x0, y0] = path[i - 1], [x1, y1] = path[i];
+        const len = Math.hypot(x1 - x0, y1 - y0);
+        if (len < 1e-6) continue;
+        legs.push({ x0, y0, x1, y1, len, from: total, dir: dirOf(x1 - x0, y1 - y0) });
+        total += len;
+      }
+      route = legs.length ? { legs, total, start: now, ms: Math.max((total / speed) * 1000, minMs) } : null;
+    }
+
+    function update(now = performance.now()) {
+      if (!route) return false;
+      const k = Math.min((now - route.start) / route.ms, 1);
+      const at = easeInOut(k) * route.total;
+      const leg = route.legs.find(l => at <= l.from + l.len) ?? route.legs.at(-1);
+      const f = Math.min((at - leg.from) / leg.len, 1);
+      moveTo(leg.x0 + (leg.x1 - leg.x0) * f, leg.y0 + (leg.y1 - leg.y0) * f, leg.dir);
+      if (k >= 1) route = null;
+      return route != null;
+    }
+
+    function remove() { for (const m of Object.values(models)) m.remove(); }
+
+    moveTo(0, 0, 'x');
+    return { key, pos, moveTo, go, update, remove, get moving() { return route != null; }, get dir() { return dir; } };
+  }
+
   // ---------- Постройки ----------
 
   /**
    * Автомойка: одно здание с воротами на каждый бокс, двускатная крыша, над воротами полосатые маркизы цветом потока,
-   * над крышей — пузыри. Внутри боксов видны машины-задачи. Порядок внутри группы — от дальнего к ближнему:
-   * пол и задняя стена → перегородки → машины → передние простенки и перемычка → правая стена → крыша → маркизы.
-   * workers — [{ name, task }]: name = null — свободный бокс (потока ещё нет: пул создаёт их лениво), маркиза нейтральная;
-   * task = null — воркер есть, но ждёт задачу (бокс пуст). labelOf(worker) — табличка бокса { lines, color, bar }:
-   * одна на машину и маркизу
+   * над крышей — пузыри. Здание — два объекта разной глубины, чтобы машина в боксе (в том числе едущая, актёр)
+   * вставала между ними: «зад» (пол, задняя стена, перегородки) → машины → «перёд» (простенки и перемычка, торец,
+   * крыша, маркизы). workers — [{ name, task }]: name = null — свободный бокс (потока ещё нет: пул создаёт их лениво),
+   * маркиза нейтральная; task = null — воркер есть, но ждёт задачу (бокс пуст). labelOf(worker) — табличка бокса
+   * { lines, color, bar }: одна на машину и маркизу.
+   * Возвращает геометрию боксов (ворота, место машины) и paintBay — перекрасить маркизу и табличку на живой сцене
    */
   function washHouse(s, x0, y0, workers, labelOf) {
     const BAY = 1.85, D = 1.9, H = 1.25, GATE = 0.95, T = 0.12;
-    const W = workers.length * BAY + T, yf = y0 + D, g = svg('g');
-    // Внутри темнее, чем снаружи: так проёмы ворот читаются как проёмы
-    g.append(s.box(x0, y0, 0, W, D, 0.04, shade(C.pad, -0.25)));
-    g.append(s.box(x0, y0, 0, W, T, H, shade(C.building, -0.3)));
-    for (let i = 0; i <= workers.length; i++) g.append(s.box(x0 + i * BAY, y0, 0, T, D - T, H, shade(C.building, -0.2)));
-    // Машина — ближе к воротам: в глубине её закрыли бы перемычка и простенки
+    const W = workers.length * BAY + T, yf = y0 + D;
+    const carX = i => x0 + i * BAY + (BAY - CAR.L) / 2 + T / 2, carY = yf - 0.85; // машина — ближе к воротам
+
+    // Зад. Внутри темнее, чем снаружи: так проёмы ворот читаются как проёмы
+    const back = svg('g');
+    back.append(s.box(x0, y0, 0, W, D, 0.04, shade(C.pad, -0.25)));
+    back.append(s.box(x0, y0, 0, W, T, H, shade(C.building, -0.3)));
+    for (let i = 0; i <= workers.length; i++) back.append(s.box(x0 + i * BAY, y0, 0, T, D - T, H, shade(C.building, -0.2)));
+    s.add(x0 + y0, back);
+
+    // Машины в боксах (снимок) — между задом и передом, как и машины-актёры
     const bayLabels = workers.map((w, i) => { const l = labelOf(w); return s.label(x0 + i * BAY + BAY / 2, yf + 0.15, H, l.lines, l); });
     workers.forEach((w, i) => {
-      if (w.task) g.append(s.hover(carNode(s, x0 + i * BAY + (BAY - 0.92) / 2 + T / 2, yf - 0.85, carColor(w.task.id)), bayLabels[i]));
+      if (w.task) s.add(carX(i) + carY + 0.7, s.hover(carNode(s, carX(i), carY, carColor(w.task.id)), bayLabels[i]));
     });
-    // Перед: перемычка над воротами и простенки между ними
-    g.append(s.box(x0, yf - T, GATE, W, T, H - GATE, C.building));
-    for (let i = 0; i <= workers.length; i++) g.append(s.box(x0 + i * BAY, yf - T, 0, T, T, GATE, C.building));
-    g.append(s.box(x0 + W - T, y0, 0, T, D, H, C.building));
-    g.append(s.panel('x', x0 + W + 0.003, y0 + 0.6, y0 + 1.3, 0.45, 0.85, C.glass)); // окошко в торце
-    g.append(s.gableRoof(x0, y0, W, D, H, 0.4, C.roof, 0.1));
+
+    // Перёд: перемычка над воротами, простенки между ними, торец с окошком, крыша
+    const front = svg('g');
+    front.append(s.box(x0, yf - T, GATE, W, T, H - GATE, C.building));
+    for (let i = 0; i <= workers.length; i++) front.append(s.box(x0 + i * BAY, yf - T, 0, T, T, GATE, C.building));
+    front.append(s.box(x0 + W - T, y0, 0, T, D, H, C.building));
+    front.append(s.panel('x', x0 + W + 0.003, y0 + 0.6, y0 + 1.3, 0.45, 0.85, C.glass));
+    front.append(s.gableRoof(x0, y0, W, D, H, 0.4, C.roof, 0.1));
     // Маркизы: короткая наклонная полосатая ткань на перемычке, выше проёма — ворота не закрывает.
     // Полосы — цвет потока и белый: какой бокс чей, видно издалека
-    workers.forEach((w, i) => {
+    const stripeStyle = (color, k) => `fill: ${k % 2 ? '#fffaf0' : color}; stroke: ${shade(color, -0.2)}; stroke-width: .5`;
+    const awnings = workers.map((w, i) => {
       const color = w.name ? threadColor(w.name) : FREE_BAY, a0 = x0 + i * BAY + T, a1 = a0 + BAY - T, n = 6;
       const top = H - 0.02, low = H - 0.17, out = 0.3, awning = svg('g');
       for (let k = 0; k < n; k++) {
         const u0 = a0 + (a1 - a0) * (k / n), u1 = a0 + (a1 - a0) * ((k + 1) / n);
-        awning.append(svg('polygon', { points: s.pts([[u0, yf, top], [u1, yf, top], [u1, yf + out, low], [u0, yf + out, low]]),
-          style: `fill: ${k % 2 ? '#fffaf0' : color}; stroke: ${shade(color, -0.2)}; stroke-width: .5` }));
+        awning.append(svg('polygon', { points: s.pts([[u0, yf, top], [u1, yf, top], [u1, yf + out, low], [u0, yf + out, low]]), style: stripeStyle(color, k) }));
       }
-      g.append(s.hover(awning, bayLabels[i]));
+      front.append(s.hover(awning, bayLabels[i]));
+      return awning;
     });
     // Пузыри над крышей — «тут моют»
     for (const [bx, bz, r] of [[0.25, 0.3, 5], [0.55, 0.55, 3.5], [0.75, 0.25, 4], [0.4, 0.8, 2.5]]) {
       const [sx, sy] = s.P(x0 + W * bx, y0 + D / 2, H + 0.5 + bz);
-      g.append(svg('circle', { cx: sx, cy: sy, r, style: 'fill: #ffffff; opacity: .75; stroke: #bfe3f2; stroke-width: 1' }));
+      front.append(svg('circle', { cx: sx, cy: sy, r, style: 'fill: #ffffff; opacity: .75; stroke: #bfe3f2; stroke-width: 1' }));
     }
     // Тень — по солнцу, вправо за торец: эллипс под центром ложился тёмным пятном на дорогу
     s.castShadow(x0, y0, W, D, H + 0.25);
-    s.add(x0 + y0 + W + D - 1, g);
-    return { bayCenter: i => [x0 + i * BAY + BAY / 2, yf], width: W };
+    s.add(x0 + y0 + W + D, front);
+
+    return {
+      width: W,
+      bayCenter: i => [x0 + i * BAY + BAY / 2, yf],              // середина ворот бокса i
+      parkAt: i => [carX(i) + CAR.L / 2, carY + CAR.W / 2],      // центр машины в боксе i
+      // Живая сцена: поток в боксе сменился (или появился) — перекрасить маркизу, поменять табличку
+      paintBay(i, worker) {
+        const color = worker.name ? threadColor(worker.name) : FREE_BAY;
+        [...awnings[i].children].forEach((stripe, k) => stripe.setAttribute('style', stripeStyle(color, k)));
+        const l = labelOf(worker);
+        s.relabel(bayLabels[i], l.lines, { color: l.color, bar: l.bar });
+      },
+    };
   }
 
   // Домик: стены, дверь и окна на ближних гранях, двускатная крыша. label — табличка при наведении
@@ -257,17 +369,29 @@ const IsoObjects = (() => {
     const light = svg('g');
     s.castShadow(x - 0.3, -0.6, 0.08, 0.08, 1.9);
     light.append(s.box(x - 0.3, -0.6, 0, 0.08, 0.08, 1.3, '#4a4a4a'), s.box(x - 0.38, -0.66, 1.3, 0.24, 0.2, 0.6, '#2b2b2b'));
-    const lamp = (z, color, on) => {
+    // Лампа: свечение и ядро; горит — свечение видно и ядро яркое, погашена — только тусклое ядро
+    const lamp = (z, color) => {
       const [cx, cy] = s.P(x - 0.26, -0.46, z);
-      if (on) light.append(svg('circle', { cx, cy, r: 9, style: `fill: ${color}; opacity: .35` }));
-      light.append(svg('circle', { cx, cy, r: 5, style: `fill: ${color}; opacity: ${on ? 1 : 0.25}` }));
+      const glow = svg('circle', { cx, cy, r: 9, style: `fill: ${color}; opacity: .35` });
+      const core = svg('circle', { cx, cy, r: 5, style: `fill: ${color}` });
+      light.append(glow, core);
+      return on => { glow.style.display = on ? '' : 'none'; core.style.opacity = on ? 1 : 0.25; };
     };
-    lamp(1.75, C.fail, !free);
-    lamp(1.5, C.ok, free);
+    const red = lamp(1.75, C.fail), green = lamp(1.5, C.ok);
     const color = free ? C.ok : C.fail;
-    s.label(x - 0.26, -0.56, 2.05, [counter], { color, permanent: true });
-    s.hover(light, s.label(x - 0.26, -0.56, 2.05, details, { color }));
+    const counterLabel = s.label(x - 0.26, -0.56, 2.05, [counter], { color, permanent: true });
+    const detailsLabel = s.label(x - 0.26, -0.56, 2.05, details, { color });
+    s.hover(light, detailsLabel);
     s.add(x - 1, light);
+    // Живая сцена: переключить лампы и обновить числа на месте
+    const set = (isFree, counterText, detailLines) => {
+      red(!isFree); green(isFree);
+      const c = isFree ? C.ok : C.fail;
+      s.relabel(counterLabel, [counterText], { color: c });
+      s.relabel(detailsLabel, detailLines, { color: c });
+    };
+    red(!free); green(free);
+    return { set };
   }
 
   // ---------- Площадка: скамейка, фонарь, штакетник ----------
@@ -402,6 +526,6 @@ const IsoObjects = (() => {
 
   return {
     carColor, island, road, zebra, stopLine, slot, paved, sign,
-    car, washHouse, house, barrierGate, trafficLight, bench, streetLamp, picket, decorate,
+    car, carActor, CAR, washHouse, house, barrierGate, trafficLight, bench, streetLamp, picket, decorate,
   };
 })();

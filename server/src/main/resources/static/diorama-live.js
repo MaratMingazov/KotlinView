@@ -2,14 +2,13 @@
  * Живые диорамы для twin.html: снимок для сцены (diorama.js) собирается из store плитки рядом (tiles.js),
  * то есть из тех же событий WebSocket. Своей модели и своего сокета у диорамы нет — это второй взгляд на тот же объект.
  *
- * Этап 1 — живое зеркало: сцена перерисовывается целиком на каждое событие и по таймеру (растут полоски прогресса).
- * Машины пока не едут, а перескакивают между местами.
+ * Сцена (остров, дороги, здания) строится один раз; машины — актёры: едут по маршрутам к своим местам из снимка
+ * (fleet). Счётчики, шапка, маркизы боксов и светофор меняются на месте. Кадры — только пока кто-то едет.
  *
  * Подключение: после pool.js, semaphoretask.js, tiles.js и трёх файлов диорам. Всё лежит в объекте DioramaLive.
  */
 const DioramaLive = (() => {
   const EXIT_MS = 1500; // сколько только что выполненная задача видна на выезде мойки
-  const TICK_MS = 250;  // перерисовка по таймеру, пока плитка живая: полоски прогресса растут между событиями
 
   const progressOf = (run, durationMs) => durationMs ? Math.min((performance.now() - run.startedAt) / durationMs, 1) : 0;
 
@@ -89,47 +88,194 @@ const DioramaLive = (() => {
 
   const idleSemaphore = permits => ({ permits, available: permits, taskId: '?', taskDuration: '?', inside: [], waiting: [] });
 
-  // ---------- Панель: диорама рядом с плиткой ----------
+  // ---------- Машины: цели и маршруты ----------
+
+  const sameTarget = (a, b) => a && b && a.kind === b.kind && a.i === b.i;
 
   /**
-   * Панель для плитки tile: перерисовывает сцену из снимка на каждое update() и по таймеру, пока плитка живая.
-   * draw(snapshot, options) — Diorama.carWash / Diorama.barrier; snapshotOf(tile) — снимок (живой или «не запущен»).
-   * Табличка под курсором переживает перерисовку: стабильный uid сцены и запомненный id таблички
+   * Актёры-машины одной живой сцены. Каждая машина — по ключу (id задачи или имя потока) и живёт, пока её ключ
+   * есть в снимке. sync(targets) — Map ключ → цель { kind, i }: новой машине — въезд по мосту, у кого цель сменилась —
+   * новый маршрут, кого в снимке больше нет — на выезд и за мост, там исчезает.
+   * pathTo(car, target) — точки маршрута от текущего места до цели (у каждой сцены свои)
    */
-  function panel(draw, snapshotOf, uid) {
-    const el = KV.el('div', 'diorama-panel');
-    let hover = null, tile = null, timer = null;
-    const onHover = id => { hover = id; };
+  function fleet(stage, pathTo, colorOf, labelOf) {
+    const cars = new Map(); // ключ → { car, target, leaving }
 
-    function paint() {
-      if (!tile) return;
-      el.replaceChildren(draw(snapshotOf(tile), { scene: { uid }, render: { hover, onHover } }));
+    function sync(targets, now = performance.now()) {
+      for (const [key, target] of targets) {
+        let entry = cars.get(key);
+        if (!entry) {
+          const color = colorOf(key);
+          const car = IsoObjects.carActor(stage.s, `car-${key}`, color, { label: { lines: labelOf(key), color } });
+          car.moveTo(...stage.points.entry, 'x');
+          entry = { car, target: null, leaving: false };
+          cars.set(key, entry);
+        }
+        if (entry.leaving || !sameTarget(entry.target, target)) {
+          Object.assign(entry, { target, leaving: false });
+          entry.car.go(pathTo(entry.car, target), { now });
+        }
+      }
+      for (const [key, entry] of cars) {
+        if (targets.has(key) || entry.leaving) continue;
+        Object.assign(entry, { target: { kind: 'exit' }, leaving: true });
+        entry.car.go(pathTo(entry.car, entry.target), { now });
+      }
     }
 
-    function update(t) {
-      tile = t;
-      paint();
-      const live = Tiles.itemOf(t) != null;
-      if (live && !timer) timer = setInterval(paint, TICK_MS);
-      if (!live && timer) { clearInterval(timer); timer = null; }
+    // Кадр: сдвинуть всех; доехавших до выезда — убрать. true — кто-то ещё едет
+    function tick(now) {
+      let moving = false;
+      for (const [key, entry] of cars) {
+        const still = entry.car.update(now);
+        if (!still && entry.leaving) { entry.car.remove(); cars.delete(key); continue; }
+        moving ||= still;
+      }
+      return moving;
+    }
+
+    return { sync, tick, get size() { return cars.size; } };
+  }
+
+  // Маршрут по полосе: если машина не на полосе (в боксе) — сначала выехать на неё. Порог 0.3: место на площадке
+  // у шлагбаума чуть в стороне от полосы (0.15) — оттуда сразу по диагонали, без рывка поперёк и смены модели машины
+  function viaLane(car, lane, points) {
+    const out = Math.abs(car.pos.y - lane) > 0.3 ? [[car.pos.x, lane]] : [];
+    return [...out, ...points];
+  }
+
+  // ---------- Живая мойка ----------
+
+  /**
+   * Мойка для плитки пула: сцена на столько боксов, сколько maximumPoolSize (или поле nThreads, пока пул спит).
+   * Машина-задача: в очереди — на своём слоте, у воркера — в его боксе, выполнена — уезжает
+   */
+  function washStage(bays, uid) {
+    const stage = Diorama.liveWash(bays, { scene: { uid } }), P = stage.points;
+    const pathTo = (car, t) => {
+      if (t.kind === 'bay') {
+        // Уже в этом боксе — стоять; иначе — по полосе к его воротам и внутрь
+        const [bx, by] = P.bay(t.i);
+        if (Math.abs(car.pos.x - bx) < 0.05 && Math.abs(car.pos.y - by) < 0.05) return [];
+        return viaLane(car, P.lane, [P.gate(t.i), [bx, by]]);
+      }
+      if (t.kind === 'slot') return viaLane(car, P.lane, [P.slot(t.i)]);
+      return viaLane(car, P.lane, [P.exit]);
+    };
+    const cars = fleet(stage, pathTo, key => IsoObjects.carColor(key), key => [`task #${key}`]);
+    let bayKeys = [];
+
+    function update(snap) {
+      stage.setTitle(snap.title);
+      stage.setQueue(snap.queue.length, snap.queueCapacity);
+      stage.setDone(snap.doneCount);
+      // Маркиза и табличка бокса — по его потоку (перекрашивать, только когда поток в боксе сменился)
+      snap.workers.slice(0, bays).forEach((w, i) => {
+        const key = `${w.name}|${w.task?.id ?? ''}`;
+        if (bayKeys[i] !== key) { bayKeys[i] = key; stage.paintBay(i, w); }
+      });
+      const targets = new Map();
+      snap.queue.slice(0, Diorama.LIMITS.slots).forEach((t, i) => targets.set(t.id, { kind: 'slot', i }));
+      snap.workers.slice(0, bays).forEach((w, i) => { if (w.task) targets.set(w.task.id, { kind: 'bay', i }); });
+      cars.sync(targets);
+    }
+
+    return { root: stage.root, update, tick: now => cars.tick(now) };
+  }
+
+  // ---------- Живой шлагбаум ----------
+
+  /**
+   * Шлагбаум для плитки семафора: машина-поток ждёт у шлагбаума в порядке прихода, прошла acquire — едет на площадку
+   * к домику (место за ней закреплено, пока она там), закончила — уезжает
+   */
+  function barrierStage(permits, uid) {
+    const stage = Diorama.liveBarrier(permits, { scene: { uid } }), P = stage.points;
+    const pathTo = (car, t) => {
+      if (t.kind === 'wait') return viaLane(car, P.lane, [P.wait(t.i)]);
+      if (t.kind === 'spot') return viaLane(car, P.lane, [P.gate, P.spot(t.i)]);
+      return viaLane(car, P.lane, [P.exit]);
+    };
+    const cars = fleet(stage, pathTo, key => Iso.threadColor(key), key => [key]);
+    const spots = new Map(); // поток → место на площадке: не перескакивать, когда соседний уехал
+
+    function update(snap) {
+      stage.setTitle([`Semaphore(${snap.permits})`, `guarding task #${snap.taskId} · ${snap.waiting.length} waiting`]);
+      stage.setLight(snap.available, snap.permits, snap.waiting.length);
+      const inside = snap.inside.slice(0, Diorama.LIMITS.inside).map(r => r.name);
+      for (const name of spots.keys()) if (!inside.includes(name)) spots.delete(name);
+      for (const name of inside) {
+        if (spots.has(name)) continue;
+        const taken = new Set(spots.values());
+        let i = 0; while (taken.has(i)) i++;
+        spots.set(name, i);
+      }
+      const targets = new Map();
+      snap.waiting.slice(0, Diorama.LIMITS.waiting).forEach((name, i) => targets.set(name, { kind: 'wait', i }));
+      for (const [name, i] of spots) targets.set(name, { kind: 'spot', i });
+      cars.sync(targets);
+    }
+
+    return { root: stage.root, update, tick: now => cars.tick(now) };
+  }
+
+  // ---------- Панель: живая диорама рядом с плиткой ----------
+
+  /**
+   * Панель для плитки: сцена строится, когда меняется её «форма» (shapeOf: объект плитки, число боксов / разрешений),
+   * и обновляется снимком на каждое update(tile). Кадры (requestAnimationFrame) — только пока кто-то едет
+   */
+  function panel({ shapeOf, build, snapshotOf }) {
+    const el = KV.el('div', 'diorama-panel');
+    let stage = null, shape = null, frame = null;
+
+    const loop = now => {
+      frame = stage?.tick(now) ? requestAnimationFrame(loop) : null;
+    };
+
+    function update(tile) {
+      const next = shapeOf(tile);
+      if (next.key !== shape?.key) {
+        shape = next;
+        stage = build(next);
+        el.replaceChildren(stage.root);
+      }
+      stage.update(snapshotOf(tile));
+      if (!frame) frame = requestAnimationFrame(loop);
     }
 
     return { el, update };
   }
 
-  // Готовые панели для двух плиток twin.html
-  const poolPanel = () => panel(Diorama.carWash, tile => {
-    const pool = Tiles.itemOf(tile);
-    if (pool?.state) return poolSnapshot(tile.store, pool);
-    const bays = Math.min(Number(tile.inputs.nThreads?.value) || 1, Diorama.LIMITS.bays);
-    return idlePool(bays);
-  }, 'twin-pool');
+  const fieldValue = (tile, name, max) => Math.min(Math.max(Number(tile.inputs[name]?.value) || 1, 1), max);
 
-  const semaphorePanel = () => panel(Diorama.barrier, tile => {
-    const item = Tiles.itemOf(tile);
-    if (item?.semaphoreId != null) return semaphoreSnapshot(tile.store, item);
-    return idleSemaphore(Math.min(Number(tile.inputs.permits?.value) || 1, Diorama.LIMITS.inside));
-  }, 'twin-sem');
+  const poolPanel = () => panel({
+    shapeOf: tile => {
+      const pool = Tiles.itemOf(tile);
+      const bays = pool?.state ? Math.min(pool.state.maximumPoolSize, Diorama.LIMITS.bays) : fieldValue(tile, 'nThreads', Diorama.LIMITS.bays);
+      return { key: `${tile.id ?? 'idle'}:${bays}`, bays };
+    },
+    build: shape => washStage(shape.bays, 'twin-pool'),
+    snapshotOf: tile => {
+      const pool = Tiles.itemOf(tile);
+      return pool?.state ? poolSnapshot(tile.store, pool) : idlePool(fieldValue(tile, 'nThreads', Diorama.LIMITS.bays));
+    },
+  });
 
-  return { poolSnapshot, semaphoreSnapshot, panel, poolPanel, semaphorePanel };
+  const semaphorePanel = () => panel({
+    shapeOf: tile => {
+      const item = Tiles.itemOf(tile);
+      const sem = item ? tile.store.semaphores.items.get(item.semaphoreId) : null;
+      const permits = sem?.state ? sem.state.initialPermits : fieldValue(tile, 'permits', Diorama.LIMITS.inside);
+      return { key: `${tile.id ?? 'idle'}:${permits}`, permits };
+    },
+    build: shape => barrierStage(shape.permits, 'twin-sem'),
+    snapshotOf: tile => {
+      const item = Tiles.itemOf(tile);
+      if (item?.semaphoreId != null) return semaphoreSnapshot(tile.store, item);
+      return idleSemaphore(fieldValue(tile, 'permits', Diorama.LIMITS.inside));
+    },
+  });
+
+  return { poolSnapshot, semaphoreSnapshot, poolPanel, semaphorePanel };
 })();
