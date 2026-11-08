@@ -10,41 +10,12 @@
   <link rel="stylesheet" href="blockingqueue.css">
   <link rel="stylesheet" href="synchronousqueue.css">
   <link rel="stylesheet" href="semaphore.css">
+  <link rel="stylesheet" href="tiles.css">
   <style>
     /* Плитки в две колонки; на узком экране — в одну */
     /* Ширина ограничена: на широком мониторе плитки не растягиваются на весь экран (~540px каждая) */
     .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; max-width: 1100px; margin: 12px auto 0; } /* по центру страницы */
     @media (max-width: 900px) { .tiles { grid-template-columns: 1fr; } }
-
-    .tile {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
-      padding: 10px 14px; min-height: 260px;
-    }
-    .tile.live { border-color: color-mix(in srgb, var(--out) 40%, var(--border)); }
-    .tile-title { color: var(--keyword); white-space: nowrap; margin-bottom: 8px; }
-    /* Параметры создания в спящей плитке: каждый своей строкой, «имя поле» */
-    .tile-params { display: flex; flex-direction: column; gap: 4px; }
-    .tile-params .param { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
-    .tile-params .name { color: var(--fn); }
-    .tile-params input { width: 48px; }
-    .tile-params input[type=checkbox] { width: auto; margin: 0; }
-    /* Как карточка на threadpoolexecutor.html: слева команды, справа визуализация */
-    .tile-main { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 16px; align-items: start; }
-    /* Тонкая сплошная черта между командами и визуализацией — на всю высоту плитки.
-       Сплошная, а не пунктир: пунктиром уже разделены queue и workers внутри визуализации */
-    .tile-controls { padding-right: 16px; border-right: 1px solid var(--border); align-self: stretch; }
-    /* Шапка живой плитки: название слева, ✕ (remove) справа */
-    .tile-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
-    .tile-head .tile-title { margin-bottom: 0; }
-    .tile-head-left { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
-    .tile button.close { background: none; border: none; padding: 0 2px; color: var(--fail); font-size: 15px; line-height: 1; opacity: .8; }
-    .tile button.close:hover { opacity: 1; }
-    /* Внутри плитки фон уже --panel: поля и кнопки — на тон темнее, чтобы не сливались */
-    .tile button, .tile input { background: var(--bg); }
-
-    /* Спящая плитка: только название (с параметрами создания) и start — по центру */
-    .tile.sleeping { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
-    .tile.sleeping .tile-title { margin-bottom: 0; }
 
     details { margin-top: 24px; }
     summary { color: var(--dim); cursor: pointer; }
@@ -79,122 +50,13 @@
 <script src="semaphore.js"></script>
 <!-- semaphoretask.js — после semaphore.js: семафор задачи рисуется им -->
 <script src="semaphoretask.js"></script>
+<script src="tiles.js"></script>
 <script>
-  // Плитка — один живой объект. Пока его нет, плитка спит: только название, параметры создания и start;
-  // по start объект создаётся, плитка запоминает его id и показывает только его. remove — DELETE; плитка засыпает
-  // по OBJECT_REMOVED (пул сервер удалит только TERMINATED — отказ видно в плитке).
-  // Перезагрузка страницы: объект остаётся на сервере, плитка снова спит (пока так).
-  //
-  // Плитка ничего не знает о конкретной структуре — всё берёт из её описания (view):
-  // title, params, types, createStore(render), create(values), remove(store, id), operations, renderState(store, item),
-  // renderTitleExtra?(store, item) — что показать сразу после названия
+  // Плитки — tiles.js: здесь только какие структуры показать и куда положить
   const VIEWS = [Pool.single, Pool.fixed, Pool.cached, ArrayListView, LinkedListView, BlockingQueueView, SynchronousQueueView,
     SemaphoreTaskView];
-
-  // Состояние плитки: id — её объект (null — спит); seen — объект уже приходил в событиях; starting — ждём ответ на create.
-  // Заголовок и поля параметров создаются один раз: спящая и живая плитка просто ставят их к себе, введённое не теряется
-  const tiles = VIEWS.map(view => {
-    const tile = { view, store: null, id: null, seen: false, starting: false, mode: null };
-    tile.store = view.createStore(render);
-    tile.el = KV.el('div', 'tile');
-    tile.title = KV.el('div', 'tile-title', view.title);
-    tile.titleExtra = KV.el('span', 'tile-title-extra');
-    // Каждый параметр — своей строкой: имя и поле
-    tile.inputs = {};
-    tile.params = KV.el('div', 'tile-params');
-    for (const [name, value] of view.params) {
-      // Булев параметр (например, fair у семафора) — чекбокс, остальные — числа
-      const input = typeof value === 'boolean'
-        ? Object.assign(document.createElement('input'), { type: 'checkbox', checked: value })
-        : Object.assign(document.createElement('input'), { type: 'number', value, min: 1 });
-      input.setAttribute('aria-label', name);
-      input.addEventListener('keydown', e => { if (e.key === 'Enter') start(tile); });
-      tile.inputs[name] = input;
-      const row = KV.el('label', 'param');
-      row.append(KV.el('span', 'name', name), input);
-      tile.params.append(row);
-    }
-    tile.controls = KV.el('div', 'tile-controls');
-    tile.body = KV.el('div', 'tile-body');
-    tile.main = KV.el('div', 'tile-main');
-    tile.main.append(tile.controls, tile.body);
-    document.getElementById('tiles').append(tile.el);
-    return tile;
-  });
-
-  async function start(tile) {
-    if (tile.starting || tile.id != null) return; // Enter в поле, пока ждём ответ, — не второй объект
-    tile.starting = true;
-    render();
-    const values = Object.fromEntries(Object.entries(tile.inputs)
-      .map(([name, input]) => [name, input.type === 'checkbox' ? input.checked : Number(input.value)]));
-    const created = await tile.view.create(values);
-    tile.starting = false;
-    // Объект появится в store по OBJECT_CREATED — может и раньше ответа, это не важно
-    if (created) Object.assign(tile, { id: created.objectId, seen: false });
-    render();
-  }
-
-  // Спящая плитка: название, параметры создания (если есть) и start — по центру, больше ничего
-  function renderSleeping(tile) {
-    const startButton = KV.el('button', 'primary', tile.starting ? 'starting…' : '▶ start');
-    startButton.title = `create ${tile.view.title}`;
-    startButton.disabled = tile.starting;
-    startButton.onclick = () => start(tile);
-    tile.el.replaceChildren(tile.title, ...(tile.view.params.length ? [tile.params] : []), startButton);
-  }
-
-  // Живая плитка: название сверху, под ним слева пульт (сетка «метод | поля | ▶»), справа объект
-  function renderLive(tile) {
-    const id = tile.id;
-    // remove — красный ✕ в правом верхнем углу, в одной строке с названием
-    const remove = KV.el('button', 'close', '✕');
-    remove.title = `remove ${tile.view.title} #${id} (DELETE)`;
-    remove.setAttribute('aria-label', 'remove');
-    remove.onclick = async () => { await tile.view.remove(tile.store, id); render(); };
-    // Шапка: название, сразу за ним то, что структура хочет показать рядом (у пула — runState), справа ✕
-    const head = KV.el('div', 'tile-head');
-    const left = KV.el('div', 'tile-head-left');
-    left.append(tile.title, tile.titleExtra);
-    head.append(left, remove);
-    tile.controls.replaceChildren(KV.renderOps(tile.view.operations, id));
-    tile.body.replaceChildren();
-    tile.el.replaceChildren(head, tile.main);
-  }
-
-  function renderTile(tile) {
-    const item = tile.id != null ? tile.store.items.get(tile.id) : null;
-    if (item) tile.seen = true;
-    // Объект пропал после того, как мы его видели, — удалён (нами или извне): плитка засыпает
-    if (tile.id != null && !item && tile.seen) Object.assign(tile, { id: null, seen: false });
-
-    const live = tile.id != null;
-    tile.el.classList.toggle('live', live);
-    tile.el.classList.toggle('sleeping', !live);
-    for (const input of Object.values(tile.inputs)) input.disabled = tile.starting;
-
-    // Пульт пересоздаём, только когда меняется режим плитки: render идёт на каждое событие,
-    // и кнопка, пересозданная между mousedown и mouseup, теряет клик (а поля — введённое)
-    const mode = live ? `live:${tile.id}` : `sleep:${tile.starting}`;
-    if (tile.mode !== mode) {
-      tile.mode = mode;
-      if (live) renderLive(tile); else renderSleeping(tile);
-    }
-    // Состояние живого объекта — на каждое событие
-    if (live) {
-      tile.body.replaceChildren(...(item ? tile.view.renderState(tile.store, item) : []));
-      tile.titleExtra.replaceChildren(...(item && tile.view.renderTitleExtra ? tile.view.renderTitleExtra(tile.store, item) : []));
-    }
-  }
-
-  function render() {
-    for (const tile of tiles) renderTile(tile);
-  }
-
-  render();
-  // Лог WebSocket — по событиям всех структур на странице
-  const types = [...new Set(VIEWS.flatMap(view => view.types))];
-  UI.connect({ onEnvelope: env => { for (const tile of tiles) tile.store.apply(env); render(); }, types });
+  const root = document.getElementById('tiles');
+  Tiles.mount(VIEWS, { place: tile => root.append(tile.el) });
 </script>
 </body>
 </html>

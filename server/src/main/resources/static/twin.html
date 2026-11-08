@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>KotlinView — twin</title>
+  <link rel="stylesheet" href="base.css">
+  <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="pool.css">
+  <link rel="stylesheet" href="synchronousqueue.css">
+  <link rel="stylesheet" href="semaphore.css">
+  <link rel="stylesheet" href="tiles.css">
+  <style>
+    /* Ряд на структуру: слева плитка как на index.html (команды и точная картинка), справа её диорама */
+    .twin { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; max-width: 1200px; margin: 12px auto 0; align-items: stretch; }
+    @media (max-width: 900px) { .twin { grid-template-columns: 1fr; } }
+    .diorama-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px; display: flex; align-items: center; }
+    .diorama { display: block; }
+    .diorama text { font-family: inherit; }
+    .diorama .hoverable { cursor: pointer; }
+    details { margin-top: 24px; }
+    summary { color: var(--dim); cursor: pointer; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h2>KotlinView · twin</h2>
+  <span id="status" class="off">● ws disconnected</span>
+</header>
+
+<div id="twin" class="twin"></div>
+
+<!-- Логи нужны UI.call / UI.connect; свёрнуты — открыть при отладке -->
+<details>
+  <summary>logs</summary>
+  <h3>HTTP <button class="link" id="clearHttp">clear</button></h3>
+  <div id="http" class="log"></div>
+  <h3>WebSocket <button class="link" id="clearWs">clear</button></h3>
+  <div id="ws" class="log"></div>
+</details>
+
+<script src="base.js"></script>
+<script src="components.js"></script>
+<script src="synchronousqueue.js"></script>
+<script src="pool.js"></script>
+<script src="semaphore.js"></script>
+<script src="semaphoretask.js"></script>
+<script src="tiles.js"></script>
+<!-- Диорамы: движок → объекты → сцены → живые снимки из store плиток -->
+<script src="iso-scene.js"></script>
+<script src="iso-objects.js"></script>
+<script src="diorama.js"></script>
+<script src="diorama-live.js"></script>
+<script>
+  // Плитки — те же, что на index.html, но с пределами: столько, сколько помещается на острове (Diorama.LIMITS)
+  const { LIMITS } = Diorama;
+  const ROWS = [
+    { view: { ...Pool.fixed, params: [['nThreads', 2, { min: 1, max: LIMITS.bays }]] }, panel: DioramaLive.poolPanel() },
+    { view: { ...SemaphoreTaskView, params: [['permits', 2, { min: 1, max: LIMITS.inside }], ['durationMs', 5000, { min: 1000, max: 30000 }], ['fair', false]] },
+      panel: DioramaLive.semaphorePanel() },
+  ];
+
+  const root = document.getElementById('twin');
+  const { tiles, render } = Tiles.mount(ROWS.map(r => r.view), {
+    // Плитка и её диорама — в один ряд сетки
+    place: tile => root.append(tile.el, ROWS.find(r => r.view === tile.view).panel.el),
+    onRender: tiles => tiles.forEach((tile, i) => ROWS[i].panel.update(tile)),
+  });
+  // Пока плитка спит, диорама показывает «пустой» остров по полю параметров — обновлять при вводе
+  for (const tile of tiles) for (const input of Object.values(tile.inputs)) input.addEventListener('input', render);
+</script>
+</body>
+</html>

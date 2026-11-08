@@ -8,6 +8,7 @@ const IsoObjects = (() => {
   const { svg, shade, mix, threadColor, PALETTE: C, inside, blob, scaled, roundedRect, rng } = Iso;
 
   const carColor = id => C.cars[id % C.cars.length];
+  const FREE_BAY = '#d8cfbf'; // маркиза свободного бокса: потока ещё нет — цвета у него тоже нет
 
   // ---------- Остров ----------
 
@@ -178,7 +179,9 @@ const IsoObjects = (() => {
    * Автомойка: одно здание с воротами на каждый бокс, двускатная крыша, над воротами полосатые маркизы цветом потока,
    * над крышей — пузыри. Внутри боксов видны машины-задачи. Порядок внутри группы — от дальнего к ближнему:
    * пол и задняя стена → перегородки → машины → передние простенки и перемычка → правая стена → крыша → маркизы.
-   * labelOf(worker) — табличка бокса { lines, color, bar }: одна на машину и маркизу
+   * workers — [{ name, task }]: name = null — свободный бокс (потока ещё нет: пул создаёт их лениво), маркиза нейтральная;
+   * task = null — воркер есть, но ждёт задачу (бокс пуст). labelOf(worker) — табличка бокса { lines, color, bar }:
+   * одна на машину и маркизу
    */
   function washHouse(s, x0, y0, workers, labelOf) {
     const BAY = 1.85, D = 1.9, H = 1.25, GATE = 0.95, T = 0.12;
@@ -189,7 +192,9 @@ const IsoObjects = (() => {
     for (let i = 0; i <= workers.length; i++) g.append(s.box(x0 + i * BAY, y0, 0, T, D - T, H, shade(C.building, -0.2)));
     // Машина — ближе к воротам: в глубине её закрыли бы перемычка и простенки
     const bayLabels = workers.map((w, i) => { const l = labelOf(w); return s.label(x0 + i * BAY + BAY / 2, yf + 0.15, H, l.lines, l); });
-    workers.forEach((w, i) => g.append(s.hover(carNode(s, x0 + i * BAY + (BAY - 0.92) / 2 + T / 2, yf - 0.85, carColor(w.task.id)), bayLabels[i])));
+    workers.forEach((w, i) => {
+      if (w.task) g.append(s.hover(carNode(s, x0 + i * BAY + (BAY - 0.92) / 2 + T / 2, yf - 0.85, carColor(w.task.id)), bayLabels[i]));
+    });
     // Перед: перемычка над воротами и простенки между ними
     g.append(s.box(x0, yf - T, GATE, W, T, H - GATE, C.building));
     for (let i = 0; i <= workers.length; i++) g.append(s.box(x0 + i * BAY, yf - T, 0, T, T, GATE, C.building));
@@ -199,7 +204,7 @@ const IsoObjects = (() => {
     // Маркизы: короткая наклонная полосатая ткань на перемычке, выше проёма — ворота не закрывает.
     // Полосы — цвет потока и белый: какой бокс чей, видно издалека
     workers.forEach((w, i) => {
-      const color = threadColor(w.name), a0 = x0 + i * BAY + T, a1 = a0 + BAY - T, n = 6;
+      const color = w.name ? threadColor(w.name) : FREE_BAY, a0 = x0 + i * BAY + T, a1 = a0 + BAY - T, n = 6;
       const top = H - 0.02, low = H - 0.17, out = 0.3, awning = svg('g');
       for (let k = 0; k < n; k++) {
         const u0 = a0 + (a1 - a0) * (k / n), u1 = a0 + (a1 - a0) * ((k + 1) / n);

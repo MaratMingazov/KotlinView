@@ -1,5 +1,7 @@
 /*
- * Диорамы: «автомойка» (fixed-пул) и «шлагбаум» (задача под семафором). Статичные снимки, без сервера и анимации.
+ * Диорамы: «автомойка» (fixed-пул) и «шлагбаум» (задача под семафором).
+ * Сцена рисует снимок — простой объект «что сейчас происходит». Откуда он — не её дело: на prototype.html это
+ * демо-снимки ниже, на twin.html — снимки из store живой плитки (diorama-live.js).
  * Здесь — только смысл: что из снимка где стоит и что написано в табличках. Как это нарисовано — iso-objects.js.
  * Подключение: после iso-scene.js и iso-objects.js. Всё лежит в объекте Diorama.
  */
@@ -8,9 +10,17 @@ const Diorama = (() => {
   const O = IsoObjects;
   const percent = fraction => `${Math.round(fraction * 100)}%`;
 
-  // ---------- Снимки ----------
+  // Сколько помещается на острове. Больше — не рисуем: плитки на twin.html не дают создать больше (tiles.js, max)
+  const LIMITS = { slots: 5, bays: 3, waiting: 4, inside: 3, exit: 2 };
 
-  const POOL = {
+  // ---------- Демо-снимки (prototype.html) ----------
+
+  /**
+   * Снимок пула: queue — задачи в очереди (голова — первая); workers — по боксу на поток до maximumPoolSize:
+   * { name, task: { id } | null, progress } — name = null: свободный бокс; done — только что выполненные (уезжают)
+   */
+  const SAMPLE_POOL = {
+    title: ['ThreadPoolExecutor', 'newFixedThreadPool(3) · queue 5'],
     queueCapacity: 5,
     incoming: [{ id: 24 }],
     queue: [{ id: 21 }, { id: 22 }, { id: 23 }],
@@ -23,7 +33,8 @@ const Diorama = (() => {
     doneCount: 17,
   };
 
-  const SEMAPHORE = {
+  /** Снимок семафора: inside — раннеры внутри задачи (с прогрессом), waiting — ждущие в acquire, по порядку прихода. */
+  const SAMPLE_SEMAPHORE = {
     permits: 2, available: 0, taskId: 7, taskDuration: '5.0s',
     inside: [{ name: 'sem-runner-1', progress: 0.6 }, { name: 'sem-runner-2', progress: 0.2 }],
     waiting: ['sem-runner-3', 'sem-runner-4', 'sem-runner-5'],
@@ -48,45 +59,53 @@ const Diorama = (() => {
     decorSeed: 11,
   };
 
-  function carWash() {
-    const s = createScene(), L = WASH;
+  // Табличка бокса: свободный, ждущий задачу или работающий — с полоской прогресса
+  function bayLabel(w) {
+    if (!w.name) return { lines: ['free bay', 'no thread yet: the pool creates it on execute'] };
+    const color = threadColor(w.name);
+    if (!w.task) return { lines: [w.name, 'idle · waits in take()'], color };
+    return { lines: [w.name, `task #${w.task.id} · ${percent(w.progress)}`], color, bar: { fraction: w.progress, color } };
+  }
+
+  /** Автомойка по снимку пула. scene — { uid } для createScene; render — { hover, onHover } для render() */
+  function carWash(pool = SAMPLE_POOL, { scene, render } = {}) {
+    const s = createScene(scene), L = WASH;
     O.island(s, ...L.island, L.seed);
     O.road(s, ...ROAD_ENDS, { skip: L.noMarks });
     O.zebra(s, L.zebraX);
 
-    // Очередь: места разметкой, на занятых — машины-задачи
+    // Очередь: места разметкой (не больше, чем помещается), на занятых — машины-задачи
     const slotX = i => L.queue.headX - i * L.queue.step;
-    for (let i = 0; i < POOL.queueCapacity; i++) O.slot(s, slotX(i), L.queue.y);
-    POOL.queue.forEach((t, i) => {
+    const slots = Math.min(pool.queueCapacity, LIMITS.slots);
+    for (let i = 0; i < slots; i++) O.slot(s, slotX(i), L.queue.y);
+    pool.queue.slice(0, slots).forEach((t, i) => {
       const color = O.carColor(t.id);
       O.car(s, slotX(i) + 0.08, LANE_Y, color, { rack: t.id % 3 === 0,
         label: { lines: [`task #${t.id}`, i === 0 ? 'queued · next in line' : `queued · ${i + 1} in line`], color } });
     });
-    O.sign(s, ...L.queueSign, `${POOL.queue.length} / ${POOL.queueCapacity}`, C.text);
+    O.sign(s, ...L.queueSign, `${pool.queue.length} / ${pool.queueCapacity}`, C.text);
 
     // Только что пришла: на въезде
-    for (const t of POOL.incoming) {
+    for (const t of pool.incoming ?? []) {
       const color = O.carColor(t.id);
       O.car(s, L.incomingX, LANE_Y, color, { label: { lines: [`task #${t.id}`, 'just submitted'], color } });
     }
 
     // Мойка — одно здание, ворота на каждый бокс-воркер; к воротам — съезды с дороги
-    const wash = O.washHouse(s, L.house.x, L.house.y, POOL.workers, w => {
-      const color = threadColor(w.name);
-      return { lines: [w.name, `task #${w.task.id} · ${percent(w.progress)}`], color, bar: { fraction: w.progress, color } };
-    });
-    POOL.workers.forEach((w, i) => {
+    const workers = pool.workers.slice(0, LIMITS.bays);
+    const wash = O.washHouse(s, L.house.x, L.house.y, workers, bayLabel);
+    workers.forEach((w, i) => {
       const [bx, by] = wash.bayCenter(i);
       s.ground.push(s.flat(bx - 0.55, by, 1.1, -by, C.road));
     });
-    s.title(['ThreadPoolExecutor', `newFixedThreadPool(${POOL.workers.length}) · queue ${POOL.queueCapacity}`]);
+    if (pool.title) s.title(pool.title);
 
-    // Выезд: помытые уезжают (выцветшие), счётчик выполненных
-    POOL.done.forEach((t, i) => {
+    // Выезд: только что выполненные уезжают (выцветшие), счётчик выполненных
+    pool.done.slice(0, LIMITS.exit).forEach((t, i) => {
       const color = O.carColor(t.id);
       O.car(s, L.exit[i].x, LANE_Y, color, { faded: true, rack: !!L.exit[i].rack, label: { lines: [`task #${t.id}`, 'done'], color } });
     });
-    O.sign(s, ...L.doneSign, `✓ ${POOL.doneCount}`);
+    O.sign(s, ...L.doneSign, `✓ ${pool.doneCount}`);
 
     // Растительность — не на дороге, не в мойке со съездами и не у столбиков
     const [qx, qy] = L.queueSign, [dx, dy] = L.doneSign;
@@ -96,7 +115,7 @@ const Diorama = (() => {
       [qx - 0.2, qy - 0.25, qx + 0.3, qy + 0.35],
       [dx - 0.2, dy - 0.25, dx + 0.3, dy + 0.35],
     ]);
-    return s.render();
+    return s.render(render);
   }
 
   // ---------- Диорама 2: шлагбаум = задача под семафором ----------
@@ -113,10 +132,11 @@ const Diorama = (() => {
     decorSeed: 23,
   };
 
-  function barrier() {
-    const s = createScene(), L = BARRIER, lot = L.lot;
+  /** Шлагбаум по снимку семафора. scene — { uid } для createScene; render — { hover, onHover } для render() */
+  function barrier(sem = SAMPLE_SEMAPHORE, { scene, render } = {}) {
+    const s = createScene(scene), L = BARRIER, lot = L.lot;
     O.island(s, ...L.island, L.seed);
-    s.title([`Semaphore(${SEMAPHORE.permits})`, `guarding task #${SEMAPHORE.taskId} · ${SEMAPHORE.waiting.length} waiting`]);
+    s.title([`Semaphore(${sem.permits})`, `guarding task #${sem.taskId} · ${sem.waiting.length} waiting`]);
     for (const [from, to] of L.roads) O.road(s, from, to);
 
     // Площадка за шлагбаумом: плитка, штакетник по дальним краям (вход и выезд — открыты), скамейки, фонари
@@ -128,42 +148,45 @@ const Diorama = (() => {
     O.streetLamp(s, lot.x0 + 1.6, lot.y0 + 0.3);
     O.streetLamp(s, lot.x1 - 0.4, lot.y1 - 0.4);
 
-    // Ждущие у шлагбаума: цвет — поток, в порядке прихода
-    SEMAPHORE.waiting.forEach((name, i) => {
+    // Ждущие у шлагбаума: цвет — поток, в порядке прихода. Не поместились — «+N» над последней машиной
+    const shown = sem.waiting.slice(0, LIMITS.waiting);
+    const waitX = i => L.waiting.firstX - i * L.waiting.step;
+    shown.forEach((name, i) => {
       const color = threadColor(name);
-      O.car(s, L.waiting.firstX - i * L.waiting.step, LANE_Y, color,
-        { label: { lines: [name, `waits in acquire() · ${i === 0 ? 'first' : `#${i + 1}`}`], color } });
+      O.car(s, waitX(i), LANE_Y, color, { label: { lines: [name, `waits in acquire() · ${i === 0 ? 'first' : `#${i + 1}`}`], color } });
     });
+    const more = sem.waiting.length - shown.length;
+    if (more > 0) s.label(waitX(shown.length - 1) + 0.46, LANE_Y + 0.26, 0.62, [`+${more}`], { permanent: true });
 
     // Шлагбаум опущен, перед ним стоп-линия; светофор: сколько разрешений свободно из скольких
     O.stopLine(s, L.gateX - 0.2);
     O.barrierGate(s, L.gateX);
-    const { available, permits } = SEMAPHORE;
+    const { available, permits } = sem;
     O.trafficLight(s, L.gateX, {
       free: available > 0,
       counter: `${available} / ${permits}`,
-      details: ['Semaphore', `${available} of ${permits} permits free · ${SEMAPHORE.waiting.length} waiting`],
+      details: ['Semaphore', `${available} of ${permits} permits free · ${sem.waiting.length} waiting`],
     });
 
     // Задача — домик на площадке; перед ним те, кто прошёл шлагбаум и сейчас внутри run
     const h = L.house;
-    O.house(s, h.x, h.y, h.w, h.d, h.h, { lines: [`task #${SEMAPHORE.taskId}`, `${SEMAPHORE.taskDuration} · ${SEMAPHORE.inside.length} runners inside`], color: C.accent });
-    SEMAPHORE.inside.forEach((r, i) => {
+    O.house(s, h.x, h.y, h.w, h.d, h.h, { lines: [`task #${sem.taskId}`, `${sem.taskDuration} · ${sem.inside.length} runners inside`], color: C.accent });
+    sem.inside.slice(0, LIMITS.inside).forEach((r, i) => {
       const color = threadColor(r.name);
       O.car(s, h.x - 0.2 + i * L.inside.step, L.inside.y, color,
-        { label: { lines: [r.name, `in task #${SEMAPHORE.taskId} · ${percent(r.progress)}`], color, bar: { fraction: r.progress, color } } });
+        { label: { lines: [r.name, `in task #${sem.taskId} · ${percent(r.progress)}`], color, bar: { fraction: r.progress, color } } });
     });
 
     O.decorate(s, L.decorSeed, [[-8, -0.3, 18, 1.5], [lot.x0 - 0.3, lot.y0 - 0.3, lot.x1 + 0.3, lot.y1 + 0.3], [L.gateX - 0.6, -0.9, L.gateX + 0.4, 1.6]]);
-    return s.render();
+    return s.render(render);
   }
 
-  // ---------- Монтирование ----------
+  // ---------- Демо: prototype.html ----------
 
   function mount({ washRoot, barrierRoot }) {
     washRoot.replaceChildren(carWash());
     barrierRoot.replaceChildren(barrier());
   }
 
-  return { mount };
+  return { mount, carWash, barrier, LIMITS };
 })();

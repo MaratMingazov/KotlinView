@@ -1,0 +1,34 @@
+/*
+ * Плитки (tiles.js): одна плитка — один живой объект. Спит (название, параметры, start) или живёт (пульт и состояние).
+ * Подключать после base.css. Сетку плиток (.tiles) задаёт страница: на index.html — две колонки плиток,
+ * на twin.html — плитка и её диорама рядом.
+ */
+.tile {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 10px 14px; min-height: 260px;
+}
+.tile.live { border-color: color-mix(in srgb, var(--out) 40%, var(--border)); }
+.tile-title { color: var(--keyword); white-space: nowrap; margin-bottom: 8px; }
+/* Параметры создания в спящей плитке: каждый своей строкой, «имя поле» */
+.tile-params { display: flex; flex-direction: column; gap: 4px; }
+.tile-params .param { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.tile-params .name { color: var(--fn); }
+.tile-params input { width: 48px; }
+.tile-params input[type=checkbox] { width: auto; margin: 0; }
+/* Как карточка на threadpoolexecutor.html: слева команды, справа визуализация */
+.tile-main { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 16px; align-items: start; }
+/* Тонкая сплошная черта между командами и визуализацией — на всю высоту плитки.
+   Сплошная, а не пунктир: пунктиром уже разделены queue и workers внутри визуализации */
+.tile-controls { padding-right: 16px; border-right: 1px solid var(--border); align-self: stretch; }
+/* Шапка живой плитки: название слева, ✕ (remove) справа */
+.tile-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.tile-head .tile-title { margin-bottom: 0; }
+.tile-head-left { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.tile button.close { background: none; border: none; padding: 0 2px; color: var(--fail); font-size: 15px; line-height: 1; opacity: .8; }
+.tile button.close:hover { opacity: 1; }
+/* Внутри плитки фон уже --panel: поля и кнопки — на тон темнее, чтобы не сливались */
+.tile button, .tile input { background: var(--bg); }
+
+/* Спящая плитка: только название (с параметрами создания) и start — по центру */
+.tile.sleeping { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.tile.sleeping .tile-title { margin-bottom: 0; }

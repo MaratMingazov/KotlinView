@@ -37,8 +37,8 @@ const Iso = (() => {
     return toHex([f(0), f(8), f(4)].map(x => x * 255));
   }
 
-  // Оттенок потока по имени. Не как KV.threadColor ((h * 31 + c) % 360): у имён, различающихся последним символом
-  // (worker-1, worker-2), там оттенки отличаются на 1°. Здесь хеш перемешивается и разносится «золотым углом»
+  // Оттенок потока по имени — тот же хеш, что KV.threadHue (components.js): поток в диораме того же цвета, что в плитке.
+  // Повторён здесь, а не взят из KV: prototype.html рисует диорамы без components.js. Светлота своя — пастель острова
   const hue = name => {
     let h = 2166136261;
     for (const ch of name) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
@@ -144,8 +144,10 @@ const Iso = (() => {
   /**
    * Новая сцена. Объекты кладут узлы в слои: ground (земля, по порядку добавления), тени, objects (по глубине),
    * таблички. render() собирает всё в <svg>; viewBox — по границам всего нарисованного.
+   * uid — префикс id градиентов и табличек. Живая диорама перерисовывается с тем же uid: у тех же объектов
+   * те же id табличек — так табличка под курсором остаётся на месте после перерисовки
    */
-  function createScene() {
+  function createScene({ uid: fixedUid } = {}) {
     const P = (x, y, z) => [(x - y) * 0.866 * S, (x + y) * 0.5 * S - z * S]; // изометрия 30°
     const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
     const track = (sx, sy) => {
@@ -153,7 +155,7 @@ const Iso = (() => {
       bounds.minY = Math.min(bounds.minY, sy); bounds.maxY = Math.max(bounds.maxY, sy);
     };
     const ground = [], shadows = [], contacts = [], objects = [], labels = [];
-    const uid = `d${++sceneCount}`; // id градиентов и табличек уникальны: на странице несколько диорам
+    const uid = fixedUid ?? `d${++sceneCount}`; // уникален на странице: диорам несколько
     let land = null, hud = null, labelCount = 0;
 
     // Точки мира → атрибут points; заодно расширяют границы сцены
@@ -343,9 +345,9 @@ const Iso = (() => {
      * Наведение: над объектом с data-label — показать его табличку и подсветить сам объект.
      * Один обработчик на всю диораму (делегирование), а не по обработчику на объект
      */
-    function wireHover(root) {
+    function wireHover(root, { hover: hoveredId, onHover } = {}) {
       let current = null;
-      const show = target => {
+      const show = (target, notify = true) => {
         if (current === target) return;
         if (current) {
           current.style.filter = '';
@@ -353,6 +355,7 @@ const Iso = (() => {
           if (old) old.style.display = 'none';
         }
         current = target;
+        if (notify) onHover?.(target?.getAttribute('data-label') ?? null);
         if (!target) return;
         target.style.filter = 'brightness(1.12) drop-shadow(0 0 3px #ffffff)';
         const l = root.querySelector(`#${target.getAttribute('data-label')}`);
@@ -360,6 +363,8 @@ const Iso = (() => {
       };
       root.addEventListener('mouseover', e => show(e.target.closest('[data-label]')));
       root.addEventListener('mouseleave', () => show(null));
+      // После перерисовки — снова подсветить то, над чем была мышь (новый узел события mouseover ещё не получал)
+      if (hoveredId) show(root.querySelector(`[data-label="${hoveredId}"]`), false);
     }
 
     // ---------- Сборка ----------
@@ -391,7 +396,9 @@ const Iso = (() => {
       return g;
     }
 
-    function render() {
+    // options.hover — id таблички, которую показать сразу (была под курсором до перерисовки); onHover(id | null) — куда
+    // сообщать, над чем теперь мышь
+    function render(options = {}) {
       const pad = 18;
       const vb = { x: bounds.minX - pad, y: bounds.minY - pad, w: bounds.maxX - bounds.minX + 2 * pad, h: bounds.maxY - bounds.minY + 2 * pad };
       const root = svg('svg', { viewBox: `${vb.x} ${vb.y} ${vb.w} ${vb.h}`, width: '100%', class: 'diorama' });
@@ -403,7 +410,7 @@ const Iso = (() => {
       for (const l of labels) clamp(l, vb);
       root.append(...[...labels].sort((a, b) => a.ay - b.ay).map(labelNode));
       if (hud) root.append(hudNode(vb));
-      wireHover(root);
+      wireHover(root, options);
       return root;
     }
 

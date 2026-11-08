@@ -319,12 +319,18 @@ const KV = (() => {
 
   // ---------- Мелочи ----------
 
-  // Стабильный цвет для имени потока
-  function threadColor(name) {
-    let h = 0;
-    for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
-    return `hsl(${h}, 60%, 65%)`;
+  /**
+   * Стабильный цвет для имени потока. Хеш FNV-1a, разнесённый «золотым углом»: имена, различающиеся одним
+   * последним символом (factory-3-worker-1 и -2), получают далёкие оттенки. Прежний (h * 31 + c) % 360 давал им
+   * разницу в 1° — воркеры одного пула были почти одного цвета.
+   * Оттенок тот же, что у Iso.threadColor (iso-scene.js): поток в диораме того же цвета, что в плитке
+   */
+  function threadHue(name) {
+    let h = 2166136261;
+    for (const ch of name) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+    return ((h >>> 0) * 137.508) % 360;
   }
+  const threadColor = name => `hsl(${threadHue(name).toFixed(1)}, 60%, 65%)`;
 
   const seconds = ms => ms == null ? '?' : (ms / 1000).toFixed(1) + 's';
 
