@@ -35,12 +35,16 @@
   <div id="barrierRoot"></div>
 </section>
 
-<!-- Порядок важен: движок → объекты → сцены -->
+<!-- Порядок важен: движок → реквизит → набор → описания структур -->
 <script src="iso-scene.js"></script>
 <script src="iso-objects.js"></script>
-<script src="diorama.js"></script>
+<script src="diorama-kit.js"></script>
+<script src="diorama-pool.js"></script>
+<script src="diorama-semaphore.js"></script>
 <script>
-  Diorama.mount({ washRoot: document.getElementById('washRoot'), barrierRoot: document.getElementById('barrierRoot') });
+  // Обе диорамы — на наборе (diorama-kit.js): описание структуры + демо-снимок
+  document.getElementById('washRoot').replaceChildren(Kit.show(PoolDiorama.kind, PoolDiorama.demo, PoolDiorama.demoShape));
+  document.getElementById('barrierRoot').replaceChildren(Kit.show(SemaphoreDiorama.kind, SemaphoreDiorama.demo, SemaphoreDiorama.demoShape));
 </script>
 </body>
 </html>

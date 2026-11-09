@@ -1,6 +1,6 @@
 /*
  * Изометрический «движок» диорам на SVG: палитра, цвета, геометрия и сцена — проекция, слои, примитивы, тени, таблички.
- * Ничего не знает ни о пулах, ни о семафорах: это делают iso-objects.js (объекты) и diorama.js (сцены).
+ * Ничего не знает ни о пулах, ни о семафорах: это делают iso-objects.js (реквизит), diorama-kit.js (набор) и diorama-*.js (описания структур).
  * Подключение: первым из трёх. Всё лежит в объекте Iso.
  *
  * Мир — клетки (x, y, z): «к зрителю» — больше x + y, вверх — z. Солнце слева-сзади: грань +y светлее, +x темнее,
@@ -303,6 +303,11 @@ const Iso = (() => {
      * Заменить текст таблички на отрисованной сцене (счётчик «2 / 5», табличка бокса): узел перестраивается на месте,
      * видимость — как была. options — { color, bar }: если переданы, меняются и они
      */
+    // Спрятать или показать постоянную табличку (счётчик, который нужен не всегда: «+N»)
+    function showLabel(l, visible) {
+      if (l.node) l.node.style.display = visible ? '' : 'none';
+    }
+
     function relabel(l, lines, options = {}) {
       if ('color' in options) l.dot = options.color && options.color !== C.text ? options.color : null;
       if ('bar' in options) l.bar = options.bar;
@@ -537,7 +542,7 @@ const Iso = (() => {
       P, S, pts, faceStyle, ground, add, setLand, onLand, render, actor, actors,
       box, prism, disc, panel, gableRoof, flat, line,
       shadow, castShadow, contact,
-      label, relabel, hover, title, retitle,
+      label, relabel, showLabel, hover, title, retitle,
       shore: null, shoreCenter: null, // контур берега и центр острова — их задаёт island() в iso-objects.js
     };
     return scene;

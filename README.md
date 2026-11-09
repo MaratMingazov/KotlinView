@@ -150,35 +150,30 @@
 
 ## Структура репозитория
 
-Gradle multi-module:
+Gradle multi-module. Здесь — только слои и правила, где что лежит; конкретные файлы не перечисляем.
 
 ```
 KotlinView/
-├── settings.gradle.kts              ← список модулей
-├── build.gradle.kts
-├── gradle/libs.versions.toml        ← версии всех зависимостей в одном месте
-├── gradlew, gradlew.bat, gradle/    ← Gradle wrapper
-│
-├── algorithms/                      ← без Spring
-│   └── src/main/kotlin/mingazov/kotlinview/
-│       ├── event/                   ← Event (sealed), EventSink, ObjectType
-│       └── instrumented/            ← Instrumented, InstrumentedRegistry, IdGenerator
-│           ├── collection/          ← ArrayList, LinkedList, LinkedBlockingQueue, SynchronousQueue
-│           │   └── registry/
-│           └── executor/            ← RunnableTask, ThreadFactory, ThreadPoolExecutor, playground'ы
-│               └── registry/
-└── server/                          ← Spring Boot
-    └── src/main/
-        ├── kotlin/mingazov/kotlinview/
-        │   ├── config/              ← реестры из algorithms как бины, общий IdGenerator
-        │   ├── controller/          ← REST: collection/, executor/, ErrorHandlers
-        │   ├── service/             ← фасады: collection/, executor/ (правила владения частями пула)
-        │   └── ws/                  ← WebSocket, Broadcaster (EventSink), protocol/ (конверт и payload'ы)
-        └── resources/static/        ← фронт: по странице на структуру + общие base.js / components.js
+├── algorithms/      ← модуль без Spring: реальные реализации и их инструментирование
+│   ├── event/       ← модель событий (Event, EventSink, ObjectType)
+│   └── instrumented/← Instrumented-объекты и их реестры, по пакету на тему (collection/, executor/, concurrent/…)
+├── server/          ← Spring Boot: собирает всё вместе
+│   ├── config/      ← реестры из algorithms как бины
+│   ├── controller/  ← REST, по пакету на тему
+│   ├── service/     ← фасады: составные объекты и правила владения частями
+│   ├── ws/          ← WebSocket и протокол (конверт, payload'ы)
+│   └── static/      ← фронт: страницы, общие компоненты, диорамы
+└── docs/            ← рабочие документы по отдельным направлениям
 ```
 
-У каждого инструментированного типа одна и та же связка: класс в `algorithms` → реестр → сервис → контроллер
-→ страница в `static/`.
+Правила:
+
+- Пакеты совпадают с папками; тема — отдельный пакет в каждом слое (`collection`, `executor`, `concurrent.locks`…).
+- У каждого инструментированного типа одна и та же связка: класс в `algorithms` → реестр → сервис → контроллер
+  → вид на клиенте в `static/`.
+- Фронт — обычные скрипты без сборки: у вида структуры свой `*.js` (модель по событиям, отрисовка, REST) и `*.css`;
+  общее — `base.js` (REST, WebSocket), `components.js` (бейджи, цепочки, задачи), `tiles.js` (плитки).
+  Как устроены диорамы — в [docs/DIORAMAS.md](docs/DIORAMAS.md).
 
 ## Стек
 
@@ -218,37 +213,7 @@ const ws = new WebSocket("ws://localhost:8080/ws/events");
 ws.onmessage = e => console.log(JSON.parse(e.data));
 ```
 
-## План работ
 
-Сделано:
-
-1. **Каркас.** Gradle multi-module, wrapper, version catalog.
-2. **Модель событий.** Универсальные `OBJECT_*` / `METHOD_*`, `Instrumented`, реестры с общим `IdGenerator`.
-3. **Сервер.** REST-команды, WebSocket `/ws/events`, `seq` и рассылка.
-4. **Коллекции.** `ArrayList<Int>`, `LinkedList<Int>` — страницы с визуализацией.
-5. **Очереди.** `LinkedBlockingQueue<Runnable>`, `SynchronousQueue<Runnable>` — отдельно и как очередь пула.
-6. **Executors.** `ThreadPoolExecutor` с произвольными параметрами и пресеты `fixed` / `single` / `cached`,
-   `shutdown` / `shutdownNow`, отказ по `ABORT`.
-
-Дальше:
-
-1. **Тесты.** `EventSink`, собирающий события в список, и проверки последовательностей:
-   «execute на cached-пуле без ждущих воркеров → newThread → поток стартовал → poll».
-2. **Снимок при подключении.** Сейчас клиент видит только события после подключения.
-   Нужен `SNAPSHOT` первым сообщением в сокете с `seq`, от которого продолжается поток.
-3. **Остальное по Executors.** Политики отказа кроме `ABORT`; `submit` (сейчас `FutureTask` ломает `taskIdOf`);
-   задача, бросающая исключение (смерть и замена воркера).
-4. **Блокировки.** `ReentrantLock` (владелец, `holdCount`, очередь ждущих) и `Condition` как отдельный объект —
-   чтобы было видно, что `await` отпускает замок; producer/consumer на двух условиях.
-5. **Следующие темы.** `ForkJoinPool`, `HashMap`, сортировки.
-
-## Известные ограничения
-
-- В замедленном режиме события одной `LinkedBlockingQueue` отправляются строго по одному: пауза `Broadcaster`
-  попадает внутрь `emitLock` очереди.
-- Поток, который пул создал, но не запустил (shutdown во время `addWorker`), останется у клиента без `OBJECT_REMOVED`.
-- Очередь пула можно удалить в обход фасада через `DELETE /api/linkedblockingqueuerunnable/{id}`
-  (или `synchronousqueuerunnable`).
 
 ## Открытые вопросы
 

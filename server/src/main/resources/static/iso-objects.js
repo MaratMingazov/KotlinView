@@ -1,7 +1,7 @@
 /*
  * Объекты диорам: остров, дорога и разметка, машины, автомойка, домик, шлагбаум со светофором, растения и мелочи.
  * Каждый объект рисуется в сцену из iso-scene.js (s — сцена) и сам кладёт туда свои тени и таблички.
- * Смысла (пул, семафор) здесь нет: что и где стоит — решает diorama.js.
+ * Смысла (пул, семафор) здесь нет: что и где стоит — решают описания структур (diorama-*.js) через набор (diorama-kit.js).
  * Подключение: после iso-scene.js. Всё лежит в объекте IsoObjects.
  */
 const IsoObjects = (() => {
@@ -177,6 +177,12 @@ const IsoObjects = (() => {
   const CAR = { L: 0.92, W: 0.52 }; // длина и ширина машины (клетки)
 
   /**
+   * Соглашение «остров с дорогой» — общее для всех сцен: дорога вдоль x по полосе y = 0…1.2, концы — за мостами.
+   * laneY — край машины на полосе (как в car()), lane — центр машины на полосе (так стоят актёры), ends — концы дороги
+   */
+  const ROAD = { laneY: 0.35, lane: 0.35 + CAR.W / 2, ends: [-6.3, 16.3] };
+
+  /**
    * Машина вдоль y — для въезда в бокс и выезда из него. facing: '-y' — едет от зрителя (к нам задом: видны красные
    * фонари), '+y' — к зрителю (видны фары). Колёса — на ближнем боку +x. Основание: x … x + W, y … y + L
    */
@@ -241,7 +247,7 @@ const IsoObjects = (() => {
         const [x0, y0] = path[i - 1], [x1, y1] = path[i];
         const len = Math.hypot(x1 - x0, y1 - y0);
         if (len < 1e-6) continue;
-        legs.push({ x0, y0, x1, y1, len, from: total, dir: dirOf(x1 - x0, y1 - y0) });
+        legs.push({ x0, y0, x1, y1, len, from: total, dir: dirOf(x1 - x0, y1 - y0), to: i - 1 }); // to — индекс точки в points
         total += len;
       }
       route = legs.length ? { legs, total, start: now, ms: Math.max((total / speed) * 1000, minMs) } : null;
@@ -260,8 +266,15 @@ const IsoObjects = (() => {
 
     function remove() { for (const m of Object.values(models)) m.remove(); }
 
+    // К какой из точек последнего go(points) машина едет сейчас (индекс в points); null — стоит
+    function heading() {
+      if (!route) return null;
+      const at = easeInOut(Math.min((performance.now() - route.start) / route.ms, 1)) * route.total;
+      return (route.legs.find(l => at <= l.from + l.len) ?? route.legs.at(-1)).to;
+    }
+
     moveTo(0, 0, 'x');
-    return { key, pos, moveTo, go, update, remove, get moving() { return route != null; }, get dir() { return dir; } };
+    return { key, pos, moveTo, go, update, remove, heading, get moving() { return route != null; }, get dir() { return dir; } };
   }
 
   // ---------- Постройки ----------
@@ -345,9 +358,11 @@ const IsoObjects = (() => {
     g.append(s.panel('x', x + w + 0.003, y + d / 2 - 0.25, y + d / 2 + 0.25, 0.4, 0.75, C.glass));
     g.append(s.gableRoof(x, y, w, d, h, 0.55, C.roof));
     s.castShadow(x, y, w, d, h + 0.35);
-    if (label) s.hover(g, s.label(x + w / 2, y + d / 2, h + 0.6, label.lines, label));
+    const l = label ? s.label(x + w / 2, y + d / 2, h + 0.6, label.lines, label) : null;
+    if (l) s.hover(g, l);
     // Глубина — по середине: машины перед домиком (больше y) рисуются поверх
     s.add(x + y + w / 2 + d / 2, g);
+    return l; // живая сцена меняет текст таблички на месте
   }
 
   // ---------- Шлагбаум и светофор ----------
@@ -526,6 +541,6 @@ const IsoObjects = (() => {
 
   return {
     carColor, island, road, zebra, stopLine, slot, paved, sign,
-    car, carActor, CAR, washHouse, house, barrierGate, trafficLight, bench, streetLamp, picket, decorate,
+    car, carActor, CAR, ROAD, washHouse, house, barrierGate, trafficLight, bench, streetLamp, picket, decorate,
   };
 })();

@@ -46,18 +46,18 @@
 <script src="semaphore.js"></script>
 <script src="semaphoretask.js"></script>
 <script src="tiles.js"></script>
-<!-- Диорамы: движок → объекты → сцены → живые снимки из store плиток -->
+<!-- Диорамы: движок → реквизит → набор → описания структур -->
 <script src="iso-scene.js"></script>
 <script src="iso-objects.js"></script>
-<script src="diorama.js"></script>
-<script src="diorama-live.js"></script>
+<script src="diorama-kit.js"></script>
+<script src="diorama-pool.js"></script>
+<script src="diorama-semaphore.js"></script>
 <script>
-  // Плитки — те же, что на index.html, но с пределами: столько, сколько помещается на острове (Diorama.LIMITS)
-  const { LIMITS } = Diorama;
+  // Плитки — те же, что на index.html, но с пределами: столько, сколько помещается на острове (LIMITS описания)
   const ROWS = [
-    { view: { ...Pool.fixed, params: [['nThreads', 2, { min: 1, max: LIMITS.bays }]] }, panel: DioramaLive.poolPanel() },
-    { view: { ...SemaphoreTaskView, params: [['permits', 2, { min: 1, max: LIMITS.inside }], ['durationMs', 5000, { min: 1000, max: 30000 }], ['fair', false]] },
-      panel: DioramaLive.semaphorePanel() },
+    { view: { ...Pool.fixed, params: [['nThreads', 2, { min: 1, max: PoolDiorama.LIMITS.bays }]] }, panel: Kit.panel(PoolDiorama.kind) },
+    { view: { ...SemaphoreTaskView, params: [['permits', 2, { min: 1, max: SemaphoreDiorama.LIMITS.inside }], ['durationMs', 5000, { min: 1000, max: 30000 }], ['fair', false]] },
+      panel: Kit.panel(SemaphoreDiorama.kind) },
   ];
 
   const root = document.getElementById('twin');
