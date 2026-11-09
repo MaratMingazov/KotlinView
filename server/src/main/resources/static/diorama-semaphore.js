@@ -14,6 +14,10 @@ const SemaphoreDiorama = (() => {
   // Сколько помещается на острове. Больше не рисуем: ждущих сверх — «+N»; разрешений — не больше мест на площадке
   const LIMITS = { waiting: 4, inside: 3 };
 
+  // Стрела: взмах (вверх или вниз) — за GATE_SWING_MS; поднята, пока пропущенная машина в зоне шлагбаума (клетки по x)
+  const GATE_SWING_MS = 250;
+  const GATE_ZONE = { before: 2.0, after: 1.4 };
+
   // Раскладка сцены (клетки мира)
   const BARRIER = {
     island: [-4.4, -2.9, 14.4, 3.1], seed: 2.3, // площадка до y = 2.2 — остров чуть шире вниз, чем у мойки
@@ -59,7 +63,7 @@ const SemaphoreDiorama = (() => {
 
     // Шлагбаум опущен, перед ним стоп-линия; светофор: сколько разрешений свободно из скольких
     O.stopLine(s, L.gateX - 0.2);
-    O.barrierGate(s, L.gateX);
+    const gate = O.barrierGate(s, L.gateX);
     const light = O.trafficLight(s, L.gateX, { free: true, counter: `${shape.permits} / ${shape.permits}`, details: ['Semaphore', '…'] });
     const houseLabel = O.house(s, h.x, h.y, h.w, h.d, h.h, { lines: ['task #?', '…'], color: C.accent });
 
@@ -88,7 +92,23 @@ const SemaphoreDiorama = (() => {
       s.showLabel(more, extra > 0);
     }
 
-    return { places, links, entry: 'entry', exit: 'exit', update };
+    /**
+     * Стрела — «пропустили одного»: поднимается, когда к шлагбауму подъезжает машина, едущая на площадку
+     * (её цель — spot…: поток прошёл acquire), и опускается, когда она проехала. Светофор — состояние, стрела — событие
+     */
+    let open = 0, lastFrame = null;
+    function frame(now, actors) {
+      const passing = actors.some(a => String(a.target).startsWith('spot') && a.x > L.gateX - GATE_ZONE.before && a.x < L.gateX + GATE_ZONE.after);
+      const want = passing ? 1 : 0, dt = lastFrame == null ? 16 : Math.min(now - lastFrame, 50);
+      lastFrame = now;
+      const step = dt / GATE_SWING_MS;
+      open = want > open ? Math.min(want, open + step) : Math.max(want, open - step);
+      gate.setOpen(open);
+      if (open === want) lastFrame = null; // покой: следующий взмах начнётся с нормального шага
+      return open !== want;
+    }
+
+    return { places, links, entry: 'entry', exit: 'exit', update, frame };
   }
 
   /** Кто где: ждущие — по местам очереди, внутри — на свободное место площадки (закрепляется за потоком). */

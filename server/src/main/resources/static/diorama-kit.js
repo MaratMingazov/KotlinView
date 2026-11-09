@@ -34,6 +34,17 @@
  * @property {string} entry                                  — где появляется новый актёр
  * @property {string} exit                                   — куда уезжает пропавший из снимка (и там исчезает)
  * @property {(snapshot: Object) => void} [update]           — обновить на месте счётчики, шапку, реквизит
+ * @property {(now: number, actors: ActorView[]) => boolean} [frame] — мелкая анимация реквизита на каждом кадре
+ *                                                              (стрела, вспышка); true — «ещё анимирую», кадры нужны дальше
+ */
+
+/**
+ * Где актёр сейчас — для Layout.frame.
+ * @typedef {Object} ActorView
+ * @property {string|number} key
+ * @property {number} x
+ * @property {number} y
+ * @property {string} target                                 — куда едет сейчас (или где стоит)
  */
 
 /**
@@ -101,18 +112,30 @@ const Kit = (() => {
     return { places: layout.places, neighbours };
   }
 
-  // ---------- Актёры ----------
+  // ---------- Актёры и время ----------
+
+  /**
+   * Время анимации отделено от времени событий, но не уходит от него далеко:
+   * SPEED, MIN_MS — обычная скорость и минимальная длительность перегона (короткий перегон всё равно виден);
+   * DWELL_MS — сколько актёр стоит в месте, если дальше у него ещё остановки (видно, что он там был);
+   * MAX_LAG_MS — сколько актёру можно отставать: остаток его плана дольше — всё проигрывается быстрее
+   */
+  const TIME = { SPEED: 6, MIN_MS: 450, DWELL_MS: 250, MAX_LAG_MS: 1000 };
 
   const lookOf = spec => JSON.stringify([spec.model ?? 'car', spec.color, spec.look ?? null]);
 
   /**
-   * Актёры одной сцены. sync(specs) — каждому его место: новый появляется на въезде (или сразу на месте, если instant),
-   * у кого место сменилось — едет по сети от ближайшего места впереди, пропавший из specs — едет на выезд и исчезает.
-   * tick(now) — кадр; true — кто-то ещё едет
+   * Актёры одной сцены — с «режиссёром времени». У каждого — план: очередь мест, куда ему ещё надо.
+   * sync(specs): новое место не отменяет текущий маршрут, а встаёт в план; пропавший из specs — в конец плана выезд
+   * (сначала побывает во всех своих местах, потом уедет и исчезнет); instant — всех сразу на места, планы очистить.
+   * tick(now): доехал — постоять DWELL_MS (если дальше ещё есть куда) и ехать к следующему месту плана.
+   * Перегоны и стоянки ускоряются, если весь остаток плана при обычной скорости дольше MAX_LAG_MS
    */
   function cast(s, layout) {
     const net = network(layout);
-    const actors = new Map(); // ключ → { actor, look, place, route: [имена мест] | null, leaving }
+    // ключ → { actor, look, at, route, routeTarget, plan: [места], leaving, readyAt }
+    // at — где стоит (или откуда уехал); route — имена мест текущего маршрута, routeTarget — его конец
+    const actors = new Map();
 
     function create(spec) {
       const make = models[spec.model ?? 'car'];
@@ -122,27 +145,75 @@ const Kit = (() => {
 
     // Где актёр «логически»: место, к которому едет сейчас, или где стоит
     function anchorOf(entry) {
-      const i = entry.actor.heading();
-      return i != null && entry.route ? entry.route[i] : entry.place;
+      const i = entry.route ? entry.actor.heading() : null;
+      return i != null ? entry.route[i] : entry.routeTarget ?? entry.at;
     }
 
-    function drive(entry, target, now) {
-      const from = anchorOf(entry);
-      const path = shortestPath(net, from, target);
-      if (!path) throw new Error(`Kit: нет пути ${from} → ${target}`);
-      entry.route = path;
-      entry.place = target;
-      entry.actor.go(path.map(name => net.places[name]), { now });
+    // Последнее запланированное место: туда актёр в итоге приедет (для групп мест и сравнения со снимком)
+    const finalOf = entry => entry.plan.at(-1) ?? entry.routeTarget ?? entry.at;
+
+    function pathOrThrow(from, to) {
+      const path = shortestPath(net, from, to);
+      if (!path) throw new Error(`Kit: нет пути ${from} → ${to}`);
+      return path;
+    }
+    const lengthOf = path => path.slice(1).reduce((sum, name, i) => sum + Math.hypot(
+      net.places[name][0] - net.places[path[i]][0], net.places[name][1] - net.places[path[i]][1]), 0);
+
+    // Во сколько раз ускорить, чтобы остаток плана от места from уложился в MAX_LAG_MS (1 — не ускорять)
+    function speedup(from, plan) {
+      let ms = 0, at = from;
+      plan.forEach((to, i) => {
+        ms += Math.max((lengthOf(pathOrThrow(at, to)) / TIME.SPEED) * 1000, TIME.MIN_MS) + (i < plan.length - 1 ? TIME.DWELL_MS : 0);
+        at = to;
+      });
+      return Math.max(1, ms / TIME.MAX_LAG_MS);
     }
 
-    function place(entry, name) {
+    // Ехать по маршруту route (имена мест) с ускорением k: машина стартует с того места, где она сейчас
+    function go(entry, route, k, now) {
+      Object.assign(entry, { route, routeTarget: route.at(-1), k, dwellMs: TIME.DWELL_MS / k });
+      entry.actor.go(route.map(name => net.places[name]), { now, speed: TIME.SPEED * k, minMs: TIME.MIN_MS / k });
+    }
+
+    // Следующее место плана: маршрут от того места, где стоит
+    function start(entry, now) {
+      const target = entry.plan.shift();
+      if (target === entry.at) return;
+      go(entry, pathOrThrow(entry.at, target), speedup(entry.at, [target, ...entry.plan]), now);
+    }
+
+    /**
+     * План вырос, пока актёр в пути: пересчитать ускорение с учётом нового плана. Если надо заметно быстрее —
+     * продолжить текущий перегон быстрее с того же места (иначе ускорение досталось бы только следующим перегонам,
+     * а отставание копилось бы на том, что уже едет)
+     */
+    function retime(entry, now) {
+      if (!entry.route) return;
+      const anchor = anchorOf(entry);
+      const k = speedup(anchor, [entry.routeTarget, ...entry.plan]);
+      if (k > entry.k * 1.15) go(entry, pathOrThrow(anchor, entry.routeTarget), k, now);
+    }
+
+    function placeAt(entry, name) {
       entry.actor.moveTo(...net.places[name], 'x');
-      Object.assign(entry, { place: name, route: null });
+      Object.assign(entry, { at: name, route: null, routeTarget: null, plan: [], readyAt: 0 });
+    }
+
+    // Облик сменился — пересоздать на том же месте; если ехал — продолжить к той же цели от ближайшего места впереди
+    function recreate(entry, spec, now) {
+      const { x, y } = entry.actor.pos, anchor = anchorOf(entry);
+      entry.actor.remove();
+      entry.actor = create(spec);
+      entry.actor.moveTo(x, y, 'x');
+      entry.look = lookOf(spec);
+      if (entry.route) go(entry, pathOrThrow(anchor, entry.routeTarget), entry.k, now);
     }
 
     /**
      * Группа мест («spot*»): каждому актёру — свободное место группы, и пока он в группе — то же самое
-     * (соседний уехал — остальные не перескакивают). Сначала оставить тем, кто уже стоит в группе, потом раздать новым
+     * (соседний уехал — остальные не перескакивают). Сначала оставить тем, кто уже в группе (по последнему
+     * запланированному месту), потом раздать новым
      */
     function resolveGroups(specs) {
       const groups = specs.filter(spec => spec.place.endsWith('*'));
@@ -150,8 +221,8 @@ const Kit = (() => {
       const taken = new Set(), chosen = new Map();
       const inGroup = (place, prefix) => place?.startsWith(prefix) && /^\d+$/.test(place.slice(prefix.length));
       for (const spec of groups) {
-        const prefix = spec.place.slice(0, -1), current = actors.get(spec.key)?.place;
-        if (!actors.get(spec.key)?.leaving && inGroup(current, prefix) && !taken.has(current)) { taken.add(current); chosen.set(spec.key, current); }
+        const entry = actors.get(spec.key), prefix = spec.place.slice(0, -1), current = entry && finalOf(entry);
+        if (entry && !entry.leaving && inGroup(current, prefix) && !taken.has(current)) { taken.add(current); chosen.set(spec.key, current); }
       }
       for (const spec of groups) {
         if (chosen.has(spec.key)) continue;
@@ -172,40 +243,53 @@ const Kit = (() => {
         if (!net.places[spec.place]) throw new Error(`Kit: неизвестное место «${spec.place}» у актёра ${spec.key}`);
         wanted.add(spec.key);
         let entry = actors.get(spec.key);
-        // Облик сменился — пересоздать на том же месте (табличка — новая, от нового spec)
-        if (entry && entry.look !== lookOf(spec)) {
-          const { x, y } = entry.actor.pos;
-          entry.actor.remove();
-          entry.actor = create(spec);
-          entry.actor.moveTo(x, y, 'x');
-          entry.look = lookOf(spec);
-        }
+        if (entry && entry.look !== lookOf(spec)) recreate(entry, spec, now);
         if (!entry) {
-          entry = { actor: create(spec), look: lookOf(spec), place: null, route: null, leaving: false };
+          entry = { actor: create(spec), look: lookOf(spec), leaving: false };
           actors.set(spec.key, entry);
-          place(entry, instant ? spec.place : layout.entry);
+          placeAt(entry, instant ? spec.place : layout.entry);
         }
-        if (instant) { place(entry, spec.place); entry.leaving = false; continue; }
-        if (entry.leaving || entry.place !== spec.place) { entry.leaving = false; drive(entry, spec.place, now); }
+        if (instant) { placeAt(entry, spec.place); entry.leaving = false; continue; }
+        // Вернулся в снимок, пока собирался уехать: выезд из плана убрать
+        if (entry.leaving) {
+          entry.leaving = false;
+          if (entry.plan.at(-1) === layout.exit) entry.plan.pop();
+        }
+        if (finalOf(entry) !== spec.place) { entry.plan.push(spec.place); retime(entry, now); }
       }
       for (const [key, entry] of actors) {
         if (wanted.has(key) || entry.leaving) continue;
         entry.leaving = true;
-        drive(entry, layout.exit, now);
+        entry.plan.push(layout.exit);
+        retime(entry, now);
       }
     }
 
+    // Кадр. true — кто-то едет или ещё ждёт следующей остановки: кадры нужны дальше
     function tick(now) {
-      let moving = false;
+      let busy = false;
       for (const [key, entry] of actors) {
-        const still = entry.actor.update(now);
-        if (!still && entry.leaving) { entry.actor.remove(); actors.delete(key); continue; }
-        moving ||= still;
+        if (entry.route && !entry.actor.update(now)) {
+          // Доехал: если дальше ещё есть куда — постоять, чтобы остановку было видно
+          entry.at = entry.routeTarget;
+          entry.route = entry.routeTarget = null;
+          entry.readyAt = now + (entry.plan.length ? entry.dwellMs : 0);
+        }
+        if (!entry.route && entry.plan.length && now >= entry.readyAt) start(entry, now);
+        if (!entry.route && !entry.plan.length && entry.leaving && entry.at === layout.exit) {
+          entry.actor.remove();
+          actors.delete(key);
+          continue;
+        }
+        busy ||= !!entry.route || entry.plan.length > 0;
       }
-      return moving;
+      return busy;
     }
 
-    return { sync, tick, get size() { return actors.size; } };
+    // Где актёры сейчас — для мелкой анимации реквизита (Layout.frame)
+    const view = () => [...actors].map(([key, e]) => ({ key, x: e.actor.pos.x, y: e.actor.pos.y, target: e.routeTarget ?? e.plan[0] ?? e.at }));
+
+    return { sync, tick, view, get size() { return actors.size; } };
   }
 
   // ---------- Сцена структуры ----------
@@ -235,7 +319,12 @@ const Kit = (() => {
     const el = KV.el('div', 'diorama-panel');
     let st = null, shape = null, frame = null, fresh = false;
 
-    const loop = now => { frame = st?.actors.tick(now) ? requestAnimationFrame(loop) : null; };
+    // Кадр: актёры и мелкая анимация реквизита; кадры нужны, пока кто-то из них занят
+    const loop = now => {
+      const moving = st?.actors.tick(now);
+      const animating = st?.layout.frame?.(now, st.actors.view()) ?? false;
+      frame = moving || animating ? requestAnimationFrame(loop) : null;
+    };
 
     function update(tile) {
       const next = kind.shapeOf(tile);
@@ -266,5 +355,5 @@ const Kit = (() => {
   /** Доля выполнения запуска задачи (run из KV.trackTask) к этому моменту: 0…1; длительность неизвестна — 0. */
   const progress = (run, durationMs) => durationMs ? Math.min((performance.now() - run.startedAt) / durationMs, 1) : 0;
 
-  return { models, lane, panel, show, field, progress };
+  return { models, lane, panel, show, field, progress, TIME };
 })();

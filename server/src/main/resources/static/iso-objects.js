@@ -368,12 +368,36 @@ const IsoObjects = (() => {
   // ---------- Шлагбаум и светофор ----------
 
   // Шлагбаум у ближнего края дороги: стойка и полосатая стрела поперёк полосы, опущенная
+  /**
+   * Шлагбаум у ближнего края дороги: стойка и полосатая стрела поперёк полосы. Стрела вращается вокруг оси на стойке:
+   * setOpen(0) — опущена поперёк дороги, setOpen(1) — поднята вертикально. Сегменты перестраиваются на каждом вызове
+   */
   function barrierGate(s, x) {
     s.castShadow(x - 0.05, 1.3, 0.2, 0.2, 0.62);
     s.add(x + 1.5, s.box(x - 0.05, 1.3, 0, 0.2, 0.2, 0.62, C.post));
     const arm = svg('g');
-    for (let i = 0; i < 6; i++) arm.append(s.box(x, 1.3 - (i + 1) * 0.22, 0.52, 0.08, 0.22, 0.08, i % 2 ? '#f2f2f2' : '#d64545'));
+    const SEGMENTS = 6, SEG = 0.22, HALF = 0.04, W = 0.08;      // сегменты по 0.22, сечение стрелы 0.08 × 0.08
+    const pivot = { y: 1.3, z: 0.56 };                           // ось — на стойке, по центру сечения стрелы
+    const face = (list, color) => svg('polygon', { points: s.pts(list), style: s.faceStyle(color) });
+
+    function setOpen(f) {
+      // Угол от горизонтали: стрела идёт от стойки в −y и поднимается к +z. d — вдоль стрелы, n — поперёк, «вверх»
+      const a = f * Math.PI / 2, d = [-Math.cos(a), Math.sin(a)], n = [Math.sin(a), Math.cos(a)];
+      const at = (len, side) => [pivot.y + d[0] * len + n[0] * side, pivot.z + d[1] * len + n[1] * side];
+      arm.replaceChildren();
+      for (let i = 0; i < SEGMENTS; i++) {
+        const color = i % 2 ? '#f2f2f2' : '#d64545';
+        const [y0, z0] = at(i * SEG, HALF), [y1, z1] = at((i + 1) * SEG, HALF);
+        const [y2, z2] = at((i + 1) * SEG, -HALF), [y3, z3] = at(i * SEG, -HALF);
+        // Видимые грани: «верх» (сторона n) и правый бок (+x)
+        arm.append(face([[x, y0, z0], [x + W, y0, z0], [x + W, y1, z1], [x, y1, z1]], shade(color, 0.1)));
+        arm.append(face([[x + W, y0, z0], [x + W, y1, z1], [x + W, y2, z2], [x + W, y3, z3]], shade(color, -0.32)));
+      }
+    }
+
+    setOpen(0);
     s.add(x + 0.6, arm);
+    return { setOpen };
   }
 
   /**
