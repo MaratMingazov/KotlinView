@@ -299,7 +299,7 @@ const Pool = (() => {
   // Свободное место под воркера: бледная подпись и пунктирная рамка по размеру мини-конверта
   function workerSlot() {
     const column = KV.el('div', 'worker slot');
-    column.append(KV.el('span', 'wname', 'worker'), KV.el('div', 'envelope-slot'));
+    column.append(KV.el('span', 'wname', KV.THREAD_LABEL), KV.el('div', 'envelope-slot'));
     column.title = 'free place: the pool creates a thread on execute';
     return column;
   }
@@ -314,12 +314,12 @@ const Pool = (() => {
   }
 
   // Чем занят воркер, видно не по событиям пула, а по событиям задачи (run) и очереди (take / poll) с его именем потока.
-  // Колонка: сверху «worker», под ним либо его задача — тем же компонентом, что на странице задачи, — либо ожидание
+  // Колонка: сверху «thread», под ним либо его задача — тем же компонентом, что на странице задачи, — либо ожидание
   function renderWorker(store, thread, queue) {
     const column = KV.el('div', 'worker');
     column.style.setProperty('--thread', KV.threadColor(thread.name));
-    // Пока просто «worker»: различаются цветом (по полному имени потока), полное имя — в подсказке
-    column.append(KV.el('span', 'wname', 'worker'));
+    // Пока просто «thread»: различаются цветом (по полному имени потока), полное имя — в подсказке
+    column.append(KV.el('span', 'wname', KV.THREAD_LABEL));
     const now = performance.now();
 
     const busy = taskRunBy(store, thread.name);

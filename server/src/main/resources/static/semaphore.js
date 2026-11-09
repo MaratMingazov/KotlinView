@@ -200,7 +200,7 @@ const SemaphoreView = (() => {
   }
 
   function chip(thread, text, title) {
-    const c = KV.el('span', 'thread-chip', text);
+    const c = KV.el('span', 'thread-chip', text.replace(thread, KV.THREAD_LABEL)); // имя — в подсказке (title)
     c.style.setProperty('--thread', KV.threadColor(thread));
     c.title = title;
     return c;

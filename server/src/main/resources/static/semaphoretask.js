@@ -8,15 +8,16 @@
  * через state.semaphoreId / state.taskId. Потоки sem-runner-N склеиваются по имени: ждут — в семафоре, работают — в задаче.
  * Собственные события run не учитываем: всё видно по событиям частей.
  *
- * Картинка — комната со светофором у входа:
+ * Картинка — как у остальных структур: бейджи методов первой строкой, под ними состояние в ряд:
  *
- *                 ┌ acquire  release ─────────────────┐
- *   sem-runner-4  │ ● 1      ┌──────┐ ▓▓▓ sem-runner-1 │
- *   sem-runner-3  │ ○ /2     │ task │ ▓▓  sem-runner-2 │
- *                 │          └──────┘                 │
- *                 └───────────────────────────────────┘
- *   слева, снаружи — кто ждёт в acquire, в порядке прихода; светофор: зелёный с цифрой — есть свободные разрешения,
- *   красный — нет; внутри комнаты — задача (конверт и полоски потоков внутри run)
+ *   acquire  release
+ *   sem-runner-4   ┌─┐      ┌──────┐
+ *   sem-runner-3   │1│      │ task │
+ *                  └─┘      └──────┘
+ *                permits    ▓▓▓ sem-runner-1
+ *                           ▓▓  sem-runner-2
+ *   слева — кто ждёт в acquire, в порядке прихода; счётчик — квадратик с числом свободных разрешений:
+ *   зелёный — они есть, красный — нет; справа — задача (конверт и полоски потоков внутри run)
  */
 const SemaphoreTaskView = (() => {
   const base = '/api/semaphorerunnabletask';
@@ -55,7 +56,7 @@ const SemaphoreTaskView = (() => {
    * Семафоры — модель из semaphore.js (store.semaphores: waiting, state, бейджи), задачи — KV.trackTask (store.tasks):
    * каждое событие уходит в свою модель.
    * lamp / extra — что горело при прошлой отрисовке и с какого момента: по ним вспышка при переключении.
-   * drawn — светофор уже рисовался: то, что видно при первой отрисовке, не вспыхивает
+   * drawn — счётчик уже рисовался: то, что видно при первой отрисовке, не вспыхивает
    */
   function createStore(render) {
     const items = new Map();
@@ -91,22 +92,29 @@ const SemaphoreTaskView = (() => {
 
   // ---------- Отрисовка ----------
 
-  /** Очередь у входа → комната (бейджи на рамке, светофор, задача внутри); под ней — уведомление об отказе. */
+  /**
+   * Как у остальных структур: первой строкой — бейджи acquire / release (tryAcquire в этой плитке не бывает),
+   * под ними в ряд — ждущие в acquire → счётчик разрешений → задача; ниже — уведомление об отказе
+   */
   function renderState(store, item) {
     const sem = item.semaphoreId != null ? store.semaphores.items.get(item.semaphoreId) : null;
-    const row = KV.el('div', 'semroom-row');
-    row.append(renderQueue(sem), renderRoom(store, item, sem));
-    const out = [row];
+    const row = KV.el('div', 'semtask-row');
+    row.title = `semaphore #${item.semaphoreId ?? '?'} guarding task #${item.taskId ?? '?'}`;
+    // Задача, которой ещё нет в модели (страницу открыли позже), — пустой конверт с «?», как в очереди пула
+    const task = store.tasks.get(item.taskId) ?? { id: item.taskId ?? '?', durationMs: null, failedAt: null, runs: new Map() };
+    // Задача — всегда закрытый конверт с надписью task: кто внутри run(), видно по полоскам под ним (пробуем вид)
+    row.append(renderQueue(sem), renderLight(item, sem?.state), KV.renderTask(task, { size: 'mini', closed: true, label: 'task' }));
+    const out = sem ? [KV.renderBadges(pick(sem.methods, ['acquire', 'release'])), row] : [row];
     const n = item.notice;
     if (n && performance.now() - n.start < NOTICE_MS) out.push(KV.el('div', 'semtask-notice error', n.text));
     return out;
   }
 
-  // Кто ждёт в acquire — снаружи, у двери, в порядке прихода (METHOD_IN). Без подписи: и так видно, что стоят у входа
+  // Кто ждёт в acquire — перед счётчиком, в порядке прихода (METHOD_IN). Без подписи: и так видно, что ждут
   function renderQueue(sem) {
-    const queue = KV.el('div', 'semroom-queue');
+    const queue = KV.el('div', 'semtask-waiting');
     for (const [thread, w] of sem?.waiting ?? []) {
-      const chip = KV.el('span', 'thread-chip', thread + (w.permits !== 1 ? ` ×${w.permits}` : ''));
+      const chip = KV.el('span', 'thread-chip', KV.THREAD_LABEL + (w.permits !== 1 ? ` ×${w.permits}` : ''));
       chip.style.setProperty('--thread', KV.threadColor(thread));
       chip.title = `${thread} waits in ${w.method}(${w.permits}): no free permits`;
       queue.append(chip);
@@ -114,61 +122,36 @@ const SemaphoreTaskView = (() => {
     return queue;
   }
 
-  function renderRoom(store, item, sem) {
-    const room = KV.el('div', 'semroom');
-    room.title = `semaphore #${item.semaphoreId ?? '?'} guarding task #${item.taskId ?? '?'}`;
-
-    // На рамке — только acquire и release: tryAcquire в этой плитке не бывает
-    if (sem) {
-      const legend = KV.el('div', 'semroom-legend');
-      legend.append(KV.renderBadges(pick(sem.methods, ['acquire', 'release'])));
-      room.append(legend);
-    }
-
-    const inside = KV.el('div', 'semroom-inside');
-    // Задача, которой ещё нет в модели (страницу открыли позже), — пустой конверт с «?», как в очереди пула
-    const task = store.tasks.get(item.taskId) ?? { id: item.taskId ?? '?', durationMs: null, failedAt: null, runs: new Map() };
-    inside.append(KV.renderTask(task, { size: 'mini' }));
-
-    room.append(renderLight(item, sem?.state), inside);
-    return room;
-  }
-
   /**
-   * Светофор: зелёный горит, пока есть свободные разрешения, — внутри цифра, сколько; красный — разрешений нет
-   * (0 или долг: тогда в красном — отрицательное число). Под лампами — /initialPermits.
-   * Разрешений больше начального — release без acquire «напечатал» лишнее: зелёная лампа в оранжевом кольце и метка ◆+N.
+   * Счётчик разрешений: один квадратик с числом свободных — зелёный, пока они есть; красный — разрешений нет
+   * (0 или долг: тогда отрицательное число). Всего разрешений — в подсказке.
+   * Разрешений больше начального — release без acquire «напечатал» лишнее: квадратик в оранжевом кольце и метка ◆+N.
    * В этой плитке так не бывает (release делает сам поток), но семафор доступен и напрямую — POST /api/semaphore/{id}/release.
    * Метка — состояние, а не событие: горит, пока лишние есть; вспыхивает только при появлении
    */
   function renderLight(item, s) {
     const light = KV.el('div', 'semlight');
-    const green = KV.el('span', 'lamp green');
-    const red = KV.el('span', 'lamp red');
-    light.append(green, red);
-    if (!s) { light.append(KV.el('span', 'semlight-count', '?')); return light; }
+    const counter = KV.el('span', 'permits');
+    light.append(counter, KV.el('span', 'semlight-label', 'permits'));
+    if (!s) { counter.textContent = '?'; return light; }
 
     const available = s.availablePermits;
     const isGreen = available > 0;
     const extra = available - s.initialPermits;
     const now = performance.now();
 
-    // Вспышка при переключении лампы. Первая отрисовка — без вспышки: лампа не переключалась, её просто увидели
+    // Вспышка при смене цвета. Первая отрисовка — без вспышки: цвет не менялся, его просто увидели
     if (item.lamp?.green !== isGreen) item.lamp = { green: isGreen, since: item.lamp ? now : -Infinity };
-    const lit = isGreen ? green : red;
-    lit.classList.add('on');
-    lit.textContent = String(available);
-    flash(lit, now - item.lamp.since);
-    (isGreen ? red : green).classList.add('off');
-    green.title = isGreen ? `${available} free permit(s)` : 'no free permits';
-    red.title = isGreen ? 'free permits available' : available < 0 ? `debt: ${available}, release() is needed first` : 'no free permits: acquire() waits';
-
-    light.append(Object.assign(KV.el('span', 'semlight-count', `/${s.initialPermits}`), { title: 'initialPermits' }));
+    counter.classList.add(isGreen ? 'green' : 'red');
+    counter.textContent = String(available);
+    counter.title = (isGreen ? `${available} free permit(s)` : available < 0 ? `debt: ${available}, release() is needed first` : 'no free permits: acquire() waits')
+      + ` · ${s.initialPermits} in total`;
+    flash(counter, now - item.lamp.since);
 
     if (extra > 0) {
-      // Как у лампы: лишние, увиденные при первой отрисовке, — без вспышки, они не появились, их просто увидели
+      // Как у счётчика: лишние, увиденные при первой отрисовке, — без вспышки, они не появились, их просто увидели
       if (item.extra === null) item.extra = { since: item.drawn ? now : -Infinity };
-      green.classList.add('extra');
+      counter.classList.add('extra');
       const mark = KV.el('span', 'semlight-extra', `◆+${extra}`);
       mark.title = 'release() without acquire(): the semaphore does not check who releases — ' +
         `${extra} permit(s) above initialPermits`;

@@ -35,6 +35,12 @@
   <div id="barrierRoot"></div>
 </section>
 
+<section>
+  <div class="diorama-title">Conveyor = LinkedBlockingQueue</div>
+  <div class="legend">crate = task · conveyor = queue (head on the right) · car = thread (in its color): offer brings a crate from the left, take picks one up on the right</div>
+  <div id="queueRoot"></div>
+</section>
+
 <!-- Порядок важен: движок → реквизит → набор → описания структур -->
 <script src="iso-scene.js"></script>
 <script src="iso-vehicles.js"></script>
@@ -42,12 +48,15 @@
 <script src="iso-buildings.js"></script>
 <script src="iso-nature.js"></script>
 <script src="diorama-kit.js"></script>
+<script src="diorama-street.js"></script>
 <script src="diorama-pool.js"></script>
 <script src="diorama-semaphore.js"></script>
+<script src="diorama-queue.js"></script>
 <script>
   // Обе диорамы — на наборе (diorama-kit.js): описание структуры + демо-снимок
   document.getElementById('washRoot').replaceChildren(Kit.show(PoolDiorama.kind, PoolDiorama.demo, PoolDiorama.demoShape));
   document.getElementById('barrierRoot').replaceChildren(Kit.show(SemaphoreDiorama.kind, SemaphoreDiorama.demo, SemaphoreDiorama.demoShape));
+  document.getElementById('queueRoot').replaceChildren(Kit.show(QueueDiorama.kind, QueueDiorama.demo, QueueDiorama.demoShape));
 </script>
 </body>
 </html>

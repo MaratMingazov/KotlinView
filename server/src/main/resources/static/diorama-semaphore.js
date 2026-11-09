@@ -49,10 +49,9 @@ const SemaphoreDiorama = (() => {
   /** Неподвижная сцена: дорога, площадка, бензоколонка, шлагбаум, светофор; места: въезд, очередь, проезд, колонки, выезд. */
   function layout(s, shape) {
     const L = BARRIER, lot = L.lot;
-    O.island(s, ...L.island, L.seed);
+    // Дорога — двумя кусками: между ними площадка
+    const st = Kit.street(s, { island: L.island, seed: L.seed, roads: [[R.ends[0], lot.x0], [lot.x1, R.ends[1]]] });
     s.title(['Semaphore', '…']);
-    O.road(s, R.ends[0], lot.x0);
-    O.road(s, lot.x1, R.ends[1]);
 
     // Площадка за шлагбаумом: плитка, штакетник по дальним краям (вход и выезд — открыты), скамейка, фонари.
     // У дальнего края скамейки нет: её закрыл бы навес над колонками
@@ -73,20 +72,15 @@ const SemaphoreDiorama = (() => {
     const spots = Array.from({ length: shape.permits }, (_, i) => spotAt(i));
     const station = O.fuelStation(s, { shop: L.shop, pumps: spots, label: { lines: ['task #?', '…'], color: C.accent } });
 
+    // Места: очередь и проезды — на полосе, одной цепочкой; на площадку — через проезд за шлагбаумом, с неё — на выезд.
     // Ждущие сверх LIMITS.waiting — «+N» над хвостом очереди
-    const waitX = i => L.waiting.firstX - i * L.waiting.step;
-    const more = s.label(waitX(LIMITS.waiting - 1) + O.CAR.L / 2, R.laneY + O.CAR.W / 2, 0.62, ['+0'], { permanent: true });
+    st.lanePlace('gate', L.gateX + 0.7);
+    st.lanePlace('lotOut', lot.x1 + 0.2);
+    const waiting = st.waitLine('wait', LIMITS.waiting, i => L.waiting.firstX - i * L.waiting.step + O.CAR.L / 2);
+    spots.forEach((at, i) => st.place(`spot${i}`, at));
+    const links = spots.flatMap((_, i) => [['gate', `spot${i}`], [`spot${i}`, 'lotOut']]);
 
-    O.decorate(s, L.decorSeed, [[-8, -0.3, 18, 1.5], [lot.x0 - 0.3, lot.y0 - 0.3, lot.x1 + 0.3, lot.y1 + 0.3], [L.gateX - 0.6, -0.9, L.gateX + 0.4, 1.6]]);
-
-    // Места: очередь и проезды — на полосе, одной цепочкой; на площадку — через проезд за шлагбаумом, с неё — на выезд
-    const onLane = x => [x, R.lane];
-    const places = { entry: onLane(R.ends[0] - 0.3), exit: onLane(R.ends[1] + 0.3), gate: onLane(L.gateX + 0.7), lotOut: onLane(lot.x1 + 0.2) };
-    for (let i = 0; i < LIMITS.waiting; i++) places[`wait${i}`] = onLane(waitX(i) + O.CAR.L / 2);
-    spots.forEach((at, i) => { places[`spot${i}`] = at; });
-    const laneNames = Object.keys(places).filter(name => !name.startsWith('spot'));
-    const links = [...Kit.lane(places, laneNames)];
-    for (let i = 0; i < shape.permits; i++) links.push(['gate', `spot${i}`], [`spot${i}`, 'lotOut']);
+    st.keepOut([lot.x0 - 0.3, lot.y0 - 0.3, lot.x1 + 0.3, lot.y1 + 0.3], [L.gateX - 0.6, -0.9, L.gateX + 0.4, 1.6]);
 
     let runs = new Map(); // кто внутри задачи (по имени потока) — для табло колонок
     function update(snap) {
@@ -95,9 +89,7 @@ const SemaphoreDiorama = (() => {
       light.set(snap.available > 0, `${snap.available} / ${snap.permits}`,
         ['Semaphore', `${snap.available} of ${snap.permits} permits free · ${snap.waiting.length} waiting`]);
       s.relabel(station.label, shopLines(snap));
-      const extra = snap.waiting.length - LIMITS.waiting;
-      if (extra > 0) s.relabel(more, [`+${extra}`]);
-      s.showLabel(more, extra > 0);
+      waiting.update(snap.waiting.length);
     }
 
     /**
@@ -144,12 +136,12 @@ const SemaphoreDiorama = (() => {
       return fuelPumps(now, actors) || swinging;
     }
 
-    return { places, links, entry: 'entry', exit: 'exit', update, frame };
+    return st.layout(L.decorSeed, { links, update, frame });
   }
 
   /** Кто где: ждущие — по местам очереди, внутри — к свободной колонке (место закрепляется за потоком). */
   function actorsOf(snap) {
-    const car = (name, place) => { const color = threadColor(name); return { key: name, place, color, label: { lines: [name], color } }; };
+    const car = (name, place) => { const color = threadColor(name); return { key: name, place, color, label: { lines: [Kit.THREAD_LABEL], color } }; };
     return [
       ...snap.waiting.slice(0, LIMITS.waiting).map((name, i) => car(name, `wait${i}`)),
       ...snap.inside.slice(0, LIMITS.inside).map(r => car(r.name, 'spot*')),

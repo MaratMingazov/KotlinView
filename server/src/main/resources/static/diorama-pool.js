@@ -9,7 +9,7 @@
  */
 const PoolDiorama = (() => {
   const { threadColor, PALETTE: C } = Iso;
-  const O = IsoObjects, R = O.ROAD;
+  const O = IsoObjects;
   const percent = fraction => `${Math.round(fraction * 100)}%`;
 
   // Сколько помещается на острове. Больше не рисуем: плитка на twin.html не даёт создать больше (tiles.js, max)
@@ -52,8 +52,8 @@ const PoolDiorama = (() => {
   function bayLabel(w) {
     if (!w.name) return { lines: ['free bay', 'no thread yet: the pool creates it on execute'] };
     const color = threadColor(w.name);
-    if (!w.task) return { lines: [w.name, 'idle · waits in take()'], color };
-    return { lines: [w.name, `task #${w.task.id} · ${percent(w.progress)}`], color, bar: { fraction: w.progress, color } };
+    if (!w.task) return { lines: [Kit.THREAD_LABEL, 'idle · waits in take()'], color };
+    return { lines: [Kit.THREAD_LABEL, `task #${w.task.id} · ${percent(w.progress)}`], color, bar: { fraction: w.progress, color } };
   }
 
   // ---------- Сцена ----------
@@ -61,8 +61,7 @@ const PoolDiorama = (() => {
   /** Неподвижная мойка на shape.bays боксов и места для машин: въезд, очередь, ворота и боксы, выезд. */
   function layout(s, shape) {
     const L = WASH;
-    O.island(s, ...L.island, L.seed);
-    O.road(s, ...R.ends, { skip: L.noMarks });
+    const st = Kit.street(s, { island: L.island, seed: L.seed, skip: L.noMarks });
     O.zebra(s, L.zebraX);
 
     const slotX = i => L.queue.headX - i * L.queue.step;
@@ -79,26 +78,22 @@ const PoolDiorama = (() => {
     s.title(['ThreadPoolExecutor', '…']);
     const doneSign = O.sign(s, ...L.doneSign, '✓ 0');
 
-    // Растительность — не на дороге, не в мойке со съездами и не у столбиков
+    // Растительность — не в мойке со съездами и не у столбиков
     const [qx, qy] = L.queueSign, [dx, dy] = L.doneSign;
-    O.decorate(s, L.decorSeed, [
-      [-8, -0.3, 18, 1.5],
+    st.keepOut(
       [L.house.x - 0.2, L.house.y - 0.3, L.house.x + wash.width + 0.6, 0],
       [qx - 0.2, qy - 0.25, qx + 0.3, qy + 0.35],
       [dx - 0.2, dy - 0.25, dx + 0.3, dy + 0.35],
-    ]);
+    );
 
     // Места: всё на полосе — одной цепочкой по x; бокс — только через свои ворота
-    const onLane = x => [x, R.lane];
-    const places = { entry: onLane(R.ends[0] - 0.3), exit: onLane(R.ends[1] + 0.3), incoming: onLane(L.incomingX + O.CAR.L / 2) };
-    for (let i = 0; i < LIMITS.slots; i++) places[`slot${i}`] = onLane(slotX(i) + 0.08 + O.CAR.L / 2);
+    st.lanePlace('incoming', L.incomingX + O.CAR.L / 2);
+    for (let i = 0; i < LIMITS.slots; i++) st.lanePlace(`slot${i}`, slotX(i) + 0.08 + O.CAR.L / 2);
     for (let i = 0; i < shape.bays; i++) {
-      places[`gate${i}`] = onLane(wash.bayCenter(i)[0]);
-      places[`bay${i}`] = wash.parkAt(i);
+      st.lanePlace(`gate${i}`, wash.bayCenter(i)[0]);
+      st.place(`bay${i}`, wash.parkAt(i));
     }
-    L.out.forEach((x, i) => { places[`out${i}`] = onLane(x + O.CAR.L / 2); });
-    const laneNames = Object.keys(places).filter(name => !name.startsWith('bay'));
-    const links = [...Kit.lane(places, laneNames), ...Array.from({ length: shape.bays }, (_, i) => [`gate${i}`, `bay${i}`])];
+    L.out.forEach((x, i) => st.lanePlace(`out${i}`, x + O.CAR.L / 2));
 
     // Обновить на месте: шапку, счётчики, маркизы и таблички боксов (маркизу — только когда сменился поток)
     const bayKeys = [];
@@ -112,7 +107,7 @@ const PoolDiorama = (() => {
       });
     }
 
-    return { places, links, entry: 'entry', exit: 'exit', update };
+    return st.layout(L.decorSeed, { links: Array.from({ length: shape.bays }, (_, i) => [`gate${i}`, `bay${i}`]), update });
   }
 
   /** Кто где: очередь — по местам, у воркера — в его боксе; в статичном показе — ещё «только что пришла» и уехавшие. */

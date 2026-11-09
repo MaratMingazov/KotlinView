@@ -1,8 +1,8 @@
 /*
  * Набор для диорам: всё, что одинаково у любой структуры. Структура описывает себя одним объектом (Kind) — как
  * построить сцену, какие на ней места, какой снимок взять из плитки и кто где стоит. Остальное делает набор:
- * сеть маршрутов, актёры (появиться на въезде, доехать по сети до своего места, уехать на выезд), панель рядом
- * с плиткой и статичный показ (prototype.html).
+ * сеть маршрутов, актёры (появиться на въезде, доехать по сети до своего места, уехать на выезд), грузы на актёрах
+ * и местах (ящик едет на машине, ложится на ленту), панель рядом с плиткой и статичный показ (prototype.html).
  *
  * Смысл и облик разделены: Kind говорит «актёр #12 — в месте slot2, модель car»; как выглядит модель — реестр
  * Kit.models. Заменить машину на погрузчик — новая модель, а не новый режиссёр.
@@ -19,6 +19,7 @@
  * @property {(s: Object, shape: Shape) => Layout} layout    — построить неподвижную сцену и объявить места
  * @property {(tile: Object, shape: Shape) => Object} snapshotOf — снимок из store плитки: единственное место, знающее store
  * @property {(snapshot: Object, shape: Shape) => ActorSpec[]} actorsOf — кто где должен стоять
+ * @property {(snapshot: Object, shape: Shape) => CargoSpec[]} [cargoOf] — где грузы: на ком или на каком месте
  */
 
 /**
@@ -33,6 +34,8 @@
  * @property {string[][]} links                              — пары имён мест, по которым можно ехать (в обе стороны)
  * @property {string} entry                                  — где появляется новый актёр
  * @property {string} exit                                   — куда уезжает пропавший из снимка (и там исчезает)
+ * @property {Object<string, number[]>} [cargoPlaces]        — места для грузов: имя → [x, y, z] (лента, полка);
+ *                                                              не часть сети: туда не ездят, туда кладут
  * @property {(snapshot: Object) => void} [update]           — обновить на месте счётчики, шапку, реквизит
  * @property {(now: number, actors: ActorView[]) => boolean} [frame] — мелкая анимация реквизита на каждом кадре
  *                                                              (стрела, вспышка); true — «ещё анимирую», кадры нужны дальше
@@ -57,7 +60,28 @@
  * @property {string} color
  * @property {Object} [look]                                 — параметры модели (у машины: faded, rack)
  * @property {{ lines: string[], color?: string, bar?: Object }} [label] — табличка при наведении (фиксируется при создании)
- * @property {string|number} [carries]                       — задел: ключ груза, который актёр везёт (ещё не реализовано)
+ * @property {string} [entry]                                — где появиться (по умолчанию Layout.entry; например, на другом
+ *                                                              конце дороги — машины take приезжают с другой стороны)
+ * @property {string} [exit]                                 — куда уехать, когда пропадёт из снимка (по умолчанию
+ *                                                              Layout.exit; например, entry — развернуться и уехать назад)
+ */
+
+/**
+ * Где груз (ящик-задача). Держатель — актёр (едет на нём) или место из Layout.cargoPlaces. Сменился держатель —
+ * груз перелетает к новому; с via — не сразу, а когда актёр-участник передачи встанет в месте via
+ * (машина доехала до погрузки — ящик лёг на ленту). Пропал из снимка: на актёре — уезжает с ним, на месте — исчезает
+ * @typedef {Object} CargoSpec
+ * @property {string|number} key                             — постоянный ключ: id задачи
+ * @property {string|number} [actor]                         — на ком (ключ актёра) — или:
+ * @property {string} [place]                                — на каком месте (имя из Layout.cargoPlaces)
+ * @property {string} [via]                                  — передача — когда актёр встанет здесь (имя места сети)
+ * @property {Array<{ actor?: string|number, place?: string, via?: string }>} [from] — путь до держателя: через кого груз
+ *                                                              пройдёт. Новый появляется у первого шага, чей актёр есть;
+ *                                                              уже стоящий на одном из шагов — проходит оставшиеся. Ящик,
+ *                                                              взятый за микросекунды после offer, всё равно проедет на
+ *                                                              крыше и полежит на ленте
+ * @property {string} [model='crate']                        — модель из Kit.cargoModels
+ * @property {{ lines: string[], color?: string }} [label]   — табличка при наведении (фиксируется при создании)
  */
 const Kit = (() => {
   // ---------- Модели актёров ----------
@@ -68,6 +92,11 @@ const Kit = (() => {
    */
   const models = {
     car: (s, key, spec) => IsoObjects.carActor(s, key, spec.color, { ...spec.look, label: spec.label }),
+  };
+
+  /** Модели грузов: имя → (s, key, spec) => { moveTo(x, y, z), remove() }. У актёра-носителя — cargoZ (высота груза). */
+  const cargoModels = {
+    crate: (s, key, spec) => IsoObjects.crateActor(s, key, { label: spec.label }),
   };
 
   // ---------- Сеть маршрутов ----------
@@ -118,9 +147,10 @@ const Kit = (() => {
    * Время анимации отделено от времени событий, но не уходит от него далеко:
    * SPEED, MIN_MS — обычная скорость и минимальная длительность перегона (короткий перегон всё равно виден);
    * DWELL_MS — сколько актёр стоит в месте, если дальше у него ещё остановки (видно, что он там был);
-   * MAX_LAG_MS — сколько актёру можно отставать: остаток его плана дольше — всё проигрывается быстрее
+   * MAX_LAG_MS — сколько актёру можно отставать: остаток его плана дольше — всё проигрывается быстрее;
+   * HANDOFF_MS — сколько груз перелетает от держателя к держателю (машина → лента, по ленте, лента → машина)
    */
-  const TIME = { SPEED: 6, MIN_MS: 450, DWELL_MS: 250, MAX_LAG_MS: 1000 };
+  const TIME = { SPEED: 6, MIN_MS: 450, DWELL_MS: 250, MAX_LAG_MS: 1000, HANDOFF_MS: 350 };
 
   const lookOf = spec => JSON.stringify([spec.model ?? 'car', spec.color, spec.look ?? null]);
 
@@ -136,6 +166,8 @@ const Kit = (() => {
     // ключ → { actor, look, at, route, routeTarget, plan: [места], leaving, readyAt }
     // at — где стоит (или откуда уехал); route — имена мест текущего маршрута, routeTarget — его конец
     const actors = new Map();
+    // Удержание: (ключ, место) → true — актёру пока нельзя уезжать (с ним идёт передача груза). Задают грузы (freight)
+    let hold = () => false;
 
     function create(spec) {
       const make = models[spec.model ?? 'car'];
@@ -242,25 +274,29 @@ const Kit = (() => {
       for (const spec of specs) {
         if (!net.places[spec.place]) throw new Error(`Kit: неизвестное место «${spec.place}» у актёра ${spec.key}`);
         wanted.add(spec.key);
+        const exit = spec.exit ?? layout.exit, appear = spec.entry ?? layout.entry;
+        if (!net.places[exit]) throw new Error(`Kit: неизвестный выезд «${exit}» у актёра ${spec.key}`);
+        if (!net.places[appear]) throw new Error(`Kit: неизвестный въезд «${appear}» у актёра ${spec.key}`);
         let entry = actors.get(spec.key);
         if (entry && entry.look !== lookOf(spec)) recreate(entry, spec, now);
         if (!entry) {
           entry = { actor: create(spec), look: lookOf(spec), leaving: false };
           actors.set(spec.key, entry);
-          placeAt(entry, instant ? spec.place : layout.entry);
+          placeAt(entry, instant ? spec.place : appear);
         }
+        entry.exit = exit; // последний снимок решает, куда уехать
         if (instant) { placeAt(entry, spec.place); entry.leaving = false; continue; }
         // Вернулся в снимок, пока собирался уехать: выезд из плана убрать
         if (entry.leaving) {
           entry.leaving = false;
-          if (entry.plan.at(-1) === layout.exit) entry.plan.pop();
+          if (entry.plan.at(-1) === entry.exit) entry.plan.pop();
         }
         if (finalOf(entry) !== spec.place) { entry.plan.push(spec.place); retime(entry, now); }
       }
       for (const [key, entry] of actors) {
         if (wanted.has(key) || entry.leaving) continue;
         entry.leaving = true;
-        entry.plan.push(layout.exit);
+        entry.plan.push(entry.exit);
         retime(entry, now);
       }
     }
@@ -275,8 +311,8 @@ const Kit = (() => {
           entry.route = entry.routeTarget = null;
           entry.readyAt = now + (entry.plan.length ? entry.dwellMs : 0);
         }
-        if (!entry.route && entry.plan.length && now >= entry.readyAt) start(entry, now);
-        if (!entry.route && !entry.plan.length && entry.leaving && entry.at === layout.exit) {
+        if (!entry.route && entry.plan.length && now >= entry.readyAt && !hold(key, entry.at)) start(entry, now);
+        if (!entry.route && !entry.plan.length && entry.leaving && entry.at === entry.exit) {
           entry.actor.remove();
           actors.delete(key);
           continue;
@@ -289,7 +325,153 @@ const Kit = (() => {
     // Где актёры сейчас — для мелкой анимации реквизита (Layout.frame)
     const view = () => [...actors].map(([key, e]) => ({ key, x: e.actor.pos.x, y: e.actor.pos.y, target: e.routeTarget ?? e.plan[0] ?? e.at }));
 
-    return { sync, tick, view, get size() { return actors.size; } };
+    // Где актёр сейчас — для грузов: точка груза на нём, стоит ли и где (null — актёра нет)
+    function where(key) {
+      const e = actors.get(key);
+      return e ? { x: e.actor.pos.x, y: e.actor.pos.y, z: e.actor.cargoZ ?? 0.5, at: e.at, standing: !e.route } : null;
+    }
+
+    return { sync, tick, view, where, holdWith: fn => { hold = fn; }, get size() { return actors.size; } };
+  }
+
+  // ---------- Грузы ----------
+
+  const easeInOut = t => t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+
+  /**
+   * Грузы одной сцены поверх актёров (cast): у каждого — держатель (актёр или место) и план — очередь следующих
+   * держателей, как план мест у актёра. Передача — перелёт за HANDOFF_MS по дуге; груз на актёре едет вместе с ним.
+   * sync(specs): новый груз — у первого из spec.from (если тот актёр есть) и дальше по from к держателю из снимка,
+   * иначе сразу у держателя; держатель сменился — новый встаёт в конец плана (с via — передача, когда участник
+   * встанет в via), а если груз сейчас на одном из шагов from — сначала оставшиеся шаги. Пропал из specs — на актёре остаётся (уедет с ним), на месте исчезает, когда долетит.
+   * instant — всех сразу к держателям, планы очистить.
+   * tick(now): передачи и следование за актёрами; true — кто-то летит или ждёт передачи.
+   * Участник передачи с via не уезжает из via, пока груз не долетел (cast.holdWith): иначе машина, чей take
+   * закончился в том же снимке, уехала бы раньше, чем ящик на неё лёг
+   */
+  function freight(s, layout, cast) {
+    const places = layout.cargoPlaces ?? {};
+    // ключ → { item, holder, plan: [{ holder, via }], flight: { from, start, via, who } | null, pos, gone }
+    const items = new Map();
+    const holderOf = spec => spec.actor != null ? { actor: spec.actor } : { place: spec.place };
+    const stepOf = spec => ({ holder: holderOf(spec), via: spec.via ?? null });
+    const same = (a, b) => a.actor === b.actor && a.place === b.place;
+
+    function check(spec, key) {
+      if (spec.actor == null && !places[spec.place]) throw new Error(`Kit: неизвестное место груза «${spec.place}» у ${key}`);
+      if (spec.via != null && !layout.places[spec.via]) throw new Error(`Kit: неизвестное место передачи «${spec.via}» у груза ${key}`);
+    }
+
+    // Точка держателя [x, y, z]; null — актёра-держателя больше нет
+    function pointOf(holder) {
+      if (holder.place != null) return places[holder.place];
+      const w = cast.where(holder.actor);
+      return w && [w.x, w.y, w.z];
+    }
+
+    function moveTo(it, point) {
+      it.pos = point;
+      it.item.moveTo(...point);
+    }
+
+    function create(spec) {
+      const make = cargoModels[spec.model ?? 'crate'];
+      if (!make) throw new Error(`Kit: нет модели груза «${spec.model}»`);
+      return { item: make(s, `cargo-${spec.key}`, spec), holder: null, plan: [], flight: null, pos: null, gone: false };
+    }
+
+    function sync(specs, { instant = false } = {}) {
+      const wanted = new Set();
+      for (const spec of specs) {
+        check(spec, spec.key);
+        for (const step of spec.from ?? []) check(step, spec.key);
+        wanted.add(spec.key);
+        const final = stepOf(spec);
+        let it = items.get(spec.key);
+        if (!it) {
+          it = create(spec);
+          items.set(spec.key, it);
+          // Начать с первого держателя из from, который есть на сцене; дальше — остальные шаги и держатель из снимка
+          const steps = instant ? [] : (spec.from ?? []).map(stepOf);
+          const first = steps.findIndex(step => pointOf(step.holder));
+          if (first >= 0) Object.assign(it, { holder: steps[first].holder, plan: [...steps.slice(first + 1), final] });
+          else it.holder = final.holder;
+          const at = pointOf(it.holder);
+          if (at) moveTo(it, at);
+          continue;
+        }
+        it.gone = false;
+        if (instant) {
+          Object.assign(it, { holder: final.holder, plan: [], flight: null });
+          const at = pointOf(it.holder);
+          if (at) moveTo(it, at);
+          continue;
+        }
+        const last = it.plan.at(-1), lastHolder = last?.holder ?? it.holder;
+        if (!same(lastHolder, final.holder)) {
+          // Уже на одном из шагов from — пройти оставшиеся шаги, а не срезать путь прямо к держателю
+          const steps = (spec.from ?? []).map(stepOf), k = steps.findIndex(step => same(step.holder, lastHolder));
+          if (k >= 0) it.plan.push(...steps.slice(k + 1));
+          it.plan.push(final);
+        } else if (last) last.via = final.via; // тот же держатель — только место передачи могло уточниться
+      }
+      for (const [key, it] of items) if (!wanted.has(key)) it.gone = true;
+    }
+
+    // Участник передачи: актёр, который заберёт груз, или тот, у кого груз сейчас
+    const participantOf = (it, step) => step.holder.actor ?? it.holder.actor;
+
+    // Передача готова: via не задан, или участник стоит в via; если того актёра уже нет — передать как есть
+    function ready(it, step) {
+      const who = participantOf(it, step);
+      if (step.via == null || who == null) return true;
+      const w = cast.where(who);
+      return !w || (w.standing && w.at === step.via);
+    }
+
+    // Актёру key нельзя уезжать из места at: с ним летит или ещё будет передача через это место — по всему плану
+    // груза (машина take ждёт у выгрузки, пока ящик ещё едет на машине offer и не лёг на ленту)
+    cast.holdWith((key, at) => {
+      for (const it of items.values()) {
+        if (it.flight?.via === at && it.flight.who === key) return true;
+        let prev = it.holder;
+        for (const step of it.plan) {
+          if (step.via === at && (step.holder.actor ?? prev.actor) === key) return true;
+          prev = step.holder;
+        }
+      }
+      return false;
+    });
+
+    function tick(now) {
+      let busy = false;
+      for (const [key, it] of items) {
+        // Шаг к актёру, которого уже нет (уехал, пока груз ждал), — пропустить
+        while (it.plan.length && it.plan[0].holder.actor != null && !cast.where(it.plan[0].holder.actor)) it.plan.shift();
+        const step = it.plan[0];
+        if (step && !it.flight) {
+          if (ready(it, step)) {
+            const flight = it.pos ? { from: it.pos, start: now, via: step.via, who: participantOf(it, step) } : null;
+            it.plan.shift();
+            Object.assign(it, { holder: step.holder, flight });
+          }
+        }
+        if (it.plan.length) busy = true;
+        const point = pointOf(it.holder);
+        if (!point) { it.item.remove(); items.delete(key); continue; } // актёр-держатель уехал — груз вместе с ним
+        if (it.flight) {
+          const k = Math.min((now - it.flight.start) / TIME.HANDOFF_MS, 1), e = easeInOut(k), [fx, fy, fz] = it.flight.from;
+          moveTo(it, [fx + (point[0] - fx) * e, fy + (point[1] - fy) * e, fz + (point[2] - fz) * e + Math.sin(Math.PI * k) * 0.3]);
+          if (k >= 1) it.flight = null; else busy = true;
+        } else {
+          moveTo(it, point);
+        }
+        if (it.gone && !it.plan.length && !it.flight && it.holder.place != null) { it.item.remove(); items.delete(key); }
+      }
+      return busy;
+    }
+
+    return { sync, tick, get size() { return items.size; } };
   }
 
   // ---------- Сцена структуры ----------
@@ -299,7 +481,8 @@ const Kit = (() => {
     const s = Iso.createScene({ uid: kind.uid });
     const layout = kind.layout(s, shape);
     const root = s.render();
-    return { s, layout, root, actors: cast(s, layout) };
+    const actors = cast(s, layout);
+    return { s, layout, root, actors, cargo: freight(s, layout, actors) };
   }
 
   /** Статичный показ (prototype.html): сцена по снимку, актёры сразу на своих местах, один кадр frame — без анимации. */
@@ -307,6 +490,7 @@ const Kit = (() => {
     const st = stage(kind, shape);
     st.layout.update?.(snapshot);
     st.actors.sync(kind.actorsOf(snapshot, shape), { instant: true });
+    st.cargo.sync(kind.cargoOf?.(snapshot, shape) ?? [], { instant: true });
     st.layout.frame?.(performance.now(), st.actors.view()); // один кадр: реквизит, зависящий от актёров (табло колонок)
     return st.root;
   }
@@ -323,8 +507,9 @@ const Kit = (() => {
     // Кадр: актёры и мелкая анимация реквизита; кадры нужны, пока кто-то из них занят
     const loop = now => {
       const moving = st?.actors.tick(now);
+      const carrying = st?.cargo.tick(now); // после актёров: груз на машине — там, где машина в этом кадре
       const animating = st?.layout.frame?.(now, st.actors.view()) ?? false;
-      frame = moving || animating ? requestAnimationFrame(loop) : null;
+      frame = moving || carrying || animating ? requestAnimationFrame(loop) : null;
     };
 
     function update(tile) {
@@ -338,6 +523,7 @@ const Kit = (() => {
       const snapshot = kind.snapshotOf(tile, shape);
       st.layout.update?.(snapshot);
       st.actors.sync(kind.actorsOf(snapshot, shape), { instant: fresh });
+      st.cargo.sync(kind.cargoOf?.(snapshot, shape) ?? [], { instant: fresh });
       fresh = false;
       if (!frame) frame = requestAnimationFrame(loop);
     }
@@ -356,5 +542,8 @@ const Kit = (() => {
   /** Доля выполнения запуска задачи (run из KV.trackTask) к этому моменту: 0…1; длительность неизвестна — 0. */
   const progress = (run, durationMs) => durationMs ? Math.min((performance.now() - run.startedAt) / durationMs, 1) : 0;
 
-  return { models, lane, panel, show, field, progress, TIME };
+  // Подпись потока на табличках — пока одна на всех, как KV.THREAD_LABEL в плитках: различаются цветом
+  const THREAD_LABEL = 'thread';
+
+  return { models, cargoModels, lane, panel, show, field, progress, TIME, THREAD_LABEL };
 })();

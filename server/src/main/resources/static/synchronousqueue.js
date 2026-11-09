@@ -171,7 +171,7 @@ const SynchronousQueueView = (() => {
   }
 
   function chip(thread, title) {
-    const c = KV.el('span', 'thread-chip', thread);
+    const c = KV.el('span', 'thread-chip', KV.THREAD_LABEL); // имя — в подсказке (title)
     c.style.setProperty('--thread', KV.threadColor(thread));
     c.title = title;
     return c;

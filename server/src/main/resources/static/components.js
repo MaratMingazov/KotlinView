@@ -151,6 +151,9 @@ const KV = (() => {
   // Конверт выглядит одинаково везде, где появляется задача: на своей странице, в очереди, у воркера пула.
   // Его вид берётся из событий самой задачи, а не из того, где он нарисован
 
+  // Подпись потока в интерфейсе — пока одна на всех: потоки различаются цветом (по полному имени), имя — в подсказке
+  const THREAD_LABEL = 'thread';
+
   const RUN_DONE_FADE_MS = FADE_MS; // сколько тает полоска потока после METHOD_OUT — как бейдж: одно событие, один ритм
   const RUN_FAILED_FADE_MS = 4000; // после ошибки — дольше, чтобы успеть прочитать
   const FAILED_FLASH_MS = 2000;    // сколько затухает красная вспышка конверта
@@ -232,12 +235,14 @@ const KV = (() => {
             flapOpen: 'M0 0 L24 -10 L48 0 Z', flapClosed: 'M0 0 L24 14 L48 0', lines: [['id', 27], ['dur', 37]] },
   };
 
-  function renderEnvelope(task, { size = 'full' } = {}) {
+  // closed — клапан не открывается, даже когда внутри run() есть потоки; label — одна надпись вместо #id и длительности
+  function renderEnvelope(task, { size = 'full', closed = false, label = null } = {}) {
     const g = ENVELOPE[size];
     const inside = runningThreads(task);
     const now = performance.now();
     const flashing = task.failedAt !== null && inside.length === 0 && now - task.failedAt < FAILED_FLASH_MS;
-    const className = ['envelope', size, inside.length > 0 && 'running', inside.length > 1 && 'multi', flashing && 'failed']
+    const open = !closed && inside.length > 0;
+    const className = ['envelope', size, open && 'running', open && inside.length > 1 && 'multi', flashing && 'failed']
       .filter(Boolean).join(' ');
 
     const envelope = svg('svg', { class: className, viewBox: g.viewBox, width: g.width, height: g.height });
@@ -248,8 +253,12 @@ const KV = (() => {
       svg('rect', { x: 0, y: 0, width: g.w, height: g.h, rx: g.rx }),
       svg('path', { class: 'flap-closed', d: g.flapClosed }),
     );
-    const texts = { id: String(task.id), dur: seconds(task.durationMs) }; // номер без «#» — минималистично
-    for (const [kind, y] of g.lines) envelope.append(svg('text', { class: kind, x: g.w / 2, y, 'text-anchor': 'middle' }, texts[kind]));
+    if (label != null) {
+      envelope.append(svg('text', { class: 'id', x: g.w / 2, y: g.h / 2 + 4, 'text-anchor': 'middle' }, label));
+    } else {
+      const texts = { id: String(task.id), dur: seconds(task.durationMs) }; // номер без «#» — минималистично
+      for (const [kind, y] of g.lines) envelope.append(svg('text', { class: kind, x: g.w / 2, y, 'text-anchor': 'middle' }, texts[kind]));
+    }
 
     const title = `task#${task.id}, ${seconds(task.durationMs)}` + (inside.length ? `\nвнутри run(): ${inside.join(', ')}` : '');
     envelope.append(svg('title', {}, title));
@@ -285,6 +294,7 @@ const KV = (() => {
     for (const [thread, run] of task.runs) {
       if (options.thread !== undefined && thread !== options.thread) continue;
       const row = el('div', 'run-row' + (run.phase === 'DONE' ? ' done' : run.phase === 'FAILED' ? ' failed' : ''));
+      row.title = thread; // уточняется ниже, если есть цифры
       row.style.setProperty('--thread', threadColor(thread));
       const bar = el('div', 'bar');
       if (run.phase === 'RUN' && total) {
@@ -303,7 +313,7 @@ const KV = (() => {
         row.title = run.phase === 'DONE' ? `${thread}: готово за ${seconds(total)}` : `${thread}: ✗ ${run.error}`;
       }
       row.append(bar);
-      if (options.names !== false) row.append(el('span', 'thread', thread));
+      if (options.names !== false) row.append(el('span', 'thread', THREAD_LABEL));
       box.append(row);
     }
     return box;
@@ -315,7 +325,8 @@ const KV = (() => {
    */
   function renderTask(task, options = {}) {
     const view = el('div', 'task-view');
-    view.append(renderEnvelope(task, { size: options.size }), renderRuns(task, { thread: options.thread, names: options.names }));
+    view.append(renderEnvelope(task, { size: options.size, closed: options.closed, label: options.label }),
+      renderRuns(task, { thread: options.thread, names: options.names }));
     return view;
   }
 
@@ -366,6 +377,6 @@ const KV = (() => {
   return {
     el, methodsState, trackMethod, renderBadges, node, setEffect, renderChain, renderOps,
     trackTask, runningThreads, renderEnvelope, renderRuns, renderTask, taskNode, taskSlot,
-    threadColor, seconds,
+    threadColor, seconds, THREAD_LABEL,
   };
 })();

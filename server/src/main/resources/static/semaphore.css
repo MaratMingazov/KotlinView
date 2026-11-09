@@ -32,35 +32,28 @@
 /* Обогнал очередь — главное, что хочется заметить на честном семафоре */
 .sem-row .thread-chip.barged { border-color: var(--keyword); color: var(--keyword); }
 
-/* --- задача под семафором (semaphoretask.js): очередь у входа → комната со светофором, задача внутри --- */
-/* Три колонки: очередь | комната | пусто. Боковые поровну — комната всегда по центру, сколько бы ни ждало */
-.semroom-row { display: grid; grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr); align-items: center; gap: 10px; margin-top: 14px; }
-/* Ждущие — столбиком у двери, прижаты к комнате */
-.semroom-queue { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; }
-.semroom {
-  position: relative; display: flex; align-items: center; gap: 16px;
-  min-width: 200px; min-height: 110px; padding: 18px 14px 12px; box-sizing: border-box;
-  border: 2px solid var(--border); border-radius: 6px;
-}
-/* Бейджи acquire / release — на верхней рамке, как подпись рамки. Фон — как у того, на чём лежит комната */
-.semroom-legend { position: absolute; top: -12px; left: 10px; padding: 0 4px; background: var(--bg); }
-.tile .semroom-legend { background: var(--panel); }
-.semroom-inside { flex: 1; display: flex; justify-content: center; }
+/* --- задача под семафором (semaphoretask.js): бейджи, под ними в ряд — ждущие → счётчик разрешений → задача --- */
+.semtask-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 24px; margin-top: 10px; }
+/* Ждущие — столбиком перед счётчиком; никого нет — места не занимает */
+.semtask-waiting { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.semtask-waiting:empty { display: none; }
+/* Счётчик — на одной высоте с телом мини-конверта: над конвертом 12px под открытый клапан,
+   тело 40px, квадратик 26px → 12 + (40 − 26) / 2 */
+.semtask-row .semlight { margin-top: 19px; }
 
-/* Светофор: две лампы столбиком; горящая — с цифрой свободных разрешений (или долгом в красной) */
+/* Счётчик разрешений: квадратик с числом свободных — зелёный или красный (0 или долг) */
 .semlight { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: none; }
-.lamp {
-  width: 24px; height: 24px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--border);
-  display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; color: var(--bg);
+.permits {
+  min-width: 26px; height: 26px; padding: 0 4px; box-sizing: border-box; border-radius: 5px; border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; color: var(--bg); cursor: default;
 }
-.lamp.off { opacity: .35; }
-.lamp.green.on { background: var(--out); border-color: var(--out); }
-.lamp.red.on { background: var(--fail); border-color: var(--fail); }
-/* Разрешений больше начального: оранжевое кольцо вокруг зелёной (оранжевая цифра на зелёном плохо читается) */
-.lamp.green.on.extra { box-shadow: 0 0 0 2px var(--keyword); }
-.semlight-count { color: var(--dim); font-size: 11px; }
+.permits.green { background: var(--out); border-color: var(--out); }
+.permits.red { background: var(--fail); border-color: var(--fail); }
+/* Разрешений больше начального: оранжевое кольцо (оранжевая цифра на зелёном плохо читается) */
+.permits.extra { box-shadow: 0 0 0 2px var(--keyword); }
+.semlight-label { color: var(--dim); font-size: 11px; }
 .semlight-extra { color: var(--keyword); font-size: 11px; white-space: nowrap; }
-/* Переключение лампы и появление ◆ — вспышка и затухание, как послесвечение бейджей */
+/* Смена цвета счётчика и появление ◆ — вспышка и затухание, как послесвечение бейджей */
 @keyframes lamp-flash { from { filter: brightness(1.8); } to { filter: none; } }
 
 .semtask-notice { margin-top: 8px; }

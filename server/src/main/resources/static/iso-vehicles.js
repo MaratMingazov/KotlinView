@@ -1,5 +1,6 @@
 /*
- * Реквизит диорам, часть 1 — машины: модель вдоль дороги и поперёк (в бокс и из бокса), машина-актёр с маршрутом.
+ * Реквизит диорам, часть 1 — машины и грузы: модель вдоль дороги и поперёк (в бокс и из бокса), машина-актёр
+ * с маршрутом, деревянный ящик-актёр (груз, который возят машины).
  * Здесь же объявлен IsoObjects — общий объект всего реквизита: остальные файлы iso-*.js дописывают в него свои вещи.
  * Каждый объект рисуется в сцену из iso-scene.js (s — сцена) и сам кладёт туда свои тени и таблички.
  * Смысла (пул, семафор) здесь нет: что и где стоит — решают описания структур (diorama-*.js) через набор (diorama-kit.js).
@@ -19,18 +20,20 @@ const IsoObjects = {};
    * Возвращает узел — его можно положить в группу здания (машина внутри бокса); car() кладёт её на сцену сама.
    * faded — уже уехавшая: цвет выцветает к песку, а не прозрачностью (иначе видны внутренние грани)
    */
-  function carNode(s, x, y, color, { faded = false, rack = false } = {}) {
+  function carNode(s, x, y, color, { faded = false, rack = false, facing = '+x' } = {}) {
     const g = svg('g'), body = faded ? mix(color, C.sand, 0.45) : color;
     const L = 0.92, W = 0.52;
+    // Кабина сдвинута к корме: у машины «мордой» к −x — зеркально (кормой к +x)
+    const back = facing === '-x', cab = back ? L - 0.18 - 0.5 : 0.18;
     g.append(s.prism(roundedRect(x, y, L, W, 0.13), 0.1, 0.22, body));
-    g.append(s.prism(roundedRect(x + 0.18, y + 0.07, 0.5, W - 0.14, 0.1), 0.32, 0.14, C.glass));
-    g.append(s.prism(roundedRect(x + 0.19, y + 0.08, 0.48, W - 0.16, 0.1), 0.46, 0.04, body));
-    if (rack) g.append(s.box(x + 0.27, y + 0.13, 0.5, 0.32, W - 0.26, 0.05, shade(body, -0.35)));
-    // Ближние колёса — диски на боку +y; фары — на «морде» +x
+    g.append(s.prism(roundedRect(x + cab, y + 0.07, 0.5, W - 0.14, 0.1), 0.32, 0.14, C.glass));
+    g.append(s.prism(roundedRect(x + cab + 0.01, y + 0.08, 0.48, W - 0.16, 0.1), 0.46, 0.04, body));
+    if (rack) g.append(s.box(x + cab + 0.09, y + 0.13, 0.5, 0.32, W - 0.26, 0.05, shade(body, -0.35)));
+    // Ближние колёса — диски на боку +y; на грани +x — фары («морда») или красные фонари (корма, едет к −x)
     for (const wx of [x + 0.2, x + L - 0.2]) {
       g.append(s.disc(wx, y + W + 0.005, 0.11, 0.1, 'y', C.wheel), s.disc(wx, y + W + 0.01, 0.11, 0.04, 'y', shade(C.wheel, 0.5)));
     }
-    for (const wy of [y + 0.13, y + W - 0.13]) g.append(s.disc(x + L + 0.005, wy, 0.22, 0.045, 'x', '#fff5c8'));
+    for (const wy of [y + 0.13, y + W - 0.13]) g.append(s.disc(x + L + 0.005, wy, 0.22, 0.045, 'x', back ? C.fail : '#fff5c8'));
     return g;
   }
 
@@ -65,11 +68,12 @@ const IsoObjects = {};
 
   /**
    * Модель машины для актёра: вокруг начала координат (центр машины — в 0, 0), в ориентации dir:
-   * 'x' — вдоль дороги, 'y-' — в бокс, 'y+' — из бокса. Тень и табличка — свои у каждой модели
+   * 'x' — вдоль дороги, 'x-' — по дороге назад (развернулась), 'y-' — в бокс, 'y+' — из бокса.
+   * Тень и табличка — свои у каждой модели
    */
   function carModel(s, color, dir, { faded, rack, label } = {}) {
     const { L, W } = CAR;
-    if (dir === 'x') { car(s, -L / 2, -W / 2, color, { faded, rack, label }); return; }
+    if (dir === 'x' || dir === 'x-') { car(s, -L / 2, -W / 2, color, { faded, rack, label, facing: dir === 'x-' ? '-x' : '+x' }); return; }
     const x = -W / 2, y = -L / 2;
     s.castShadow(x + 0.04, y + 0.04, W - 0.08, L - 0.08, 0.45);
     const node = carNodeY(s, x, y, color, { faded, rack, facing: dir === 'y+' ? '+y' : '-y' });
@@ -80,16 +84,16 @@ const IsoObjects = {};
   // Плавный разгон и торможение на всём маршруте
   const easeInOut = t => t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
 
-  // Направление перегона → модель машины: по дороге (+x), в бокс (−y), из бокса (+y)
-  const dirOf = (dx, dy) => Math.abs(dx) >= Math.abs(dy) ? 'x' : dy < 0 ? 'y-' : 'y+';
+  // Направление перегона → модель машины: по дороге (+x), назад по дороге (−x), в бокс (−y), из бокса (+y)
+  const dirOf = (dx, dy) => Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? 'x-' : 'x') : dy < 0 ? 'y-' : 'y+';
 
   /**
-   * Машина-актёр на отрисованной сцене s: три модели (dir), видна одна. Позиция — центр машины.
+   * Машина-актёр на отрисованной сцене s: четыре модели (dir), видна одна. Позиция — центр машины.
    * go(points) — проехать через точки [x, y] с постоянной скоростью (speed клеток в секунду), но не быстрее minMs:
    * даже короткий перегон виден глазу. Плавный разгон и торможение. update(now) — на каждом кадре; true — ещё едет
    */
   function carActor(s, key, color, options = {}) {
-    const models = Object.fromEntries(['x', 'y-', 'y+'].map(dir => [dir, s.actor(`${key}~${dir}`, sc => carModel(sc, color, dir, options))]));
+    const models = Object.fromEntries(['x', 'x-', 'y-', 'y+'].map(dir => [dir, s.actor(`${key}~${dir}`, sc => carModel(sc, color, dir, options))]));
     let dir = null, route = null;
     const pos = { x: 0, y: 0 };
 
@@ -137,8 +141,40 @@ const IsoObjects = {};
     }
 
     moveTo(0, 0, 'x');
-    return { key, pos, moveTo, go, update, remove, heading, get moving() { return route != null; }, get dir() { return dir; } };
+    // cargoZ — высота, на которой лежит груз (на крыше): набор кладёт туда ящик, который машина везёт
+    return { key, pos, moveTo, go, update, remove, heading, cargoZ: 0.5, get moving() { return route != null; }, get dir() { return dir; } };
   }
 
-  Object.assign(IsoObjects, { CAR, carColor, carNode, car, carActor });
+  // ---------- Грузы ----------
+
+  const CRATE = 0.38; // сторона ящика (клетки): помещается на крыше машины
+
+  // Деревянный ящик: доски по граням, на ближних гранях — планки крест-накрест обвязки по краю
+  function crateNode(s, x, y, z) {
+    const g = svg('g'), a = CRATE, slat = shade(C.wood, -0.28), edge = 0.04;
+    g.append(s.box(x, y, z, a, a, a, C.wood));
+    // Обвязка: планки по краям ближних граней и верха
+    g.append(s.panel('y', y + a + 0.003, x, x + a, z + a - edge, z + a, slat), s.panel('y', y + a + 0.003, x, x + a, z, z + edge, slat));
+    g.append(s.panel('x', x + a + 0.003, y, y + a, z + a - edge, z + a, shade(slat, -0.1)), s.panel('x', x + a + 0.003, y, y + a, z, z + edge, shade(slat, -0.1)));
+    g.append(s.line([x + 0.02, y + a + 0.004, z + edge], [x + a - 0.02, y + a + 0.004, z + a - edge], slat));
+    g.append(s.line([x + a + 0.004, y + 0.02, z + edge], [x + a + 0.004, y + a - 0.02, z + a - edge], shade(slat, -0.1)));
+    g.append(s.line([x + 0.05, y + a / 2, z + a + 0.001], [x + a - 0.05, y + a / 2, z + a + 0.001], slat));
+    return g;
+  }
+
+  /**
+   * Ящик-актёр: центр основания — в (x, y), низ — на высоте z (на ленте, на крыше машины). Без своей тени: лежит
+   * на чём-то, что её уже даёт. Глубина чуть больше, чем у машины в той же точке, — ящик на крыше рисуется поверх.
+   * label — табличка при наведении { lines, color }
+   */
+  function crateActor(s, key, { label } = {}) {
+    const a = s.actor(key, sc => {
+      const node = crateNode(sc, -CRATE / 2, -CRATE / 2, 0);
+      if (label) sc.hover(node, sc.label(0, 0, CRATE + 0.25, label.lines, label));
+      sc.add(0.1, node);
+    });
+    return { key, moveTo: (x, y, z = 0) => a.moveTo(x, y, z), remove: () => a.remove() };
+  }
+
+  Object.assign(IsoObjects, { CAR, carColor, carNode, car, carActor, CRATE, crateActor });
 })();

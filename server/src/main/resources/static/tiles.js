@@ -21,7 +21,7 @@ const Tiles = (() => {
    * Состояние плитки: id — её объект (null — спит); seen — объект уже приходил в событиях; starting — ждём ответ на create.
    * Заголовок и поля параметров создаются один раз: спящая и живая плитка просто ставят их к себе, введённое не теряется
    */
-  function createTile(view, render) {
+  function createTile(view, render, { fold = null } = {}) {
     const tile = { view, store: view.createStore(render), id: null, seen: false, starting: false, mode: null, render };
     tile.el = KV.el('div', 'tile');
     tile.title = KV.el('div', 'tile-title', view.title);
@@ -46,7 +46,14 @@ const Tiles = (() => {
     tile.controls = KV.el('div', 'tile-controls');
     tile.body = KV.el('div', 'tile-body');
     tile.main = KV.el('div', 'tile-main');
-    tile.main.append(tile.controls, tile.body);
+    if (fold) {
+      // Точный вид объекта — свёрнутым: на twin.html главное — диорама, цифры — по запросу
+      const details = KV.el('details', 'tile-fold');
+      details.append(KV.el('summary', '', fold), tile.body);
+      tile.main.append(tile.controls, details);
+    } else {
+      tile.main.append(tile.controls, tile.body);
+    }
     return tile;
   }
 
@@ -125,15 +132,16 @@ const Tiles = (() => {
 
   /**
    * Плитки для views: place(tile) — куда положить плитку на странице; onRender(tiles) — что ещё перерисовать
-   * после плиток (на каждое событие и по таймерам структур). Подключается к WebSocket — один раз на страницу
+   * после плиток (на каждое событие и по таймерам структур); fold — подпись, под которой свернуть состояние объекта
+   * (null — показывать сразу). Подключается к WebSocket — один раз на страницу
    */
-  function mount(views, { place, onRender } = {}) {
+  function mount(views, { place, onRender, fold = null } = {}) {
     let tiles = [];
     const render = () => {
       for (const tile of tiles) renderTile(tile);
       onRender?.(tiles);
     };
-    tiles = views.map(view => createTile(view, render));
+    tiles = views.map(view => createTile(view, render, { fold }));
     for (const tile of tiles) place(tile);
     render();
     // Лог WebSocket — по событиям всех структур на странице
