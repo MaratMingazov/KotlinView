@@ -1,6 +1,6 @@
 /*
  * Изометрический «движок» диорам на SVG: палитра, цвета, геометрия и сцена — проекция, слои, примитивы, тени, таблички.
- * Ничего не знает ни о пулах, ни о семафорах: это делают iso-objects.js (реквизит), diorama-kit.js (набор) и diorama-*.js (описания структур).
+ * Ничего не знает ни о пулах, ни о семафорах: это делают iso-*.js (реквизит), diorama-kit.js (набор) и diorama-*.js (описания структур).
  * Подключение: первым из трёх. Всё лежит в объекте Iso.
  *
  * Мир — клетки (x, y, z): «к зрителю» — больше x + y, вверх — z. Солнце слева-сзади: грань +y светлее, +x темнее,
@@ -543,7 +543,7 @@ const Iso = (() => {
       box, prism, disc, panel, gableRoof, flat, line,
       shadow, castShadow, contact,
       label, relabel, showLabel, hover, title, retitle,
-      shore: null, shoreCenter: null, // контур берега и центр острова — их задаёт island() в iso-objects.js
+      shore: null, shoreCenter: null, // контур берега и центр острова — их задаёт island() в iso-ground.js
     };
     return scene;
   }

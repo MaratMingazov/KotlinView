@@ -30,14 +30,17 @@
 </section>
 
 <section>
-  <div class="diorama-title">Barrier = semaphore guarding a task</div>
-  <div class="legend">car = runner thread (in its color) · barrier + traffic light = semaphore · house = task</div>
+  <div class="diorama-title">Fuel station behind a barrier = semaphore guarding a task</div>
+  <div class="legend">car = runner thread (in its color) · barrier + traffic light = semaphore · fuel station = task · fueling = run()</div>
   <div id="barrierRoot"></div>
 </section>
 
 <!-- Порядок важен: движок → реквизит → набор → описания структур -->
 <script src="iso-scene.js"></script>
-<script src="iso-objects.js"></script>
+<script src="iso-vehicles.js"></script>
+<script src="iso-ground.js"></script>
+<script src="iso-buildings.js"></script>
+<script src="iso-nature.js"></script>
 <script src="diorama-kit.js"></script>
 <script src="diorama-pool.js"></script>
 <script src="diorama-semaphore.js"></script>

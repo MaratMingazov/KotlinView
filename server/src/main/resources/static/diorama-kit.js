@@ -7,7 +7,7 @@
  * Смысл и облик разделены: Kind говорит «актёр #12 — в месте slot2, модель car»; как выглядит модель — реестр
  * Kit.models. Заменить машину на погрузчик — новая модель, а не новый режиссёр.
  *
- * Подключение: после iso-scene.js и iso-objects.js, до описаний структур (diorama-*.js). Всё лежит в объекте Kit.
+ * Подключение: после iso-scene.js и реквизита (iso-*.js), до описаний структур (diorama-*.js). Всё лежит в объекте Kit.
  */
 
 /**
@@ -302,11 +302,12 @@ const Kit = (() => {
     return { s, layout, root, actors: cast(s, layout) };
   }
 
-  /** Статичный показ (prototype.html): сцена по снимку, актёры сразу на своих местах, без анимации. */
+  /** Статичный показ (prototype.html): сцена по снимку, актёры сразу на своих местах, один кадр frame — без анимации. */
   function show(kind, snapshot, shape) {
     const st = stage(kind, shape);
     st.layout.update?.(snapshot);
     st.actors.sync(kind.actorsOf(snapshot, shape), { instant: true });
+    st.layout.frame?.(performance.now(), st.actors.view()); // один кадр: реквизит, зависящий от актёров (табло колонок)
     return st.root;
   }
 

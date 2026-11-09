@@ -151,7 +151,7 @@ const KV = (() => {
   // Конверт выглядит одинаково везде, где появляется задача: на своей странице, в очереди, у воркера пула.
   // Его вид берётся из событий самой задачи, а не из того, где он нарисован
 
-  const RUN_DONE_FADE_MS = 1500;   // сколько тает полоска потока после METHOD_OUT
+  const RUN_DONE_FADE_MS = FADE_MS; // сколько тает полоска потока после METHOD_OUT — как бейдж: одно событие, один ритм
   const RUN_FAILED_FADE_MS = 4000; // после ошибки — дольше, чтобы успеть прочитать
   const FAILED_FLASH_MS = 2000;    // сколько затухает красная вспышка конверта
 
@@ -297,7 +297,9 @@ const KV = (() => {
       }
       if (run.phase !== 'RUN') {
         const fadeMs = run.phase === 'FAILED' ? RUN_FAILED_FADE_MS : RUN_DONE_FADE_MS;
-        row.style.animation = `fade-out ${fadeMs}ms ease-in ${-(now - run.endedAt)}ms forwards`;
+        // Готово — гаснет сразу и догорает (как бейдж); ошибка — держится, чтобы успеть прочитать, потом исчезает
+        const easing = run.phase === 'FAILED' ? 'ease-in' : 'ease-out';
+        row.style.animation = `fade-out ${fadeMs}ms ${easing} ${-(now - run.endedAt)}ms forwards`;
         row.title = run.phase === 'DONE' ? `${thread}: готово за ${seconds(total)}` : `${thread}: ✗ ${run.error}`;
       }
       row.append(bar);
