@@ -1,44 +1,12 @@
-/* Задача под семафором (semaphoretask.js): бейджи, под ними «комната».
-   Подключать после base.css и components.css (fade-out, fill-up — там) */
+/* Задача под семафором (semaphoretask.js): бейджи, под ними «комната» (.room* — components.css).
+   Подключать после base.css и components.css */
 .semtask-notice { margin-top: 8px; }
 
-/* «Комната»: задача — рамка, разрешения — места в ней; слева — очередь ждущих */
-.semroom-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-/* Очередь у входа: первый ждущий — ближе всех к рамке */
-.semroom-queue { display: flex; flex-direction: row-reverse; gap: 4px; align-items: center; }
-.semroom-chip, .semroom-slot { width: 52px; height: 18px; box-sizing: border-box; border-radius: 3px; flex: none; }
-.semroom-chip {
-  position: relative; overflow: hidden; padding: 0 4px; white-space: nowrap; cursor: default;
-  border: 1px solid color-mix(in srgb, var(--thread) 60%, transparent);
-  background: color-mix(in srgb, var(--thread) 12%, transparent);
-  color: var(--thread); font-size: 11px; line-height: 16px; font-weight: bold;
-}
-.semroom-chip .name { position: relative; }
-/* В run(): заливка — прогресс (fill-up — components.css) */
-.semroom-chip .fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: color-mix(in srgb, var(--thread) 40%, transparent); }
-/* Ждёт с таймаутом: полоска внизу убывает */
-.semroom-chip .countdown { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: var(--thread); }
-.semroom-chip.entering { opacity: .5; }
-.semroom-chip.rejected { border-style: dashed; }
-.semroom {
-  position: relative; display: flex; flex-direction: column; gap: 4px; padding: 7px; cursor: default;
-  border: 2px solid var(--border); border-radius: 6px;
-}
-.semroom.full { border-color: color-mix(in srgb, var(--fail) 55%, var(--border)); }
-.semroom-label { position: absolute; top: -8px; left: 8px; padding: 0 4px; background: var(--panel); color: var(--dim); font-size: 10px; line-height: 12px; }
-.semroom-slot { border: 1px dashed var(--border); }
-.semroom-slot.held { border-style: solid; background: color-mix(in srgb, var(--dim) 15%, transparent); }
-.semroom-slot.extra { border-color: var(--keyword); }
-.semroom-slot.locked {
+/* Места «комнаты» (общие стили — .room* в components.css), только у семафора: разрешение держит кто-то вне задачи,
+   «напечатано» лишним release, долг */
+.room-slot.held { border-style: solid; background: color-mix(in srgb, var(--dim) 15%, transparent); }
+.room-slot.extra { border-color: var(--keyword); }
+.room-slot.locked {
   border-color: color-mix(in srgb, var(--fail) 60%, transparent);
   background: repeating-linear-gradient(45deg, transparent 0 4px, color-mix(in srgb, var(--fail) 18%, transparent) 4px 6px);
-}
-@keyframes semroom-count { from { width: 100%; } to { width: 0; } }
-/* Отказ: подъехал к рамке, отскочил и растаял */
-@keyframes semroom-bounce {
-  0% { transform: translateX(-24px); opacity: 0; }
-  20% { opacity: 1; }
-  40% { transform: translateX(6px); opacity: 1; }
-  55% { transform: translateX(-6px); opacity: 1; }
-  100% { transform: translateX(-24px); opacity: 0; }
 }

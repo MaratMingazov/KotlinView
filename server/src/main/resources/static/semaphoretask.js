@@ -124,10 +124,10 @@ const SemaphoreTaskView = (() => {
    * долг (разрешений < 0) — запертые места. Свободных нет — рамка красноватая.
    */
   function renderRoom(item, sem, task) {
-    const row = KV.el('div', 'semroom-row');
+    const row = KV.el('div', 'room-row');
     if (!sem) {
-      const frame = KV.el('div', 'semroom');
-      frame.append(KV.el('span', 'semroom-label', 'task'));
+      const frame = KV.el('div', 'room');
+      frame.append(KV.el('span', 'room-label', 'task'));
       frame.title = 'semaphore state unknown';
       row.append(frame);
       return row;
@@ -137,14 +137,14 @@ const SemaphoreTaskView = (() => {
   }
 
   function roomChip(thread, title, cls = '') {
-    const chip = KV.el('div', `semroom-chip ${cls}`.trim());
+    const chip = KV.el('div', `room-chip ${cls}`.trim());
     chip.style.setProperty('--thread', KV.threadColor(thread));
     chip.title = title;
     return chip;
   }
 
   function renderRoomQueue(item, sem) {
-    const queue = KV.el('div', 'semroom-queue');
+    const queue = KV.el('div', 'room-queue');
     const now = performance.now();
     for (const [thread, w] of sem.waiting) {
       const timed = w.timeoutMs !== undefined;
@@ -153,7 +153,7 @@ const SemaphoreTaskView = (() => {
         : `${thread} waits in acquire(): no free permits`);
       if (timed) {
         const bar = KV.el('div', 'countdown');
-        bar.style.animation = `semroom-count ${w.timeoutMs}ms linear ${-(now - (w.since ?? now))}ms forwards`;
+        bar.style.animation = `room-count ${w.timeoutMs}ms linear ${-(now - (w.since ?? now))}ms forwards`;
         chip.append(bar);
       }
       chip.append(KV.el('span', 'name', KV.THREAD_LABEL));
@@ -165,7 +165,7 @@ const SemaphoreTaskView = (() => {
       const chip = roomChip(l.thread, item.mode === 'TRY_ACQUIRE_TIMEOUT'
         ? `${l.thread}: tryAcquire() timed out after ${KV.seconds(item.timeoutMs)} — task did not run`
         : `${l.thread}: tryAcquire() returned false — no free permits, task did not run`, 'rejected');
-      chip.style.animation = `semroom-bounce ${REJECT_MS}ms ease-in-out ${-age}ms forwards`;
+      chip.style.animation = `room-bounce ${REJECT_MS}ms ease-in-out ${-age}ms forwards`;
       chip.append(KV.el('span', 'name', KV.THREAD_LABEL));
       queue.append(chip);
     }
@@ -174,8 +174,8 @@ const SemaphoreTaskView = (() => {
 
   function renderRoomFrame(item, sem, task) {
     const s = sem.state;
-    const frame = KV.el('div', 'semroom');
-    frame.append(KV.el('span', 'semroom-label', 'task'));
+    const frame = KV.el('div', 'room');
+    frame.append(KV.el('span', 'room-label', 'task'));
     if (!s) { frame.title = 'semaphore state unknown'; return frame; }
 
     // Места: обычные — по initialPermits; свободное сверх них — «напечатано» лишним release; долг — запертые
@@ -210,10 +210,10 @@ const SemaphoreTaskView = (() => {
     }
     frame.append(...chips);
     // Разрешение держит кто-то вне задачи — место занято, но без имени: семафор владельца не знает
-    for (let i = chips.length; i < held; i++) frame.append(Object.assign(KV.el('div', 'semroom-slot held'), { title: 'permit held outside the task' }));
-    for (let i = 0; i < free; i++) frame.append(Object.assign(KV.el('div', 'semroom-slot'), { title: 'free permit' }));
-    for (let i = 0; i < extra; i++) frame.append(Object.assign(KV.el('div', 'semroom-slot extra'), { title: 'release() without acquire(): a permit above initialPermits' }));
-    for (let i = 0; i < locked; i++) frame.append(Object.assign(KV.el('div', 'semroom-slot locked'), { title: 'debt: release() is needed first' }));
+    for (let i = chips.length; i < held; i++) frame.append(Object.assign(KV.el('div', 'room-slot held'), { title: 'permit held outside the task' }));
+    for (let i = 0; i < free; i++) frame.append(Object.assign(KV.el('div', 'room-slot'), { title: 'free permit' }));
+    for (let i = 0; i < extra; i++) frame.append(Object.assign(KV.el('div', 'room-slot extra'), { title: 'release() without acquire(): a permit above initialPermits' }));
+    for (let i = 0; i < locked; i++) frame.append(Object.assign(KV.el('div', 'room-slot locked'), { title: 'debt: release() is needed first' }));
 
     if (free === 0 && extra === 0) frame.classList.add('full');
     frame.title = `${s.initialPermits} permit(s) · ${available} free · ${s.fair ? 'fair' : 'nonfair'}`;

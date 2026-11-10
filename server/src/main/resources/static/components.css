@@ -96,3 +96,51 @@
   border: 1px solid color-mix(in srgb, var(--thread) 60%, transparent);
   background: color-mix(in srgb, var(--thread) 15%, transparent);
 }
+
+/* --- «комната»: структура — рамка с подписью, места — ячейки в ней; потоки — плашки снаружи у входа и выхода.
+   Семафор (semaphoretask.js): задача, места — разрешения; очередь (blockingqueue.js): труба, места — ёмкость --- */
+.room-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+/* Сторона у входа: первый — ближе всех к рамке */
+.room-queue { display: flex; flex-direction: row-reverse; gap: 4px; align-items: center; }
+/* Вход очереди: место под две плашки постоянное — рамка не прыгает, когда они появляются и тают */
+.room-queue.entry { min-width: 108px; }
+/* Сторона у выхода: первый — тоже у рамки, она слева */
+.room-queue.exit { flex-direction: row; }
+.room-chip, .room-slot, .room-task { width: 52px; height: 18px; box-sizing: border-box; border-radius: 3px; flex: none; }
+.room-chip {
+  position: relative; overflow: hidden; padding: 0 4px; white-space: nowrap; cursor: default;
+  border: 1px solid color-mix(in srgb, var(--thread) 60%, transparent);
+  background: color-mix(in srgb, var(--thread) 12%, transparent);
+  color: var(--thread); font-size: 11px; line-height: 16px; font-weight: bold;
+}
+.room-chip .name { position: relative; }
+/* Внутри run(): заливка — прогресс (fill-up) */
+.room-chip .fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: color-mix(in srgb, var(--thread) 40%, transparent); }
+/* Ждёт с таймаутом: полоска внизу убывает */
+.room-chip .countdown { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: var(--thread); }
+.room-chip.entering { opacity: .5; }
+.room-chip.rejected { border-style: dashed; }
+.room {
+  position: relative; display: flex; flex-direction: column; gap: 4px; padding: 7px; cursor: default;
+  border: 2px solid var(--border); border-radius: 6px;
+}
+.room.horizontal { flex-direction: row; }
+.room.full { border-color: color-mix(in srgb, var(--fail) 55%, var(--border)); }
+.room-label { position: absolute; top: -8px; left: 8px; padding: 0 4px; background: var(--panel); color: var(--dim); font-size: 10px; line-height: 12px; }
+.room-slot { border: 1px dashed var(--border); }
+/* Задача в ячейке: номер, длительность — в подсказке */
+.room-task {
+  border: 1px solid var(--border); background: var(--panel); color: var(--keyword);
+  font-size: 11px; line-height: 16px; text-align: center; cursor: default;
+}
+.room-more { color: var(--dim); font-size: 11px; align-self: center; }
+@keyframes room-new { from { border-color: var(--out); background: color-mix(in srgb, var(--out) 30%, var(--panel)); } to { border-color: var(--border); background: var(--panel); } }
+@keyframes room-count { from { width: 100%; } to { width: 0; } }
+/* Отказ: подъехал к рамке слева, отскочил и растаял */
+@keyframes room-bounce {
+  0% { transform: translateX(-24px); opacity: 0; }
+  20% { opacity: 1; }
+  40% { transform: translateX(6px); opacity: 1; }
+  55% { transform: translateX(-6px); opacity: 1; }
+  100% { transform: translateX(-24px); opacity: 0; }
+}
