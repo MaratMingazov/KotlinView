@@ -1,5 +1,6 @@
 /*
- * Реквизит диорам, часть 2 — земля: остров с пляжем и лодками, дорога с мостами, разметка, плитка, столбик-счётчик.
+ * Реквизит диорам, часть 2 — земля: остров с пляжем и лодками, дорога с мостами (вдоль x или y), разметка, плитка,
+ * рабочая зона, столбик-счётчик.
  * Плоское — в слой земли сцены (s.ground), объёмное (камни, перила моста, столбик) — объектами с глубиной.
  * Подключение: после iso-vehicles.js (ROAD считается от размера машины).
  */
@@ -71,42 +72,55 @@
   // ---------- Дорога и разметка ----------
 
   /**
-   * Дорога вдоль x по полосе y0 – y1: полотно, светлая полоса износа у краёв, бордюры-бортики (у них есть высота —
-   * дорога «утоплена»), пунктир посередине. По острову — только по суше: за берегом продолжается деревянным мостом.
-   * skip — [от, до] по x без пунктира (места очереди размечены рамками — пунктир сквозь них лишний)
+   * Оси дороги: u — вдоль хода, v — поперёк. axis 'x' — дорога вдоль x (u = x, v = y), 'y' — вдоль y (u = y, v = x).
+   * pt — точка мира, rect / cube — прямоугольник и коробка в осях (u, v) → в мире
    */
-  function road(s, x0, x1, { y0 = 0, y1 = 1.2, skip = null } = {}) {
-    const mid = (y0 + y1) / 2, onShore = x => inside(s.shore, x, mid);
-    // Край суши: от конца дороги идём к острову, пока не окажемся на берегу
-    const edge = (from, step) => { let x = from; while (!onShore(x) && Math.abs(x - from) < 30) x += step; return x; };
-    const xl = onShore(x0) ? x0 : edge(x0, 0.05), xr = onShore(x1) ? x1 : edge(x1, -0.05);
-    if (xl > x0) bridge(s, x0, xl + 0.3, y0, y1);
-    if (xr < x1) bridge(s, xr - 0.3, x1, y0, y1);
-    x0 = xl; x1 = xr;
+  function roadAxes(s, axis) {
+    const pt = axis === 'y' ? (u, v) => [v, u] : (u, v) => [u, v];
+    const rect = axis === 'y' ? (u, v, du, dv, color, z) => s.flat(v, u, dv, du, color, z) : (u, v, du, dv, color, z) => s.flat(u, v, du, dv, color, z);
+    const cube = axis === 'y' ? (u, v, z, du, dv, h, color) => s.box(v, u, z, dv, du, h, color) : (u, v, z, du, dv, h, color) => s.box(u, v, z, du, dv, h, color);
+    return { pt, rect, cube };
+  }
 
-    s.ground.push(s.flat(x0, y0, x1 - x0, y1 - y0, C.road));
-    s.ground.push(s.flat(x0, y0, x1 - x0, 0.1, shade(C.road, 0.12)), s.flat(x0, y1 - 0.1, x1 - x0, 0.1, shade(C.road, 0.12)));
-    s.ground.push(s.box(x0, y0 - 0.14, 0, x1 - x0, 0.14, 0.06, C.curb), s.box(x0, y1, 0, x1 - x0, 0.14, 0.06, C.curb));
-    for (let x = x0 + 0.3; x < x1 - 0.4; x += 0.9) {
-      if (skip && x + 0.45 > skip[0] && x < skip[1]) continue;
-      const [a, b] = [s.P(x, mid, 0), s.P(x + 0.45, mid, 0)];
+  /**
+   * Дорога от u0 до u1 вдоль axis ('x' — по умолчанию, 'y') по полосе v0 – v1 поперёк: полотно, светлая полоса износа
+   * у краёв, бордюры-бортики (у них есть высота — дорога «утоплена»), пунктир посередине. По острову — только по суше:
+   * за берегом продолжается деревянным мостом. skip — [от, до] по u без пунктира (места очереди размечены рамками)
+   */
+  function road(s, u0, u1, { axis = 'x', v0 = 0, v1 = 1.2, skip = null } = {}) {
+    const { pt, rect, cube } = roadAxes(s, axis);
+    const mid = (v0 + v1) / 2, onShore = u => inside(s.shore, ...pt(u, mid));
+    // Край суши: от конца дороги идём к острову, пока не окажемся на берегу
+    const edge = (from, step) => { let u = from; while (!onShore(u) && Math.abs(u - from) < 30) u += step; return u; };
+    const ul = onShore(u0) ? u0 : edge(u0, 0.05), ur = onShore(u1) ? u1 : edge(u1, -0.05);
+    if (ul > u0) bridge(s, axis, u0, ul + 0.3, v0, v1);
+    if (ur < u1) bridge(s, axis, ur - 0.3, u1, v0, v1);
+    u0 = ul; u1 = ur;
+
+    s.ground.push(rect(u0, v0, u1 - u0, v1 - v0, C.road));
+    s.ground.push(rect(u0, v0, u1 - u0, 0.1, shade(C.road, 0.12)), rect(u0, v1 - 0.1, u1 - u0, 0.1, shade(C.road, 0.12)));
+    s.ground.push(cube(u0, v0 - 0.14, 0, u1 - u0, 0.14, 0.06, C.curb), cube(u0, v1, 0, u1 - u0, 0.14, 0.06, C.curb));
+    for (let u = u0 + 0.3; u < u1 - 0.4; u += 0.9) {
+      if (skip && u + 0.45 > skip[0] && u < skip[1]) continue;
+      const [a, b] = [s.P(...pt(u, mid), 0), s.P(...pt(u + 0.45, mid), 0)];
       s.ground.push(svg('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], style: `stroke: ${C.roadMark}; stroke-width: 2.2; stroke-linecap: round` }));
     }
   }
 
-  // Мост над водой: сваи, настил из досок поперёк, перила по краям
-  function bridge(s, x0, x1, y0, y1) {
+  // Мост над водой вдоль axis: сваи, настил из досок поперёк, перила по краям
+  function bridge(s, axis, u0, u1, v0, v1) {
+    const { pt, cube } = roadAxes(s, axis);
     const deck = -0.08, g = svg('g');
-    for (let x = x0; x < x1; x += 1.5) {
-      g.append(s.box(x + 0.2, y0 - 0.1, -0.45, 0.12, 0.12, 0.4, shade(C.wood, -0.25)), s.box(x + 0.2, y1 - 0.02, -0.45, 0.12, 0.12, 0.4, shade(C.wood, -0.25)));
+    for (let u = u0; u < u1; u += 1.5) {
+      g.append(cube(u + 0.2, v0 - 0.1, -0.45, 0.12, 0.12, 0.4, shade(C.wood, -0.25)), cube(u + 0.2, v1 - 0.02, -0.45, 0.12, 0.12, 0.4, shade(C.wood, -0.25)));
     }
-    g.append(s.box(x0, y0 - 0.15, deck, x1 - x0, y1 - y0 + 0.3, 0.1, C.wood));
-    for (let x = x0 + 0.15; x < x1; x += 0.3) g.append(s.line([x, y0 - 0.15, deck + 0.1], [x, y1 + 0.15, deck + 0.1], shade(C.wood, -0.18)));
-    g.append(s.box(x0, y0 - 0.15, deck + 0.1, x1 - x0, 0.06, 0.22, shade(C.wood, -0.08)));
+    g.append(cube(u0, v0 - 0.15, deck, u1 - u0, v1 - v0 + 0.3, 0.1, C.wood));
+    for (let u = u0 + 0.15; u < u1; u += 0.3) g.append(s.line([...pt(u, v0 - 0.15), deck + 0.1], [...pt(u, v1 + 0.15), deck + 0.1], shade(C.wood, -0.18)));
+    g.append(cube(u0, v0 - 0.15, deck + 0.1, u1 - u0, 0.06, 0.22, shade(C.wood, -0.08)));
     s.ground.push(g);
     // Ближние перила — объектом: машины на мосту должны быть за ними. Глубина — по дальнему концу:
     // по ближнему машина у середины моста оказывалась «глубже» и рисовалась поверх перил
-    s.add(x1 + y1 + 0.2, s.box(x0, y1 + 0.09, deck + 0.1, x1 - x0, 0.06, 0.22, shade(C.wood, -0.08)));
+    s.add(u1 + v1 + 0.2, cube(u0, v1 + 0.09, deck + 0.1, u1 - u0, 0.06, 0.22, shade(C.wood, -0.08)));
   }
 
   // «Зебра»: полосы вдоль движения, через всю ширину дороги
@@ -133,6 +147,20 @@
     for (let y = y0 + 0.5; y < y1; y += 0.5) s.ground.push(s.line([x0, y, 0], [x1, y, 0], seam));
   }
 
+  /**
+   * Рабочая зона: тёмная площадка с жёлто-чёрной окантовкой — «здесь работает механизм» (под конвейером).
+   * На земле: выделяет главный объект сцены, ничего не закрывая
+   */
+  function workZone(s, x0, y0, x1, y1) {
+    const e = 0.12, n = Math.max(2, Math.round((x1 - x0) / 0.3));
+    s.ground.push(s.flat(x0, y0, x1 - x0, y1 - y0, C.workZone));
+    for (let k = 0; k < n; k++) {
+      const u = x0 + (x1 - x0) * k / n, w = (x1 - x0) / n, color = k % 2 ? C.hazard[1] : C.hazard[0];
+      s.ground.push(s.flat(u, y0, w, e, color, 0.002), s.flat(u, y1 - e, w, e, color, 0.002));
+    }
+    s.ground.push(s.flat(x0, y0, e, y1 - y0, C.hazard[0], 0.002), s.flat(x1 - e, y0, e, y1 - y0, C.hazard[0], 0.002));
+  }
+
   // Столбик со счётчиком у дороги: короткий, виден всегда («3 / 5», «✓ 17»)
   function sign(s, x, y, text, color) {
     s.castShadow(x, y, 0.08, 0.08, 0.9);
@@ -141,10 +169,11 @@
   }
 
   /**
-   * Соглашение «остров с дорогой» — общее для всех сцен: дорога вдоль x по полосе y = 0…1.2, концы — за мостами.
-   * laneY — край машины на полосе (как в car()), lane — центр машины на полосе (так стоят актёры), ends — концы дороги
+   * Соглашение «остров с дорогой» — общее для всех сцен: дорога по полосе 0…1.2 поперёк (по умолчанию — вдоль x,
+   * полоса y = 0…1.2), концы — за мостами. laneY — край машины на полосе (как в car()), lane — центр машины на полосе
+   * (так стоят актёры; у дороги вдоль y — по x от начала полосы), ends — концы дороги вдоль x
    */
   const ROAD = { laneY: 0.35, lane: 0.35 + CAR.W / 2, ends: [-6.3, 16.3] };
 
-  Object.assign(IsoObjects, { ROAD, island, road, zebra, stopLine, slot, paved, sign });
+  Object.assign(IsoObjects, { ROAD, island, road, zebra, stopLine, slot, paved, workZone, sign });
 })();

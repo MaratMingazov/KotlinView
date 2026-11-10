@@ -36,6 +36,8 @@
  * @property {string} exit                                   — куда уезжает пропавший из снимка (и там исчезает)
  * @property {Object<string, number[]>} [cargoPlaces]        — места для грузов: имя → [x, y, z] (лента, полка);
  *                                                              не часть сети: туда не ездят, туда кладут
+ * @property {Object<string, string>} [facing]               — место → куда смотрит актёр, поставленный туда сразу,
+ *                                                              без поездки ('x', 'x-', 'y+', 'y-'; по умолчанию 'x')
  * @property {(snapshot: Object) => void} [update]           — обновить на месте счётчики, шапку, реквизит
  * @property {(now: number, actors: ActorView[]) => boolean} [frame] — мелкая анимация реквизита на каждом кадре
  *                                                              (стрела, вспышка); true — «ещё анимирую», кадры нужны дальше
@@ -92,6 +94,7 @@ const Kit = (() => {
    */
   const models = {
     car: (s, key, spec) => IsoObjects.carActor(s, key, spec.color, { ...spec.look, label: spec.label }),
+    forklift: (s, key, spec) => IsoObjects.forkliftActor(s, key, spec.color, { label: spec.label }),
   };
 
   /** Модели грузов: имя → (s, key, spec) => { moveTo(x, y, z), remove() }. У актёра-носителя — cargoZ (высота груза). */
@@ -102,11 +105,12 @@ const Kit = (() => {
   // ---------- Сеть маршрутов ----------
 
   /**
-   * Связи «по цепочке» для мест на одной дороге: соединяет соседние по x. Чтобы не перечислять связи руками
-   * и не ошибиться в порядке, когда мест станет больше
+   * Связи «по цепочке» для мест на одной дороге: соединяет соседние вдоль axis ('x' или 'y'). Чтобы не перечислять
+   * связи руками и не ошибиться в порядке, когда мест станет больше
    */
-  function lane(places, names) {
-    const sorted = [...names].sort((a, b) => places[a][0] - places[b][0]);
+  function lane(places, names, axis = 'x') {
+    const k = axis === 'y' ? 1 : 0;
+    const sorted = [...names].sort((a, b) => places[a][k] - places[b][k]);
     return sorted.slice(1).map((name, i) => [sorted[i], name]);
   }
 
@@ -228,7 +232,7 @@ const Kit = (() => {
     }
 
     function placeAt(entry, name) {
-      entry.actor.moveTo(...net.places[name], 'x');
+      entry.actor.moveTo(...net.places[name], layout.facing?.[name] ?? 'x');
       Object.assign(entry, { at: name, route: null, routeTarget: null, plan: [], readyAt: 0 });
     }
 
@@ -328,7 +332,9 @@ const Kit = (() => {
     // Где актёр сейчас — для грузов: точка груза на нём, стоит ли и где (null — актёра нет)
     function where(key) {
       const e = actors.get(key);
-      return e ? { x: e.actor.pos.x, y: e.actor.pos.y, z: e.actor.cargoZ ?? 0.5, at: e.at, standing: !e.route } : null;
+      if (!e) return null;
+      const [x, y, z] = e.actor.cargoPoint?.() ?? [e.actor.pos.x, e.actor.pos.y, e.actor.cargoZ ?? 0.5];
+      return { x, y, z, at: e.at, standing: !e.route };
     }
 
     return { sync, tick, view, where, holdWith: fn => { hold = fn; }, get size() { return actors.size; } };

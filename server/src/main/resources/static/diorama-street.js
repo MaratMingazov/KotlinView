@@ -1,5 +1,5 @@
 /*
- * Каркас «остров с дорогой» — общий для описаний структур: остров, дорога вдоль x (одна или кусками), места
+ * Каркас «остров с дорогой» — общий для описаний структур: остров, дорога вдоль x или y (одна или кусками), места
  * на полосе со связями по цепочке, въезд и выезд за мостами, линия ожидания с «+N», растительность вне занятых зон.
  * Описанию остаётся смысл: какой реквизит, где его места, что обновлять.
  *
@@ -7,26 +7,29 @@
  */
 (() => {
   const O = IsoObjects, R = O.ROAD;
-  const ROAD_ZONE = [-8, -0.3, 18, 1.5]; // дорога с бордюрами — растительности там не место
-
   /**
    * Остров и дорога; дальше — места и зоны, в конце layout(...) — растительность и готовый Layout.
-   * options: island — [x0, y0, x1, y1], seed — берег; roads — куски дороги [[x0, x1], …] (по умолчанию — вся,
-   * R.ends), skip — [от, до] по x без пунктира (только для дороги целиком); entry / exit — имена въезда и выезда
-   * (по умолчанию 'entry' / 'exit': слева и справа за мостами)
+   * options: island — [x0, y0, x1, y1], seed — берег; axis — вдоль чего дорога ('x' по умолчанию или 'y'),
+   * at — где её полоса поперёк (начало полосы шириной 1.2: y у дороги вдоль x, x у дороги вдоль y), ends — концы
+   * вдоль хода (по умолчанию R.ends); roads — куски дороги [[от, до], …] (по умолчанию — вся), skip — [от, до] без
+   * пунктира (только для дороги целиком); entry / exit — имена въезда и выезда (по умолчанию 'entry' / 'exit':
+   * в начале и в конце дороги, за мостами). Места на полосе задаются по ходу дороги: lanePlace(name, u)
    */
-  function street(s, { island, seed, roads = null, skip = null, entry = 'entry', exit = 'exit' }) {
+  function street(s, { island, seed, axis = 'x', at = 0, ends = R.ends, roads = null, skip = null, entry = 'entry', exit = 'exit' }) {
     O.island(s, ...island, seed);
-    if (roads) for (const [x0, x1] of roads) O.road(s, x0, x1);
-    else O.road(s, ...R.ends, skip ? { skip } : undefined);
+    const band = { axis, v0: at, v1: at + 1.2 };
+    if (roads) for (const [u0, u1] of roads) O.road(s, u0, u1, band);
+    else O.road(s, ...ends, { ...band, skip });
 
-    const onLane = x => [x, R.lane];
-    const places = { [entry]: onLane(R.ends[0] - 0.3), [exit]: onLane(R.ends[1] + 0.3) };
+    // Точка на полосе по ходу дороги u; зона дороги с бордюрами — растительности там не место
+    const onLane = axis === 'y' ? u => [at + R.lane, u] : u => [u, at + R.lane];
+    const roadZone = axis === 'y' ? [at - 0.3, ends[0] - 2, at + 1.5, ends[1] + 2] : [ends[0] - 2, at - 0.3, ends[1] + 2, at + 1.5];
+    const places = { [entry]: onLane(ends[0] - 0.3), [exit]: onLane(ends[1] + 0.3) };
     const lane = [entry, exit]; // места на полосе: связываются по цепочке сами
-    const zones = [ROAD_ZONE];
+    const zones = [roadZone];
 
-    function lanePlace(name, x) {
-      places[name] = onLane(x);
+    function lanePlace(name, u) {
+      places[name] = onLane(u);
       lane.push(name);
       return places[name];
     }
@@ -38,12 +41,12 @@
     }
 
     /**
-     * Линия ожидания на полосе: места prefix0 … prefix{n−1} (xOf(i) — центр машины) и «+N» над хвостом —
+     * Линия ожидания на полосе: места prefix0 … prefix{n−1} (uOf(i) — центр машины по ходу) и «+N» над хвостом —
      * ждущих больше, чем мест. update(count) — показать или спрятать «+N»
      */
-    function waitLine(prefix, n, xOf) {
-      for (let i = 0; i < n; i++) lanePlace(`${prefix}${i}`, xOf(i));
-      const more = s.label(xOf(n - 1), R.lane, 0.62, ['+0'], { permanent: true });
+    function waitLine(prefix, n, uOf) {
+      for (let i = 0; i < n; i++) lanePlace(`${prefix}${i}`, uOf(i));
+      const more = s.label(...onLane(uOf(n - 1)), 0.62, ['+0'], { permanent: true });
       return {
         update(count) {
           const extra = count - n;
@@ -59,7 +62,7 @@
     /** Растительность (decorSeed — у каждой сцены свой пейзаж) и Layout: связи по полосе + links описания. */
     function layout(decorSeed, { links = [], ...rest } = {}) {
       O.decorate(s, decorSeed, zones);
-      return { places, links: [...Kit.lane(places, lane), ...links], entry, exit, ...rest };
+      return { places, links: [...Kit.lane(places, lane, axis), ...links], entry, exit, ...rest };
     }
 
     return { onLane, places, lanePlace, place, waitLine, keepOut, layout };

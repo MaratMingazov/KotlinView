@@ -1,6 +1,6 @@
 /*
- * Реквизит диорам, часть 1 — машины и грузы: модель вдоль дороги и поперёк (в бокс и из бокса), машина-актёр
- * с маршрутом, деревянный ящик-актёр (груз, который возят машины).
+ * Реквизит диорам, часть 1 — транспорт и грузы: машина вдоль дороги и поперёк (в бокс и из бокса), погрузчик,
+ * актёры с маршрутом (общий vehicleActor), деревянный ящик-актёр (груз, который возят машины и погрузчики).
  * Здесь же объявлен IsoObjects — общий объект всего реквизита: остальные файлы iso-*.js дописывают в него свои вещи.
  * Каждый объект рисуется в сцену из iso-scene.js (s — сцена) и сам кладёт туда свои тени и таблички.
  * Смысла (пул, семафор) здесь нет: что и где стоит — решают описания структур (diorama-*.js) через набор (diorama-kit.js).
@@ -88,12 +88,14 @@ const IsoObjects = {};
   const dirOf = (dx, dy) => Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? 'x-' : 'x') : dy < 0 ? 'y-' : 'y+';
 
   /**
-   * Машина-актёр на отрисованной сцене s: четыре модели (dir), видна одна. Позиция — центр машины.
-   * go(points) — проехать через точки [x, y] с постоянной скоростью (speed клеток в секунду), но не быстрее minMs:
-   * даже короткий перегон виден глазу. Плавный разгон и торможение. update(now) — на каждом кадре; true — ещё едет
+   * Транспорт-актёр на отрисованной сцене s: четыре модели (dir — 'x', 'x-', 'y-', 'y+'), видна одна. Позиция — центр.
+   * build(sc, dir) — нарисовать модель в начале координат. go(points) — проехать через точки [x, y] с постоянной
+   * скоростью (speed клеток в секунду), но не быстрее minMs: даже короткий перегон виден глазу. Плавный разгон
+   * и торможение. update(now) — на каждом кадре; true — ещё едет.
+   * cargo — где лежит груз: { z, ahead } — высота и вынос вперёд по направлению (у погрузчика — на вилах)
    */
-  function carActor(s, key, color, options = {}) {
-    const models = Object.fromEntries(['x', 'x-', 'y-', 'y+'].map(dir => [dir, s.actor(`${key}~${dir}`, sc => carModel(sc, color, dir, options))]));
+  function vehicleActor(s, key, build, { z: cargoZ = 0.5, ahead = 0 } = {}) {
+    const models = Object.fromEntries(['x', 'x-', 'y-', 'y+'].map(dir => [dir, s.actor(`${key}~${dir}`, sc => build(sc, dir))]));
     let dir = null, route = null;
     const pos = { x: 0, y: 0 };
 
@@ -133,25 +135,84 @@ const IsoObjects = {};
 
     function remove() { for (const m of Object.values(models)) m.remove(); }
 
-    // К какой из точек последнего go(points) машина едет сейчас (индекс в points); null — стоит
+    // К какой из точек последнего go(points) актёр едет сейчас (индекс в points); null — стоит
     function heading() {
       if (!route) return null;
       const at = easeInOut(Math.min((performance.now() - route.start) / route.ms, 1)) * route.total;
       return (route.legs.find(l => at <= l.from + l.len) ?? route.legs.at(-1)).to;
     }
 
+    // Точка груза [x, y, z]: над центром или вынесена вперёд по направлению (вилы)
+    function cargoPoint() {
+      const [dx, dy] = { x: [1, 0], 'x-': [-1, 0], 'y+': [0, 1], 'y-': [0, -1] }[dir];
+      return [pos.x + dx * ahead, pos.y + dy * ahead, cargoZ];
+    }
+
     moveTo(0, 0, 'x');
-    // cargoZ — высота, на которой лежит груз (на крыше): набор кладёт туда ящик, который машина везёт
-    return { key, pos, moveTo, go, update, remove, heading, cargoZ: 0.5, get moving() { return route != null; }, get dir() { return dir; } };
+    // cargoZ — высота, на которой лежит груз: набор кладёт туда ящик, который актёр везёт (точка — cargoPoint)
+    return { key, pos, moveTo, go, update, remove, heading, cargoPoint, cargoZ, get moving() { return route != null; }, get dir() { return dir; } };
   }
+
+  /** Машина-актёр: груз — на крыше. */
+  const carActor = (s, key, color, options = {}) => vehicleActor(s, key, (sc, dir) => carModel(sc, color, dir, options), { z: 0.5 });
+
+  // ---------- Погрузчик ----------
+
+  // Корпус (длина вдоль хода, ширина), вилы: вынос груза от центра и высота, на которой лежит груз
+  const FORKLIFT = { L: 0.62, W: 0.48, ahead: 0.56, forkZ: 0.08, cage: '#5b5f66', fork: '#8a8f96', seat: '#3d3f44' };
+
+  /**
+   * Погрузчик вокруг начала координат, вилами по направлению dir ('x', 'x-', 'y+', 'y-'): кузов цвета потока,
+   * противовес сзади, защитная крыша на стойках, мачта и вилы впереди, колёса на ближнем боку.
+   * Части строятся в осях «вперёд u / поперёк v» и переводятся в мир. label — табличка при наведении
+   */
+  function forkliftModel(s, color, dir, { label } = {}) {
+    const { L, W, forkZ, cage, fork, seat } = FORKLIFT;
+    const along = dir[0], sign = dir.endsWith('-') ? -1 : 1;
+    // Коробка: u — от центра вперёд (du вперёд), v — поперёк от центра (dv в ширину)
+    const B = (u, v, z, du, dv, h, col) => {
+      const a = sign > 0 ? u : -u - du; // вдоль хода: для «назад» — зеркально
+      return along === 'x' ? s.box(a, v, z, du, dv, h, col) : s.box(v, a, z, dv, du, h, col);
+    };
+    const g = svg('g');
+    const body = [
+      B(-L / 2, -W / 2, 0.08, L, W, 0.22, color),                              // кузов
+      B(-L / 2, -W / 2 + 0.03, 0.08, 0.16, W - 0.06, 0.3, shade(color, -0.25)), // противовес
+      B(-0.1, -0.1, 0.3, 0.16, 0.2, 0.08, seat),                                // сиденье
+      ...[[-0.24, -W / 2 + 0.02], [-0.24, W / 2 - 0.06], [0.2, -W / 2 + 0.02], [0.2, W / 2 - 0.06]]
+        .map(([u, v]) => B(u, v, 0.3, 0.04, 0.04, 0.46, cage)),                  // стойки крыши
+      B(-0.26, -W / 2 + 0.01, 0.76, 0.5, W - 0.02, 0.04, cage),                 // крыша
+    ];
+    const front = [
+      B(L / 2, -W / 2 + 0.06, 0.02, 0.05, 0.05, 0.9, cage), B(L / 2, W / 2 - 0.11, 0.02, 0.05, 0.05, 0.9, cage), // мачта
+      B(L / 2 + 0.03, -0.15, forkZ - 0.03, 0.46, 0.06, 0.03, fork), B(L / 2 + 0.03, 0.09, forkZ - 0.03, 0.46, 0.06, 0.03, fork), // вилы
+    ];
+    // Вилы к зрителю (+x, +y) — поверх корпуса; от зрителя — под ним
+    g.append(...(sign > 0 ? [...body, ...front] : [...front, ...body]));
+    for (const u of [-0.18, 0.18]) {
+      g.append(along === 'x'
+        ? s.disc(u * sign, W / 2 + 0.01, 0.09, 0.09, 'y', C.wheel)
+        : s.disc(W / 2 + 0.01, u * sign, 0.09, 0.09, 'x', C.wheel));
+    }
+    // Тень — корпус с вилами
+    const span = L + 0.5, [sx, sw] = sign > 0 ? [-L / 2, span] : [L / 2 - span, span];
+    if (along === 'x') s.castShadow(sx, -W / 2, sw, W, 0.6); else s.castShadow(-W / 2, sx, W, sw, 0.6);
+    if (label) s.hover(g, s.label(0, 0, 0.95, label.lines, label));
+    // Глубже ящика на вилах впереди (тот — актёр с глубиной своей точки), мельче — сзади
+    s.add(0.4, g);
+  }
+
+  /** Погрузчик-актёр: груз — на вилах, впереди по ходу (cargoPoint). */
+  const forkliftActor = (s, key, color, options = {}) =>
+    vehicleActor(s, key, (sc, dir) => forkliftModel(sc, color, dir, options), { z: FORKLIFT.forkZ + 0.01, ahead: FORKLIFT.ahead });
 
   // ---------- Грузы ----------
 
-  const CRATE = 0.38; // сторона ящика (клетки): помещается на крыше машины
+  const CRATE = 0.45; // сторона ящика (клетки): крупный, чтобы очередь читалась издалека, и ещё помещается на крыше машины (0.52)
 
   // Деревянный ящик: доски по граням, на ближних гранях — планки крест-накрест обвязки по краю
   function crateNode(s, x, y, z) {
-    const g = svg('g'), a = CRATE, slat = shade(C.wood, -0.28), edge = 0.04;
+    const g = svg('g'), a = CRATE, slat = shade(C.wood, -0.28), edge = a * 0.1;
     g.append(s.box(x, y, z, a, a, a, C.wood));
     // Обвязка: планки по краям ближних граней и верха
     g.append(s.panel('y', y + a + 0.003, x, x + a, z + a - edge, z + a, slat), s.panel('y', y + a + 0.003, x, x + a, z, z + edge, slat));
@@ -176,5 +237,5 @@ const IsoObjects = {};
     return { key, moveTo: (x, y, z = 0) => a.moveTo(x, y, z), remove: () => a.remove() };
   }
 
-  Object.assign(IsoObjects, { CAR, carColor, carNode, car, carActor, CRATE, crateActor });
+  Object.assign(IsoObjects, { CAR, carColor, carNode, car, carActor, FORKLIFT, forkliftActor, CRATE, crateActor });
 })();

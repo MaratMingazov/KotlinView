@@ -53,6 +53,8 @@ const Iso = (() => {
     water: '#8fd3e8', deep: '#5fb0d0', shallow: '#b4e7f1', sand: '#f3e2b3', cliff: '#e2c48c', grass: '#9fd67c', rock: '#b9b3a8',
     // Дорога и площадки
     road: '#a9b0b8', roadMark: '#fbf7ee', curb: '#f1e8d6', pad: '#efe3c8',
+    // Рабочая зона механизма: тёмная площадка и жёлто-чёрная окантовка
+    workZone: '#8d949c', hazard: ['#e8b83a', '#2d2f33'],
     // Постройки и дерево
     building: '#fff1dc', roof: '#e88f7a', glass: '#bfe3f2', wood: '#c9a27a', post: '#fff6ea', boat: '#f6efe3',
     // Растительность: зелень тёплая, с уклоном в жёлтый; ёлки темнее, но той же семьи
