@@ -163,44 +163,60 @@
 
   // ---------- Конвейер ----------
 
-  const BELT = { D: 0.62, H: 0.45, step: 0.62, pad: 0.25, rail: 0.06, bed: 0.12 }; // ширина, высота ленты, шаг мест
-  const BELT_COLOR = { frame: '#8c939c', belt: '#4f5359', cleat: '#686d74', leg: '#6f757d' };
+  // Ширина (почти как дорога), высота ленты, шаг мест, поле у торцов, бортик; ролики — ширина и шаг; мотор — длина
+  const BELT = { D: 1.1, H: 0.28, step: 0.62, pad: 0.25, rail: 0.07, roller: 0.07, rollerStep: 0.11, motor: 0.32 };
+  const BELT_COLOR = { body: '#5d6670', gap: '#34373c', roller: '#c3c9d0', yellow: '#e8b83a', black: '#2d2f33', motor: '#4a7fb5', lamp: '#7fd36b' };
+
+  /** Длина ленты конвейера на slots мест (без короба мотора за головой) — чтобы раскладка могла его отцентровать */
+  const conveyorLength = slots => slots * BELT.step + BELT.pad * 2;
 
   /**
-   * Конвейер вдоль x: станина на ножках, тёмная лента с поперечными планками, барабаны на концах, бортики.
+   * Роликовый конвейер вдоль x: низкий сплошной корпус с жёлто-чёрной полосой, поперечные ролики, жёлтые бортики,
+   * жёлтые стопоры между местами (видно, сколько помещается), за головой — короб мотора с лампочкой.
    * Голова — справа (+x, x0 + длина), хвост — слева; места для грузов — от головы: slotAt(0) — у головы.
    * slots — сколько мест; label — табличка при наведении { lines, color }.
-   * Ближний бортик — отдельным объектом глубже ящиков на ленте: ящик стоит между бортиками, а не поверх ближнего.
+   * Ближний бортик — отдельным объектом глубже ящиков на ленте: ящик стоит между бортиками, а не поверх ближнего;
+   * стопоры — по объекту на границу мест, по глубине между ящиками.
    * Возвращает { slotAt(i) → [x, y, z], label, length, head: [x, y], tail: [x, y] } — середины торцов ленты
    */
   function conveyor(s, x0, y0, slots, label) {
-    const { D, H, step, pad, rail, bed } = BELT, K = BELT_COLOR;
-    const len = slots * step + pad * 2, x1 = x0 + len, y1 = y0 + D;
+    const { D, H, step, pad, rail, roller, rollerStep, motor } = BELT, K = BELT_COLOR;
+    const len = conveyorLength(slots), x1 = x0 + len, y1 = y0 + D, yc = y0 + D / 2;
 
-    // Дальнее: ножки у дальнего края, станина, лента с планками, дальний бортик
+    // Дальнее: корпус с полосой на ближней грани, просветы и ролики, дальний бортик
     const back = svg('g');
-    const legsX = [x0 + 0.1, x0 + len / 2 - 0.03, x1 - 0.16];
-    for (const lx of legsX) back.append(s.box(lx, y0 + 0.04, 0, 0.06, 0.06, H - bed, K.leg));
-    back.append(s.box(x0, y0, H - bed, len, D, bed, K.frame));
-    back.append(s.flat(x0 + 0.05, y0 + rail, len - 0.1, D - rail * 2, K.belt, H + 0.001));
-    for (let x = x0 + 0.12; x < x1 - 0.05; x += 0.16) back.append(s.line([x, y0 + rail, H + 0.002], [x, y1 - rail, H + 0.002], K.cleat));
-    back.append(s.box(x0, y0, H, len, rail, 0.07, shade(K.frame, 0.05)));
+    back.append(s.box(x0, y0, 0, len, D, H, K.body));
+    const n = Math.max(2, Math.round(len / 0.14));
+    for (let k = 0; k < n; k++) {
+      back.append(s.panel('y', y1 + 0.003, x0 + len * k / n, x0 + len * (k + 1) / n, H - 0.07, H, k % 2 ? K.black : K.yellow));
+    }
+    back.append(s.flat(x0, y0 + rail, len, D - rail * 2, K.gap, H + 0.001));
+    for (let x = x0 + 0.04; x < x1 - 0.08; x += rollerStep) back.append(s.box(x, y0 + rail, H, roller, D - rail * 2, 0.03, K.roller));
+    back.append(s.box(x0, y0, H, len, rail, 0.09, K.yellow));
     s.castShadow(x0, y0, len, D, H);
-    const l = s.label(x0 + len / 2, y0 + D / 2, H + 0.7, label.lines, label);
+    const l = s.label(x0 + len / 2, yc, H + 0.7, label.lines, label);
     s.hover(back, l);
     s.add(x0 + y0, back);
 
-    // Ближнее: ножки у ближнего края, бортик, барабаны на торцах (диски на ближней грани) — поверх ящиков
-    const front = svg('g');
-    for (const lx of legsX) front.append(s.box(lx, y1 - 0.1, 0, 0.06, 0.06, H - bed, K.leg));
-    front.append(s.box(x0, y1 - rail, H, len, rail, 0.07, shade(K.frame, 0.05)));
-    for (const dx of [x0 + 0.09, x1 - 0.09]) {
-      front.append(s.disc(dx, y1 + 0.004, H - bed / 2, bed * 0.6, 'y', shade(K.frame, -0.25)), s.disc(dx, y1 + 0.006, H - bed / 2, 0.025, 'y', K.belt));
+    // Стопоры между местами: глубина — по их x, поэтому ящик левее стопора рисуется до него, правее — после
+    for (let i = 1; i < slots; i++) {
+      const xb = x1 - pad - step * i;
+      s.add(xb + yc, s.hover(s.box(xb - 0.02, y0 + rail, H + 0.03, 0.04, D - rail * 2, 0.05, K.yellow), l));
     }
+
+    // Ближний бортик — поверх ящиков
+    const front = s.box(x0, y1 - rail, H, len, rail, 0.09, K.yellow);
     s.hover(front, l);
     s.add(x1 + y1 - 0.3, front); // глубже любого ящика на ленте (самый глубокий — у головы)
 
-    const yc = y0 + D / 2;
+    // Короб мотора за головой: решётка на ближней грани, лампочка сверху
+    const box = svg('g'), my0 = y0 + 0.15, mh = H + 0.16;
+    box.append(s.box(x1, my0, 0, motor, D - 0.3, mh, K.motor));
+    box.append(s.panel('y', y1 - 0.15 + 0.003, x1 + 0.06, x1 + motor - 0.06, H - 0.05, H + 0.08, shade(K.motor, -0.35)));
+    box.append(s.box(x1 + 0.12, yc - 0.04, mh, 0.08, 0.08, 0.06, K.lamp));
+    s.castShadow(x1, my0, motor, D - 0.3, mh);
+    s.add(x1 + yc, s.hover(box, l));
+
     return {
       slotAt: i => [x1 - pad - step * (i + 0.5), yc, H + 0.001],
       label: l, length: len,
@@ -306,5 +322,5 @@
     s.add(x0 + y0 + (along === 'x' ? 0 : len / 2), g);
   }
 
-  Object.assign(IsoObjects, { washHouse, fuelStation, conveyor, barrierGate, trafficLight, bench, streetLamp, picket });
+  Object.assign(IsoObjects, { washHouse, fuelStation, conveyor, conveyorLength, barrierGate, trafficLight, bench, streetLamp, picket });
 })();

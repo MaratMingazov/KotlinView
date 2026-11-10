@@ -50,7 +50,7 @@ const QueueDiorama = (() => {
     s.title(['LinkedBlockingQueue', '…']);
 
     // Конвейер на площадке за дорогой; длина — по ёмкости
-    const len = cap * 0.62 + 0.5, x0 = L.centerX - len / 2;
+    const len = O.conveyorLength(cap), x0 = L.centerX - len / 2;
     O.paved(s, x0 - L.apron.padX, L.apron.y0, x0 + len + L.apron.padX, -0.14);
     const belt = O.conveyor(s, x0, L.y, cap, { lines: beltLines({ queue: [], capacity: cap }) });
     // Счётчик — левее площадки: над лентой его табличка закрывала бы хвост
