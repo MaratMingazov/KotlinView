@@ -15,6 +15,7 @@
 .tile-params .name { color: var(--fn); }
 .tile-params input { width: 48px; }
 .tile-params input[type=checkbox] { width: auto; margin: 0; }
+.tile-params select { font: inherit; }
 /* Как карточка на threadpoolexecutor.html: слева команды, справа визуализация */
 .tile-main { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 16px; align-items: start; }
 /* Тонкая сплошная черта между командами и визуализацией — на всю высоту плитки.

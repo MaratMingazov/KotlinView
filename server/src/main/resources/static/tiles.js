@@ -7,7 +7,9 @@
  * Плитка ничего не знает о конкретной структуре — всё берёт из её описания (view):
  * title, params, types, createStore(render), create(values), remove(store, id), operations, renderState(store, item),
  * renderTitleExtra?(store, item) — что показать сразу после названия.
- * params — [имя, значение по умолчанию, { min, max }?]: булево значение — чекбокс, число — поле с ограничениями.
+ * params — [имя, значение по умолчанию, { min, max, options, showIf }?]: булево значение — чекбокс, число — поле
+ * с ограничениями, options — [[значение, подпись], …] — выпадающий список (значение — строка);
+ * showIf(values) — параметр виден, только когда вернула true (values — текущие значения всех параметров).
  *
  * Подключение: после base.js, components.js и скриптов структур. Стили — tiles.css. Всё лежит в объекте Tiles.
  */
@@ -28,21 +30,22 @@ const Tiles = (() => {
     tile.titleExtra = KV.el('span', 'tile-title-extra');
     tile.inputs = {};
     tile.limits = {};
+    tile.rows = {};
     tile.params = KV.el('div', 'tile-params');
     // Каждый параметр — своей строкой: имя и поле
     for (const [name, value, limits = {}] of view.params) {
-      const input = isBoolean(value)
-        ? Object.assign(document.createElement('input'), { type: 'checkbox', checked: value })
-        : Object.assign(document.createElement('input'), { type: 'number', value, min: limits.min ?? 1, ...(limits.max != null && { max: limits.max }) });
+      const input = inputOf(value, limits);
       input.setAttribute('aria-label', name);
-      if (limits.max != null) input.title = `${limits.min ?? 1}…${limits.max}`;
       input.addEventListener('keydown', e => { if (e.key === 'Enter') start(tile); });
+      input.addEventListener('change', () => refreshParams(tile));
       tile.inputs[name] = input;
       tile.limits[name] = limits;
       const row = KV.el('label', 'param');
       row.append(KV.el('span', 'name', name), input);
+      tile.rows[name] = row;
       tile.params.append(row);
     }
+    refreshParams(tile);
     tile.controls = KV.el('div', 'tile-controls');
     tile.body = KV.el('div', 'tile-body');
     tile.main = KV.el('div', 'tile-main');
@@ -57,13 +60,38 @@ const Tiles = (() => {
     return tile;
   }
 
+  // Поле параметра: выпадающий список (options), чекбокс (булево) или число в пределах
+  function inputOf(value, limits) {
+    if (limits.options) {
+      const select = document.createElement('select');
+      for (const [v, text] of limits.options) select.append(Object.assign(document.createElement('option'), { value: v, textContent: text }));
+      select.value = value;
+      return select;
+    }
+    if (isBoolean(value)) return Object.assign(document.createElement('input'), { type: 'checkbox', checked: value });
+    const input = Object.assign(document.createElement('input'), { type: 'number', value, min: limits.min ?? 1, ...(limits.max != null && { max: limits.max }) });
+    if (limits.max != null) input.title = `${limits.min ?? 1}…${limits.max}`;
+    return input;
+  }
+
+  // Значение поля как есть (без зажима): для showIf, пока пользователь выбирает
+  const valueOf = input => input.type === 'checkbox' ? input.checked : input.tagName === 'SELECT' ? input.value : Number(input.value);
+
+  // Показать / скрыть параметры с showIf по текущим значениям. display, а не hidden: у строки свой display: flex
+  function refreshParams(tile) {
+    const values = Object.fromEntries(Object.entries(tile.inputs).map(([name, input]) => [name, valueOf(input)]));
+    for (const [name, limits] of Object.entries(tile.limits)) {
+      if (limits.showIf) tile.rows[name].style.display = limits.showIf(values) ? '' : 'none';
+    }
+  }
+
   async function start(tile) {
     if (tile.starting || tile.id != null) return; // Enter в поле, пока ждём ответ, — не второй объект
     tile.starting = true;
     tile.render();
     const values = {};
     for (const [name, input] of Object.entries(tile.inputs)) {
-      if (input.type === 'checkbox') { values[name] = input.checked; continue; }
+      if (input.type === 'checkbox' || input.tagName === 'SELECT') { values[name] = valueOf(input); continue; }
       const value = clamp(Number(input.value) || 0, tile.limits[name]);
       input.value = value; // видно, с каким значением на самом деле создали
       values[name] = value;

@@ -1,5 +1,6 @@
 package mingazov.kotlinview.service.concurrent.locks
 
+import mingazov.kotlinview.instrumented.concurrent.locks.AcquireMode
 import mingazov.kotlinview.instrumented.concurrent.locks.InstrumentedSemaphoreRunnableTask
 import mingazov.kotlinview.instrumented.concurrent.locks.registry.InstrumentedSemaphoreRegistry
 import mingazov.kotlinview.instrumented.concurrent.locks.registry.InstrumentedSemaphoreRunnableTaskRegistry
@@ -21,22 +22,23 @@ class SemaphoreRunnableTaskService(
     private val runnerIds = AtomicLong()
 
     /** Объект владеет своими частями: создаёт их сам и удаляет вместе с собой. */
-    fun create(permits: Int, fair: Boolean, durationMs: Long): InstrumentedSemaphoreRunnableTask {
+    fun create(permits: Int, fair: Boolean, durationMs: Long, mode: AcquireMode, timeoutMs: Long): InstrumentedSemaphoreRunnableTask {
         // Проверяем до создания частей: иначе клиент получил бы OBJECT_CREATED семафора, у которого не будет хозяина.
-        // permits < 0 разрешено, как у семафора: первые run ждут, пока кто-то не сделает release напрямую
+        // permits < 0 разрешено, как у семафора: первые run ждут (или получают отказ), пока кто-то не сделает release напрямую
         require(durationMs >= 0) { "durationMs must be >= 0" }
+        require(timeoutMs >= 0) { "timeoutMs must be >= 0" }
 
         // Порядок событий: сначала части, потом целое — ссылки semaphoreId / taskId всегда на уже известные клиенту объекты
         val semaphore = semaphoreRegistry.create(permits, fair)
         val task = taskRegistry.create(durationMs)
-        return registry.create(semaphore, task)
+        return registry.create(semaphore, task, mode, timeoutMs)
     }
 
     fun get(id: Long): InstrumentedSemaphoreRunnableTask = registry.get(id)
     fun all() = registry.all()
 
     /**
-     * run() блокирующий: в новом daemon-потоке, сразу возвращаем его имя. Каждый вызов — новый поток.
+     * run() может блокироваться (acquire, tryAcquire с таймаутом, сама задача): в новом daemon-потоке, сразу возвращаем его имя. Каждый вызов — новый поток.
      * Имя sem-runner-N, а не runner-N: так уже зовёт свои потоки InstrumentedRunnableTaskService,
      * а клиент склеивает события по имени потока — имена должны быть уникальны на весь сервер.
      */

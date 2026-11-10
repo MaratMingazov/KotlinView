@@ -32,28 +32,46 @@
 /* Обогнал очередь — главное, что хочется заметить на честном семафоре */
 .sem-row .thread-chip.barged { border-color: var(--keyword); color: var(--keyword); }
 
-/* --- задача под семафором (semaphoretask.js): бейджи, под ними в ряд — ждущие → счётчик разрешений → задача --- */
-.semtask-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 24px; margin-top: 10px; }
-/* Ждущие — столбиком перед счётчиком; никого нет — места не занимает */
-.semtask-waiting { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.semtask-waiting:empty { display: none; }
-/* Счётчик — на одной высоте с телом мини-конверта: над конвертом 12px под открытый клапан,
-   тело 40px, квадратик 26px → 12 + (40 − 26) / 2 */
-.semtask-row .semlight { margin-top: 19px; }
-
-/* Счётчик разрешений: квадратик с числом свободных — зелёный или красный (0 или долг) */
-.semlight { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: none; }
-.permits {
-  min-width: 26px; height: 26px; padding: 0 4px; box-sizing: border-box; border-radius: 5px; border: 2px solid var(--border);
-  display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; color: var(--bg); cursor: default;
-}
-.permits.green { background: var(--out); border-color: var(--out); }
-.permits.red { background: var(--fail); border-color: var(--fail); }
-/* Разрешений больше начального: оранжевое кольцо (оранжевая цифра на зелёном плохо читается) */
-.permits.extra { box-shadow: 0 0 0 2px var(--keyword); }
-.semlight-label { color: var(--dim); font-size: 11px; }
-.semlight-extra { color: var(--keyword); font-size: 11px; white-space: nowrap; }
-/* Смена цвета счётчика и появление ◆ — вспышка и затухание, как послесвечение бейджей */
-@keyframes lamp-flash { from { filter: brightness(1.8); } to { filter: none; } }
-
+/* --- задача под семафором (semaphoretask.js): бейджи, под ними «комната» --- */
 .semtask-notice { margin-top: 8px; }
+
+/* «Комната»: задача — рамка, разрешения — места в ней; слева — очередь ждущих */
+.semroom-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+/* Очередь у входа: первый ждущий — ближе всех к рамке */
+.semroom-queue { display: flex; flex-direction: row-reverse; gap: 4px; align-items: center; }
+.semroom-chip, .semroom-slot { width: 52px; height: 18px; box-sizing: border-box; border-radius: 3px; flex: none; }
+.semroom-chip {
+  position: relative; overflow: hidden; padding: 0 4px; white-space: nowrap; cursor: default;
+  border: 1px solid color-mix(in srgb, var(--thread) 60%, transparent);
+  background: color-mix(in srgb, var(--thread) 12%, transparent);
+  color: var(--thread); font-size: 11px; line-height: 16px; font-weight: bold;
+}
+.semroom-chip .name { position: relative; }
+/* В run(): заливка — прогресс (fill-up — components.css) */
+.semroom-chip .fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: color-mix(in srgb, var(--thread) 40%, transparent); }
+/* Ждёт с таймаутом: полоска внизу убывает */
+.semroom-chip .countdown { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: var(--thread); }
+.semroom-chip.entering { opacity: .5; }
+.semroom-chip.rejected { border-style: dashed; }
+.semroom {
+  position: relative; display: flex; flex-direction: column; gap: 4px; padding: 7px; cursor: default;
+  border: 2px solid var(--border); border-radius: 6px;
+}
+.semroom.full { border-color: color-mix(in srgb, var(--fail) 55%, var(--border)); }
+.semroom-label { position: absolute; top: -8px; left: 8px; padding: 0 4px; background: var(--panel); color: var(--dim); font-size: 10px; line-height: 12px; }
+.semroom-slot { border: 1px dashed var(--border); }
+.semroom-slot.held { border-style: solid; background: color-mix(in srgb, var(--dim) 15%, transparent); }
+.semroom-slot.extra { border-color: var(--keyword); }
+.semroom-slot.locked {
+  border-color: color-mix(in srgb, var(--fail) 60%, transparent);
+  background: repeating-linear-gradient(45deg, transparent 0 4px, color-mix(in srgb, var(--fail) 18%, transparent) 4px 6px);
+}
+@keyframes semroom-count { from { width: 100%; } to { width: 0; } }
+/* Отказ: подъехал к рамке, отскочил и растаял */
+@keyframes semroom-bounce {
+  0% { transform: translateX(-24px); opacity: 0; }
+  20% { opacity: 1; }
+  40% { transform: translateX(6px); opacity: 1; }
+  55% { transform: translateX(-6px); opacity: 1; }
+  100% { transform: translateX(-24px); opacity: 0; }
+}

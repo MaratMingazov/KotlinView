@@ -3,6 +3,7 @@ package mingazov.kotlinview.controller.concurrent.locks
 import mingazov.kotlinview.controller.collection.CreatedResponse
 import mingazov.kotlinview.controller.collection.ErrorResponse
 import mingazov.kotlinview.controller.collection.ThreadResponse
+import mingazov.kotlinview.instrumented.concurrent.locks.AcquireMode
 import mingazov.kotlinview.service.concurrent.locks.SemaphoreRunnableTaskService
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -14,8 +15,17 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
-/** permits — сколько потоков одновременно внутри задачи; durationMs — сколько «работает» задача. */
-data class CreateSemaphoreRunnableTaskRequest(val permits: Int, val durationMs: Long = 5000, val fair: Boolean = false)
+/**
+ * permits — сколько потоков одновременно внутри задачи; durationMs — сколько «работает» задача;
+ * mode — как поток входит (ждёт, отказ сразу, отказ по таймауту); timeoutMs — только для TRY_ACQUIRE_TIMEOUT.
+ */
+data class CreateSemaphoreRunnableTaskRequest(
+    val permits: Int,
+    val durationMs: Long = 5000,
+    val fair: Boolean = false,
+    val mode: AcquireMode = AcquireMode.ACQUIRE,
+    val timeoutMs: Long = 2000,
+)
 
 @RestController
 @RequestMapping("/api/semaphorerunnabletask")
@@ -27,9 +37,9 @@ class SemaphoreRunnableTaskController(
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
     fun create(@RequestBody request: CreateSemaphoreRunnableTaskRequest): CreatedResponse =
-        CreatedResponse(service.create(request.permits, request.fair, request.durationMs).id)
+        CreatedResponse(service.create(request.permits, request.fair, request.durationMs, request.mode, request.timeoutMs).id)
 
-    // Не ждёт окончания: run() идёт в отдельном потоке — acquire, задача и release видны в событиях частей
+    // Не ждёт окончания: run() идёт в отдельном потоке — вход, задача и release видны в событиях частей, итог — в METHOD_OUT run
     @PostMapping("/{id}/run")
     @ResponseStatus(HttpStatus.ACCEPTED)
     fun run(@PathVariable id: Long): ThreadResponse = ThreadResponse(service.run(id))
@@ -39,7 +49,7 @@ class SemaphoreRunnableTaskController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun remove(@PathVariable id: Long) = service.remove(id)
 
-    // require в create: durationMs < 0
+    // require в create: durationMs < 0, timeoutMs < 0
     @ExceptionHandler(IllegalArgumentException::class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     fun handleBadRequest(e: IllegalArgumentException) = ErrorResponse(e.toString())

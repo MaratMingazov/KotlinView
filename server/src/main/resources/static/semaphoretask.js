@@ -6,18 +6,15 @@
  *
  * Составной объект, как пул: семафор и задача приходят отдельными объектами, объект ссылается на них
  * через state.semaphoreId / state.taskId. Потоки sem-runner-N склеиваются по имени: ждут — в семафоре, работают — в задаче.
- * Собственные события run не учитываем: всё видно по событиям частей.
+ * Собственные события run — только кто внутри (entered): по ним «комната» видит поток между acquire и task.run.
  *
- * Картинка — как у остальных структур: бейджи методов первой строкой, под ними состояние в ряд:
+ * Картинка — «комната»: бейджи методов первой строкой, под ними задача — рамка, разрешения — места в ней:
  *
  *   acquire  release
- *   sem-runner-4   ┌─┐      ┌──────┐
- *   sem-runner-3   │1│      │ task │
- *                  └─┘      └──────┘
- *                permits    ▓▓▓ sem-runner-1
- *                           ▓▓  sem-runner-2
- *   слева — кто ждёт в acquire, в порядке прихода; счётчик — квадратик с числом свободных разрешений:
- *   зелёный — они есть, красный — нет; справа — задача (конверт и полоски потоков внутри run)
+ *                     ┌ task ───────┐
+ *   [thread] [thread] │ [▓▓▓thread] │   слева — очередь ждущих, первый — у рамки;
+ *                     │ [┊ free   ┊]│   внутри — потоки в run() (заливка — прогресс) и свободные места
+ *                     └─────────────┘
  */
 const SemaphoreTaskView = (() => {
   const base = '/api/semaphorerunnabletask';
@@ -25,12 +22,16 @@ const SemaphoreTaskView = (() => {
   const SEMAPHORE = 'SEMAPHORE';
   const TASK = 'RUNNABLE_TASK';
   const NOTICE_MS = 4000; // сколько видна строка об отказе remove
-  const FLASH_MS = 800;   // сколько вспыхивает лампа при переключении и метка ◆ при появлении
 
   // ---------- REST ----------
   // Запросы и лог HTTP — UI.call из base.js. Объект появится по событию OBJECT_CREATED (после семафора и задачи)
 
-  const create = (permits, durationMs, fair) => UI.call('POST', base, { permits, durationMs, fair });
+  const create = (permits, durationMs, fair, mode = 'ACQUIRE', timeoutMs = 2000) =>
+    UI.call('POST', base, { permits, durationMs, fair, mode, timeoutMs });
+
+  // Как поток входит в задачу (AcquireMode на сервере): подпись в списке пульта
+  const MODES = [['ACQUIRE', 'acquire()'], ['TRY_ACQUIRE', 'tryAcquire()'], ['TRY_ACQUIRE_TIMEOUT', 'tryAcquire(timeout)']];
+  const REJECT_MS = 1500; // сколько тает плашка потока, получившего отказ (как «только что вышедшие» в semaphore.js)
 
   // Отказ (409 — кто-то внутри) событий не порождает: пишем его в строку-уведомление, иначе он виден только в логе HTTP
   async function remove(store, id) {
@@ -45,18 +46,16 @@ const SemaphoreTaskView = (() => {
   const operations = [
     // Только run: release поток делает сам, на выходе из задачи
     { name: 'run', fields: [],
-      title: id => `POST ${base}/${id}/run — run() in a new thread: acquire → task.run → release`,
+      title: id => `POST ${base}/${id}/run — run() in a new thread: acquire / tryAcquire → task.run → release`,
       run: id => UI.call('POST', `${base}/${id}/run`) },
   ];
 
   // ---------- Модель ----------
 
   /**
-   * store.items — objectId → { id, semaphoreId, taskId, notice, lamp, extra, drawn }; store.apply(env) — учесть событие.
-   * Семафоры — модель из semaphore.js (store.semaphores: waiting, state, бейджи), задачи — KV.trackTask (store.tasks):
-   * каждое событие уходит в свою модель.
-   * lamp / extra — что горело при прошлой отрисовке и с какого момента: по ним вспышка при переключении.
-   * drawn — счётчик уже рисовался: то, что видно при первой отрисовке, не вспыхивает
+   * store.items — objectId → { id, semaphoreId, taskId, mode, timeoutMs, entered, notice }; store.apply(env) — учесть событие.
+   * Семафоры — модель из semaphore.js (store.semaphores: waiting, leaving, state, бейджи), задачи — KV.trackTask
+   * (store.tasks): каждое событие уходит в свою модель. entered — кто внутри run() объекта
    */
   function createStore(render) {
     const items = new Map();
@@ -75,10 +74,20 @@ const SemaphoreTaskView = (() => {
     function applyGuarded(env, d) {
       if (env.type === 'OBJECT_REMOVED') { items.delete(d.objectId); return; }
       if (!items.has(d.objectId)) {
-        items.set(d.objectId, { id: d.objectId, semaphoreId: null, taskId: null, notice: null, lamp: null, extra: null, drawn: false });
+        items.set(d.objectId, { id: d.objectId, semaphoreId: null, taskId: null, mode: null, timeoutMs: null, entered: new Set(), notice: null });
       }
-      // Ссылки на части — в любом событии: страницу могли открыть уже после создания
-      if (d.state) Object.assign(items.get(d.objectId), { semaphoreId: d.state.semaphoreId, taskId: d.state.taskId });
+      // Кто внутри run() объекта (от входа до выхода, включая ожидание) — для «комнаты»: взявший разрешение,
+      // но ещё не вошедший в run задачи, виден только так
+      const item = items.get(d.objectId);
+      if (d.method === 'run') {
+        if (env.type === 'METHOD_IN') item.entered.add(d.thread);
+        else if (env.type === 'METHOD_OUT' || env.type === 'METHOD_OUT_FAILED') item.entered.delete(d.thread);
+      }
+      // Ссылки на части и способ входа — в любом событии: страницу могли открыть уже после создания
+      if (d.state) {
+        const { semaphoreId, taskId, mode, timeoutMs } = d.state;
+        Object.assign(items.get(d.objectId), { semaphoreId, taskId, mode, timeoutMs });
+      }
     }
 
     function notify(item, text) {
@@ -93,80 +102,122 @@ const SemaphoreTaskView = (() => {
   // ---------- Отрисовка ----------
 
   /**
-   * Как у остальных структур: первой строкой — бейджи acquire / release (tryAcquire в этой плитке не бывает),
-   * под ними в ряд — ждущие в acquire → счётчик разрешений → задача; ниже — уведомление об отказе
+   * Первой строкой — бейджи метода входа (acquire или tryAcquire — по mode) и release, под ними — «комната»;
+   * ниже — уведомление об отказе remove. Семафора ещё нет в модели (страницу открыли позже) — пустая рамка
    */
   function renderState(store, item) {
     const sem = item.semaphoreId != null ? store.semaphores.items.get(item.semaphoreId) : null;
-    const row = KV.el('div', 'semtask-row');
-    row.title = `semaphore #${item.semaphoreId ?? '?'} guarding task #${item.taskId ?? '?'}`;
-    // Задача, которой ещё нет в модели (страницу открыли позже), — пустой конверт с «?», как в очереди пула
     const task = store.tasks.get(item.taskId) ?? { id: item.taskId ?? '?', durationMs: null, failedAt: null, runs: new Map() };
-    // Задача — всегда закрытый конверт с надписью task: кто внутри run(), видно по полоскам под ним (пробуем вид)
-    row.append(renderQueue(sem), renderLight(item, sem?.state), KV.renderTask(task, { size: 'mini', closed: true, label: 'task' }));
-    const out = sem ? [KV.renderBadges(pick(sem.methods, ['acquire', 'release'])), row] : [row];
+    const enter = item.mode && item.mode !== 'ACQUIRE' ? 'tryAcquire' : 'acquire';
+    const out = sem ? [KV.renderBadges(pick(sem.methods, [enter, 'release'])), renderRoom(item, sem, task)] : [renderRoom(item, null, task)];
     const n = item.notice;
     if (n && performance.now() - n.start < NOTICE_MS) out.push(KV.el('div', 'semtask-notice error', n.text));
     return out;
   }
 
-  // Кто ждёт в acquire — перед счётчиком, в порядке прихода (METHOD_IN). Без подписи: и так видно, что ждут
-  function renderQueue(sem) {
-    const queue = KV.el('div', 'semtask-waiting');
-    for (const [thread, w] of sem?.waiting ?? []) {
-      const chip = KV.el('span', 'thread-chip', KV.THREAD_LABEL + (w.permits !== 1 ? ` ×${w.permits}` : ''));
-      chip.style.setProperty('--thread', KV.threadColor(thread));
-      chip.title = `${thread} waits in ${w.method}(${w.permits}): no free permits`;
+  /**
+   * Задача — рамка, разрешения — места в ней. Слева, у входа, — очередь ждущих (ближний к рамке — первый);
+   * у ждущего с таймаутом внизу убывает полоска — сколько осталось. Получивший отказ подъезжает к рамке,
+   * отскакивает и тает. Внутри: потоки в run() — плашка заполняется прогрессом; взявший разрешение, но ещё не
+   * вошедший в run, — бледная плашка; разрешение держит кто-то вне задачи (POST /api/semaphore/{id}/acquire) —
+   * занятое место без имени; свободное — пунктир; «напечатанное» лишним release — оранжевый пунктир;
+   * долг (разрешений < 0) — запертые места. Свободных нет — рамка красноватая.
+   */
+  function renderRoom(item, sem, task) {
+    const row = KV.el('div', 'semroom-row');
+    if (!sem) {
+      const frame = KV.el('div', 'semroom');
+      frame.append(KV.el('span', 'semroom-label', 'task'));
+      frame.title = 'semaphore state unknown';
+      row.append(frame);
+      return row;
+    }
+    row.append(renderRoomQueue(item, sem), renderRoomFrame(item, sem, task));
+    return row;
+  }
+
+  function roomChip(thread, title, cls = '') {
+    const chip = KV.el('div', `semroom-chip ${cls}`.trim());
+    chip.style.setProperty('--thread', KV.threadColor(thread));
+    chip.title = title;
+    return chip;
+  }
+
+  function renderRoomQueue(item, sem) {
+    const queue = KV.el('div', 'semroom-queue');
+    const now = performance.now();
+    for (const [thread, w] of sem.waiting) {
+      const timed = w.timeoutMs !== undefined;
+      const chip = roomChip(thread, timed
+        ? `${thread} waits in tryAcquire(${KV.seconds(w.timeoutMs)}): no free permits`
+        : `${thread} waits in acquire(): no free permits`);
+      if (timed) {
+        const bar = KV.el('div', 'countdown');
+        bar.style.animation = `semroom-count ${w.timeoutMs}ms linear ${-(now - (w.since ?? now))}ms forwards`;
+        chip.append(bar);
+      }
+      chip.append(KV.el('span', 'name', KV.THREAD_LABEL));
+      queue.append(chip);
+    }
+    for (const l of sem.leaving) {
+      const age = now - l.start;
+      if (l.kind !== 'none' || age >= REJECT_MS) continue;
+      const chip = roomChip(l.thread, item.mode === 'TRY_ACQUIRE_TIMEOUT'
+        ? `${l.thread}: tryAcquire() timed out after ${KV.seconds(item.timeoutMs)} — task did not run`
+        : `${l.thread}: tryAcquire() returned false — no free permits, task did not run`, 'rejected');
+      chip.style.animation = `semroom-bounce ${REJECT_MS}ms ease-in-out ${-age}ms forwards`;
+      chip.append(KV.el('span', 'name', KV.THREAD_LABEL));
       queue.append(chip);
     }
     return queue;
   }
 
-  /**
-   * Счётчик разрешений: один квадратик с числом свободных — зелёный, пока они есть; красный — разрешений нет
-   * (0 или долг: тогда отрицательное число). Всего разрешений — в подсказке.
-   * Разрешений больше начального — release без acquire «напечатал» лишнее: квадратик в оранжевом кольце и метка ◆+N.
-   * В этой плитке так не бывает (release делает сам поток), но семафор доступен и напрямую — POST /api/semaphore/{id}/release.
-   * Метка — состояние, а не событие: горит, пока лишние есть; вспыхивает только при появлении
-   */
-  function renderLight(item, s) {
-    const light = KV.el('div', 'semlight');
-    const counter = KV.el('span', 'permits');
-    light.append(counter, KV.el('span', 'semlight-label', 'permits'));
-    if (!s) { counter.textContent = '?'; return light; }
+  function renderRoomFrame(item, sem, task) {
+    const s = sem.state;
+    const frame = KV.el('div', 'semroom');
+    frame.append(KV.el('span', 'semroom-label', 'task'));
+    if (!s) { frame.title = 'semaphore state unknown'; return frame; }
 
-    const available = s.availablePermits;
-    const isGreen = available > 0;
-    const extra = available - s.initialPermits;
+    // Места: обычные — по initialPermits; свободное сверх них — «напечатано» лишним release; долг — запертые
+    const slots = Math.max(s.initialPermits, 0), available = s.availablePermits;
+    const free = available >= 0 ? Math.min(available, slots) : 0;
+    const extra = available > slots ? available - slots : 0;
+    const locked = available < 0 ? -available : 0;
+    const held = slots - free;
+
     const now = performance.now();
-
-    // Вспышка при смене цвета. Первая отрисовка — без вспышки: цвет не менялся, его просто увидели
-    if (item.lamp?.green !== isGreen) item.lamp = { green: isGreen, since: item.lamp ? now : -Infinity };
-    counter.classList.add(isGreen ? 'green' : 'red');
-    counter.textContent = String(available);
-    counter.title = (isGreen ? `${available} free permit(s)` : available < 0 ? `debt: ${available}, release() is needed first` : 'no free permits: acquire() waits')
-      + ` · ${s.initialPermits} in total`;
-    flash(counter, now - item.lamp.since);
-
-    if (extra > 0) {
-      // Как у счётчика: лишние, увиденные при первой отрисовке, — без вспышки, они не появились, их просто увидели
-      if (item.extra === null) item.extra = { since: item.drawn ? now : -Infinity };
-      counter.classList.add('extra');
-      const mark = KV.el('span', 'semlight-extra', `◆+${extra}`);
-      mark.title = 'release() without acquire(): the semaphore does not check who releases — ' +
-        `${extra} permit(s) above initialPermits`;
-      flash(mark, now - item.extra.since);
-      light.append(mark);
-    } else {
-      item.extra = null;
+    const chips = [];
+    // Внутри run(): заливка — прогресс, едет сама до конца задачи
+    for (const [thread, run] of task.runs) {
+      if (run.phase !== 'RUN') continue;
+      const chip = roomChip(thread, `${thread} runs the task`);
+      if (task.durationMs) {
+        const fill = KV.el('div', 'fill');
+        fill.style.animation = `fill-up ${task.durationMs}ms linear ${-Math.min(now - run.startedAt, task.durationMs)}ms forwards`;
+        chip.append(fill);
+      }
+      chip.append(KV.el('span', 'name', KV.THREAD_LABEL));
+      chips.push(chip);
     }
-    item.drawn = true;
-    return light;
-  }
+    // Внутри run() объекта, но не ждёт, не в run задачи и не получил отказ: взял разрешение и ещё не вошёл
+    // в задачу (или уже вышел из неё и отдаёт разрешение) — мгновения, видны в замедленном режиме
+    const rejected = new Set(sem.leaving.filter(l => l.kind === 'none').map(l => l.thread));
+    for (const thread of item.entered) {
+      if (sem.waiting.has(thread) || task.runs.get(thread)?.phase === 'RUN' || rejected.has(thread)) continue;
+      const chip = roomChip(thread, `${thread} holds a permit, not inside task.run()`, 'entering');
+      chip.append(KV.el('span', 'name', KV.THREAD_LABEL));
+      chips.push(chip);
+    }
+    frame.append(...chips);
+    // Разрешение держит кто-то вне задачи — место занято, но без имени: семафор владельца не знает
+    for (let i = chips.length; i < held; i++) frame.append(Object.assign(KV.el('div', 'semroom-slot held'), { title: 'permit held outside the task' }));
+    for (let i = 0; i < free; i++) frame.append(Object.assign(KV.el('div', 'semroom-slot'), { title: 'free permit' }));
+    for (let i = 0; i < extra; i++) frame.append(Object.assign(KV.el('div', 'semroom-slot extra'), { title: 'release() without acquire(): a permit above initialPermits' }));
+    for (let i = 0; i < locked; i++) frame.append(Object.assign(KV.el('div', 'semroom-slot locked'), { title: 'debt: release() is needed first' }));
 
-  // Вспышка, продолженная с того места, где была до пересоздания элемента (render идёт на каждое событие)
-  function flash(element, elapsed) {
-    if (elapsed < FLASH_MS) element.style.animation = `lamp-flash ${FLASH_MS}ms ease-out ${-elapsed}ms forwards`;
+    if (free === 0 && extra === 0) frame.classList.add('full');
+    frame.title = `${s.initialPermits} permit(s) · ${available} free · ${s.fair ? 'fair' : 'nonfair'}`;
+    return frame;
   }
 
   // Бейджи только этих методов: renderBadges рисует всё, что есть в inside
@@ -184,9 +235,11 @@ const SemaphoreTaskView = (() => {
 
   return {
     title: 'Semaphore',
-    params: [['permits', 2], ['durationMs', 5000], ['fair', false]],
+    // Способ входа — списком; таймаут — только у tryAcquire(timeout). На twin.html — свои params
+    params: [['permits', 2], ['durationMs', 5000], ['fair', false], ['mode', 'ACQUIRE', { options: MODES }],
+      ['timeoutMs', 2000, { showIf: values => values.mode === 'TRY_ACQUIRE_TIMEOUT' }]],
     types, createStore, remove, operations, renderState,
-    create: values => create(values.permits, values.durationMs, values.fair),
-    createWith: create, // для semaphoretask.html: с fair
+    create: values => create(values.permits, values.durationMs, values.fair, values.mode, values.timeoutMs),
+    createWith: create, // для semaphoretask.html: с fair; mode и timeoutMs — по умолчанию (acquire)
   };
 })();

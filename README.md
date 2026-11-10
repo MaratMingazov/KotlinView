@@ -117,7 +117,7 @@
 Общие поля всех событий: `objectType`, `objectId`, `thread` — имя потока, в котором произошло событие.
 
 `objectType`: `ARRAY_LIST_INT`, `LINKED_LIST_INT`, `RUNNABLE_TASK`, `LINKED_BLOCKING_QUEUE_RUNNABLE`,
-`SYNCHRONOUS_QUEUE_RUNNABLE`, `THREAD_FACTORY`, `THREAD`, `THREAD_POOL_EXECUTOR`.
+`SYNCHRONOUS_QUEUE_RUNNABLE`, `THREAD_FACTORY`, `THREAD`, `THREAD_POOL_EXECUTOR`, `SEMAPHORE`, `SEMAPHORE_RUNNABLE_TASK`.
 У `THREAD` `objectId` — это `threadId()` JVM, а не id из общего генератора.
 
 `state` — снимок состояния объекта в момент события, клиент рисует объект по последнему полученному снимку.
@@ -140,6 +140,12 @@
 | `/api/synchronousqueuerunnable` | `POST` создать, `/{id}/offer`, `/{id}/put`, `/{id}/take`, `DELETE /{id}` |
 | `/api/tasks` | `POST` создать задачу на `durationMs`, `/{id}/run`, `DELETE /{id}` |
 | `/api/threadpoolexecutor` | `POST` создать с параметрами, `/fixed`, `/single`, `/cached`, `/{id}/execute`, `/{id}/shutdown`, `/{id}/shutdownNow`, `DELETE /{id}` |
+| `/api/semaphore` | `POST` создать, `/{id}/acquire`, `/{id}/tryAcquire`, `/{id}/tryAcquireTimeout`, `/{id}/release`, `DELETE /{id}` |
+| `/api/semaphorerunnabletask` | `POST` создать (`permits`, `durationMs`, `fair`, `mode`: `ACQUIRE` / `TRY_ACQUIRE` / `TRY_ACQUIRE_TIMEOUT`, `timeoutMs`), `/{id}/run`, `DELETE /{id}` |
+
+Задача под семафором создаётся вместе со своим семафором и задачей. `mode` — как поток входит: ждёт (`acquire`),
+сразу получает отказ (`tryAcquire`) или ждёт не дольше `timeoutMs`. Итог `run` — `result` в `METHOD_OUT`:
+`"done"` или `"rejected"` (разрешение не взяли, задача не запускалась).
 
 Пул создаётся вместе со своей очередью и фабрикой (клиент получит три `OBJECT_CREATED`: очередь, фабрика, пул)
 и удаляется вместе с ними — только после `TERMINATED`. Отказ `execute` (`RejectedExecutionException`) — `409`.

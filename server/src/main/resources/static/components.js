@@ -245,7 +245,9 @@ const KV = (() => {
     const className = ['envelope', size, open && 'running', open && inside.length > 1 && 'multi', flashing && 'failed']
       .filter(Boolean).join(' ');
 
-    const envelope = svg('svg', { class: className, viewBox: g.viewBox, width: g.width, height: g.height });
+    // Закрытый конверт клапан не открывает — место под него сверху не нужно: рамка начинается от тела
+    const [vx, vy, vw, vh] = g.viewBox.split(' ').map(Number), top = closed ? -2 - vy : 0;
+    const envelope = svg('svg', { class: className, viewBox: `${vx} ${vy + top} ${vw} ${vh - top}`, width: g.width, height: g.height - top });
     envelope.style.setProperty('--flash', `${FAILED_FLASH_MS}ms`);
     if (flashing) envelope.style.setProperty('--flash-delay', `${-(now - task.failedAt)}ms`);
     envelope.append(

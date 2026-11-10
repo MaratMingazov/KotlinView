@@ -33,13 +33,18 @@ const SemaphoreDiorama = (() => {
   /**
    * Снимок семафора: permits — всего, available — свободно; inside — раннеры внутри задачи { name, startedAt,
    * durationMs } (прогресс считается на каждом кадре) или { name, progress } (статичный показ); waiting — ждущие
-   * в acquire в порядке прихода
+   * (acquire, tryAcquire с таймаутом) в порядке прихода; rejected — только что получившие отказ (tryAcquire → false):
+   * { name, waited } — waited: ждал в очереди (таймаут), иначе отказ сразу
    */
   const demo = {
     permits: 2, available: 0, taskId: 7, taskDuration: '5.0s',
     inside: [{ name: 'sem-runner-1', progress: 0.6 }, { name: 'sem-runner-2', progress: 0.2 }], // progress — только в демо
     waiting: ['sem-runner-3', 'sem-runner-4', 'sem-runner-5'],
+    rejected: [],
   };
+
+  // Сколько после отказа машина в снимке: успеть развернуться (дальше набор и так доведёт её до выезда entry)
+  const REJECTED_MS = 1500;
 
   const titleOf = snap => [`Semaphore(${snap.permits})`, `guarding task #${snap.taskId} · ${snap.waiting.length} waiting`];
   const shopLines = snap => [`task #${snap.taskId}`, `${snap.taskDuration} · ${snap.inside.length} fueling`];
@@ -139,18 +144,32 @@ const SemaphoreDiorama = (() => {
     return st.layout(L.decorSeed, { links, update, frame });
   }
 
-  /** Кто где: ждущие — по местам очереди, внутри — к свободной колонке (место закрепляется за потоком). */
+  /**
+   * Кто где: ждущие — по местам очереди, внутри — к свободной колонке (место закрепляется за потоком).
+   * Получивший отказ разворачивается и уезжает назад, к въезду: через шлагбаум он не проезжал. Ждавший (таймаут) —
+   * сразу со своего места в очереди; получивший отказ сразу (tryAcquire()) — сначала подъезжает к шлагбауму, на место
+   * за ждущими, видит красный и разворачивается: доехал — стоит DWELL_MS, пропал из снимка — уезжает на exit (entry).
+   * Явно, по rejected, а не exit у ждущих: получивший разрешение на миг пропадает из снимка (между acquire и run) —
+   * он дёрнулся бы назад
+   */
   function actorsOf(snap) {
-    const car = (name, place) => { const color = threadColor(name); return { key: name, place, color, label: { lines: [Kit.THREAD_LABEL], color } }; };
+    const car = (name, place, extra) => { const color = threadColor(name); return { key: name, place, color, label: { lines: [Kit.THREAD_LABEL], color }, ...extra }; };
+    const queued = Math.min(snap.waiting.length, LIMITS.waiting);
+    let tail = queued; // следующее место за ждущими; сверх мест — все в последнее
     return [
       ...snap.waiting.slice(0, LIMITS.waiting).map((name, i) => car(name, `wait${i}`)),
       ...snap.inside.slice(0, LIMITS.inside).map(r => car(r.name, 'spot*')),
+      ...(snap.rejected ?? []).map(r => car(r.name,
+        r.waited ? 'entry' : `wait${Math.min(tail++, LIMITS.waiting - 1)}`, { exit: 'entry' })),
     ];
   }
 
   // ---------- Снимок из плитки (twin.html) ----------
 
-  /** Снимок из store semaphoretask.js: ждущие — из модели семафора, внутри — потоки в run() задачи. */
+  /**
+   * Снимок из store semaphoretask.js: ждущие и получившие отказ — из модели семафора (отказ — leaving вида none,
+   * как в плитке), внутри — потоки в run() задачи
+   */
   function semaphoreSnapshot(store, item) {
     const sem = store.semaphores.items.get(item.semaphoreId);
     const task = store.tasks.get(item.taskId);
@@ -165,11 +184,13 @@ const SemaphoreDiorama = (() => {
       taskDuration: KV.seconds(task?.durationMs),
       inside,
       waiting: [...(sem?.waiting.keys() ?? [])],
+      rejected: (sem?.leaving ?? []).filter(l => l.kind === 'none' && performance.now() - l.start < REJECTED_MS)
+        .map(l => ({ name: l.thread, waited: l.blocking })),
     };
   }
 
   // Пока не запущен: пустая бензоколонка на столько колонок, сколько стоит в поле permits
-  const idle = permits => ({ permits, available: permits, taskId: '?', taskDuration: '?', inside: [], waiting: [] });
+  const idle = permits => ({ permits, available: permits, taskId: '?', taskDuration: '?', inside: [], waiting: [], rejected: [] });
 
   /** @type {Kind} */
   const kind = {

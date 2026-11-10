@@ -40,9 +40,11 @@ const SemaphoreView = (() => {
   /**
    * store.items — objectId → { id, methods, state, waiting, leaving, tokenEffect }; store.apply(env) — учесть событие.
    * state — последний снимок с сервера: { initialPermits, availablePermits, fair, queuedThreads }.
-   * waiting — thread → { method, permits, timeoutMs }: кто сейчас ждёт, по парам METHOD_IN / METHOD_OUT.
+   * waiting — thread → { method, permits, timeoutMs, since }: кто сейчас ждёт, по парам METHOD_IN / METHOD_OUT;
+   *   since — когда начал ждать (performance.now()): по нему обратный отсчёт таймаута.
    *   Порядок Map — порядок METHOD_IN: точный источник «кто ждёт»; state.queuedThreads — только подсказка (best-effort).
-   * leaving — кто только что вышел: { thread, kind: 'got' | 'none' | 'failed' | 'released', permits, barged, start }.
+   * leaving — кто только что вышел: { thread, kind: 'got' | 'none' | 'failed' | 'released', permits, barged, blocking, start };
+   *   blocking — метод мог ждать (acquire, tryAcquire с таймаутом): поток был среди waiting.
    * tokenEffect — { kind: 'gain' | 'take', count, start }: подсветить появившиеся / ушедшие жетоны
    */
   function createStore(render) {
@@ -68,7 +70,7 @@ const SemaphoreView = (() => {
       // Ждут только блокирующие: acquire и tryAcquire с таймаутом. tryAcquire без таймаута выходит сразу
       const blocking = d.method === 'acquire' || (d.method === 'tryAcquire' && d.args.timeoutMs !== undefined);
       if (phase === 'IN') {
-        if (blocking) sem.waiting.set(d.thread, { method: d.method, permits: d.args.permits, timeoutMs: d.args.timeoutMs });
+        if (blocking) sem.waiting.set(d.thread, { method: d.method, permits: d.args.permits, timeoutMs: d.args.timeoutMs, since: performance.now() });
         return;
       }
       sem.waiting.delete(d.thread);
@@ -89,7 +91,7 @@ const SemaphoreView = (() => {
 
       const now = performance.now();
       sem.leaving = sem.leaving.filter(l => now - l.start < FLASH_MS);
-      sem.leaving.push({ thread: d.thread, kind, permits, barged, start: now });
+      sem.leaving.push({ thread: d.thread, kind, permits, barged, blocking, start: now });
       if (kind === 'got') sem.tokenEffect = { kind: 'take', count: permits, start: now };
       if (kind === 'released') sem.tokenEffect = { kind: 'gain', count: permits, start: now };
       setTimeout(render, FLASH_MS);
