@@ -226,28 +226,21 @@ const KV = (() => {
     return e;
   }
 
-  // full — на странице задачи: внутри только длительность, task#id в заголовке карточки.
-  // mini — в очереди и у воркеров: внутри #id и длительность. Над конвертом место под открытый клапан
-  const ENVELOPE = {
-    full: { viewBox: '-2 -26 100 92', width: 100, height: 92, w: 96, h: 62, rx: 4,
-            flapOpen: 'M0 0 L48 -22 L96 0 Z', flapClosed: 'M0 0 L48 30 L96 0', lines: [['dur', 52]] },
-    mini: { viewBox: '-2 -12 52 56', width: 52, height: 56, w: 48, h: 40, rx: 3,
-            flapOpen: 'M0 0 L24 -10 L48 0 Z', flapClosed: 'M0 0 L24 14 L48 0', lines: [['id', 27], ['dur', 37]] },
-  };
+  // Мини-конверт (в очереди и у воркеров): внутри #id и длительность. Над конвертом место под открытый клапан
+  const ENVELOPE = { viewBox: '-2 -12 52 56', width: 52, height: 56, w: 48, h: 40, rx: 3,
+    flapOpen: 'M0 0 L24 -10 L48 0 Z', flapClosed: 'M0 0 L24 14 L48 0', lines: [['id', 27], ['dur', 37]] };
 
-  // closed — клапан не открывается, даже когда внутри run() есть потоки; label — одна надпись вместо #id и длительности
-  function renderEnvelope(task, { size = 'full', closed = false, label = null } = {}) {
-    const g = ENVELOPE[size];
+  // Клапан открыт, пока внутри run() есть потоки; больше одного — другим цветом; упала — красная вспышка
+  function renderEnvelope(task) {
+    const g = ENVELOPE;
     const inside = runningThreads(task);
     const now = performance.now();
     const flashing = task.failedAt !== null && inside.length === 0 && now - task.failedAt < FAILED_FLASH_MS;
-    const open = !closed && inside.length > 0;
-    const className = ['envelope', size, open && 'running', open && inside.length > 1 && 'multi', flashing && 'failed']
+    const open = inside.length > 0;
+    const className = ['envelope', open && 'running', open && inside.length > 1 && 'multi', flashing && 'failed']
       .filter(Boolean).join(' ');
 
-    // Закрытый конверт клапан не открывает — место под него сверху не нужно: рамка начинается от тела
-    const [vx, vy, vw, vh] = g.viewBox.split(' ').map(Number), top = closed ? -2 - vy : 0;
-    const envelope = svg('svg', { class: className, viewBox: `${vx} ${vy + top} ${vw} ${vh - top}`, width: g.width, height: g.height - top });
+    const envelope = svg('svg', { class: className, viewBox: g.viewBox, width: g.width, height: g.height });
     envelope.style.setProperty('--flash', `${FAILED_FLASH_MS}ms`);
     if (flashing) envelope.style.setProperty('--flash-delay', `${-(now - task.failedAt)}ms`);
     envelope.append(
@@ -255,12 +248,8 @@ const KV = (() => {
       svg('rect', { x: 0, y: 0, width: g.w, height: g.h, rx: g.rx }),
       svg('path', { class: 'flap-closed', d: g.flapClosed }),
     );
-    if (label != null) {
-      envelope.append(svg('text', { class: 'id', x: g.w / 2, y: g.h / 2 + 4, 'text-anchor': 'middle' }, label));
-    } else {
-      const texts = { id: String(task.id), dur: seconds(task.durationMs) }; // номер без «#» — минималистично
-      for (const [kind, y] of g.lines) envelope.append(svg('text', { class: kind, x: g.w / 2, y, 'text-anchor': 'middle' }, texts[kind]));
-    }
+    const texts = { id: String(task.id), dur: seconds(task.durationMs) }; // номер без «#» — минималистично
+    for (const [kind, y] of g.lines) envelope.append(svg('text', { class: kind, x: g.w / 2, y, 'text-anchor': 'middle' }, texts[kind]));
 
     const title = `task#${task.id}, ${seconds(task.durationMs)}` + (inside.length ? `\nвнутри run(): ${inside.join(', ')}` : '');
     envelope.append(svg('title', {}, title));
@@ -268,13 +257,13 @@ const KV = (() => {
   }
 
   /**
-   * Узел цепочки с задачей: метка, мини-конверт, позиция. Конверт тот же, что на странице задачи:
-   * если задача сейчас выполняется, клапан открыт и в очереди. Неизвестная задача — конверт с «?».
+   * Узел цепочки с задачей: метка, мини-конверт, позиция. Если задача сейчас выполняется, клапан открыт
+   * и в очереди. Неизвестная задача — конверт с «?».
    */
   function taskNode(tasks, taskId, label, index) {
     const task = tasks.get(taskId) ?? { id: taskId, durationMs: null, failedAt: null, runs: new Map() };
     const n = el('div', 'node');
-    n.append(el('div', 'label', label), renderEnvelope(task, { size: 'mini' }), el('div', 'idx', String(index)));
+    n.append(el('div', 'label', label), renderEnvelope(task), el('div', 'idx', String(index)));
     return n;
   }
 
@@ -322,13 +311,12 @@ const KV = (() => {
   }
 
   /**
-   * Задача целиком: конверт, под ним полоски потоков внутри run(). Так задача выглядит везде, где её видно целиком:
-   * на своей странице (все потоки) и у воркера пула (options.thread — только этот воркер)
+   * Задача целиком: конверт, под ним полоски потоков внутри run() — у воркера пула (options.thread — только этот
+   * воркер, options.names: false — без имени поверх полоски)
    */
   function renderTask(task, options = {}) {
     const view = el('div', 'task-view');
-    view.append(renderEnvelope(task, { size: options.size, closed: options.closed, label: options.label }),
-      renderRuns(task, { thread: options.thread, names: options.names }));
+    view.append(renderEnvelope(task), renderRuns(task, { thread: options.thread, names: options.names }));
     return view;
   }
 
@@ -377,8 +365,8 @@ const KV = (() => {
   }
 
   return {
-    el, methodsState, trackMethod, renderBadges, node, setEffect, renderChain, renderOps,
-    trackTask, runningThreads, renderEnvelope, renderRuns, renderTask, taskNode, taskSlot,
+    el, methodsState, trackMethod, renderBadges, setEffect, renderChain, renderOps,
+    trackTask, renderTask, taskNode, taskSlot,
     threadColor, seconds, THREAD_LABEL,
   };
 })();

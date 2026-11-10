@@ -1,5 +1,5 @@
 /*
- * JS-каркас всех playground-страниц: REST с логом HTTP, WebSocket с логом событий и статусом, карточки объектов.
+ * JS-каркас страниц: REST с логом HTTP, WebSocket с логом событий и статусом.
  * Подключение: <script src="base.js"></script> первым, затем components.js, затем скрипт страницы. Всё лежит в объекте UI.
  * Ожидает на странице элементы #status, #http, #ws, #clearHttp, #clearWs (их даёт общая разметка страниц).
  */
@@ -89,46 +89,5 @@ const UI = (() => {
     open();
   }
 
-  // ---------- Карточки объектов ----------
-
-  /**
-   * Карточка на каждый объект в контейнере rootId, по порядку id.
-   * create(item) → { card, … } — один раз: пульт карточки не пересоздаётся, поэтому введённые значения и фокус не теряются.
-   * update(item, view) — на каждый sync: перерисовать состояние. empty — текст, когда объектов нет.
-   */
-  function cardList(rootId, { create, update, empty }) {
-    const views = new Map(); // id → то, что вернул create
-
-    function sync(items) {
-      const root = $(rootId);
-
-      // Удалить карточки исчезнувших объектов
-      for (const [id, view] of views) {
-        if (!items.has(id)) { view.card.remove(); views.delete(id); }
-      }
-
-      // Создать карточки новых объектов — по порядку id
-      for (const item of [...items.values()].sort((a, b) => a.id - b.id)) {
-        if (!views.has(item.id)) {
-          const view = create(item);
-          view.card.dataset.id = item.id;
-          views.set(item.id, view);
-          const next = [...root.children].find(c => c.dataset.id !== undefined && Number(c.dataset.id) > item.id);
-          root.insertBefore(view.card, next ?? null);
-        }
-        update(item, views.get(item.id));
-      }
-
-      const placeholder = root.querySelector(':scope > .empty-cards');
-      if (items.size === 0 && !placeholder) {
-        root.append(Object.assign(document.createElement('div'), { className: 'empty empty-cards', textContent: empty }));
-      } else if (items.size > 0 && placeholder) {
-        placeholder.remove();
-      }
-    }
-
-    return { sync };
-  }
-
-  return { $, call, request, prepend, connect, cardList };
+  return { call, request, connect };
 })();

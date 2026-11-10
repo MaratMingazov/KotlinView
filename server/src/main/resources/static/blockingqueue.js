@@ -50,7 +50,7 @@ const BlockingQueueView = (() => {
    */
   function createStore(render) {
     const items = new Map();
-    // taskId → задача из KV.trackTask: узлы очереди рисуются её конвертом — тем же, что на странице задачи
+    // taskId → задача из KV.trackTask: узлы очереди рисуются её конвертом
     const tasks = new Map();
     let visitSeq = 0;
 
@@ -145,5 +145,5 @@ const BlockingQueueView = (() => {
   // Визиты, которые ещё не устарели (store удаляет старые только при новом вызове); незаконченные — всегда
   const recentVisits = queue => queue.visits.filter(v => v.accepted === null || performance.now() - v.at < VISIT_MS);
 
-  return { title: 'LinkedBlockingQueue', params: [['capacity', 3]], types: [QUEUE, TASK], createStore, create, remove, operations, renderState, recentVisits, VISIT_MS };
+  return { title: 'LinkedBlockingQueue', params: [['capacity', 3]], types: [QUEUE, TASK], createStore, create, remove, operations, renderState, recentVisits };
 })();

@@ -47,10 +47,9 @@
 
 /* --- задача RUNNABLE_TASK: конверт. Клапан открыт, пока внутри run() есть потоки --- */
 .envelope rect, .envelope path { fill: var(--panel); stroke: var(--border); stroke-width: 2; stroke-linejoin: round; }
-.envelope text { fill: var(--num); font: 15px "JetBrains Mono", ui-monospace, Menlo, monospace; }
-.envelope.mini text { font-size: 11px; }
-.envelope.mini text.id { fill: var(--keyword); }
-.envelope.mini text.dur { font-size: 9px; }
+.envelope text { fill: var(--num); font: 11px "JetBrains Mono", ui-monospace, Menlo, monospace; }
+.envelope text.id { fill: var(--keyword); }
+.envelope text.dur { font-size: 9px; }
 .envelope .flap-open { display: none; }
 .envelope.running .flap-open { display: inline; }
 .envelope.running .flap-closed { display: none; }
@@ -62,7 +61,7 @@
 @keyframes envelope-failed { from { stroke: var(--fail); } to { stroke: var(--border); } }
 
 /* --- полоска на каждый поток внутри run() задачи: имя потока поверх --- */
-.runs { display: flex; flex-direction: column; gap: 3px; width: 96px; }
+.runs { display: flex; flex-direction: column; gap: 3px; width: 48px; } /* по ширине тела мини-конверта */
 .run-row {
   position: relative; height: 14px; overflow: hidden; cursor: default;
   background: var(--panel); border: 1px solid var(--border); border-radius: 3px;

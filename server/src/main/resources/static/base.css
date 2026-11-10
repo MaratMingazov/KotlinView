@@ -31,7 +31,6 @@ button {
 button:hover { border-color: currentColor; }
 button.primary { color: var(--out); padding: 2px 12px; }
 button.run { color: var(--out); }
-button.danger { color: var(--fail); }
 button.link { background: none; border: none; color: var(--dim); padding: 0; }
 button.link:hover { color: var(--text); }
 input {
@@ -40,18 +39,10 @@ input {
 }
 input::placeholder { color: var(--dim); }
 
-/* --- карточка объекта: слева его пульт, справа его состояние --- */
-.list-card {
-  display: grid; grid-template-columns: minmax(300px, 1fr) 2fr; gap: 24px; align-items: start;
-  padding: 10px 0; border-bottom: 1px solid var(--border);
-}
-@media (max-width: 800px) { .list-card { grid-template-columns: 1fr; } }
-.card-title { color: var(--keyword); margin-bottom: 6px; }
 /* Сетка пульта: метод | поля | ▶ — кнопки запуска выровнены в столбик */
 .ops { display: grid; grid-template-columns: max-content max-content max-content; gap: 6px 10px; align-items: center; }
 .ops .name { color: var(--fn); }
 .ops .args { display: flex; gap: 4px; }
-.card-controls .danger { margin-top: 10px; }
 
 /* --- логи --- */
 .log { max-height: 40vh; overflow-y: auto; }

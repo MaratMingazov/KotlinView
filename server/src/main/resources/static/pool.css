@@ -24,8 +24,6 @@
 .worker .wstatus { white-space: nowrap; }
 .worker .wstatus.waiting { color: var(--fn); }
 .worker .wstatus.failed { color: var(--fail); }
-/* Полоска выполнения — по ширине тела мини-конверта (48px), а не 96px, как на странице задачи */
-.worker .runs { width: 48px; }
 /* Свободное место под воркера (до maximumPoolSize) */
 .worker.slot .wname { color: var(--dim); font-weight: normal; }
 .worker.ended { animation: fade-out var(--fade) ease-in forwards; }

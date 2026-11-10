@@ -93,7 +93,7 @@ const Pool = (() => {
     const threads = new Map();
     // threadName → { timeoutMs, start } — поток ждёт в poll(keepAlive) и умрёт, если не дождётся
     const polling = new Map();
-    // taskId → задача из KV.trackTask: узлы очереди и занятые воркеры рисуются её конвертом — тем же, что на странице задачи.
+    // taskId → задача из KV.trackTask: узлы очереди и занятые воркеры рисуются её конвертом.
     // Какую задачу выполняет поток, тоже отсюда: у задачи в runs есть этот поток в фазе RUN
     const tasks = new Map();
 
@@ -314,7 +314,7 @@ const Pool = (() => {
   }
 
   // Чем занят воркер, видно не по событиям пула, а по событиям задачи (run) и очереди (take / poll) с его именем потока.
-  // Колонка: сверху «thread», под ним либо его задача — тем же компонентом, что на странице задачи, — либо ожидание
+  // Колонка: сверху «thread», под ним либо его задача (KV.renderTask), либо ожидание
   function renderWorker(store, thread, queue) {
     const column = KV.el('div', 'worker');
     column.style.setProperty('--thread', KV.threadColor(thread.name));
@@ -338,7 +338,7 @@ const Pool = (() => {
     } else if (busy) {
       // Конверт с полоской этого потока под ним; подпись уже над конвертом — на полоске её не дублируем
       const { task, run } = busy;
-      column.append(KV.renderTask(task, { size: 'mini', thread: thread.name, names: false }));
+      column.append(KV.renderTask(task, { thread: thread.name, names: false }));
       const elapsed = now - run.startedAt;
       column.title = `${thread.name} runs task#${task.id}: ${KV.seconds(Math.min(elapsed, task.durationMs ?? 0))} / ${KV.seconds(task.durationMs)}`;
     } else if (queue?.methods.inside.take.has(thread.name)) {
@@ -379,5 +379,5 @@ const Pool = (() => {
   const fixed = view('FixedThreadPool', [['nThreads', 2]], values => api.createFixed(values.nThreads));
   const cached = view('CachedThreadPool', [], () => api.createCached());
 
-  return { TYPES, PRESET_QUEUE_CAPACITY, api, titles, presetOf, createStore, renderState, single, fixed, cached };
+  return { PRESET_QUEUE_CAPACITY, presetOf, single, fixed, cached };
 })();

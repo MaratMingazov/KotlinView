@@ -31,7 +31,7 @@ const SemaphoreTaskView = (() => {
 
   // Как поток входит в задачу (AcquireMode на сервере): подпись в списке пульта
   const MODES = [['ACQUIRE', 'acquire()'], ['TRY_ACQUIRE', 'tryAcquire()'], ['TRY_ACQUIRE_TIMEOUT', 'tryAcquire(timeout)']];
-  const REJECT_MS = 1500; // сколько тает плашка потока, получившего отказ (как «только что вышедшие» в semaphore.js)
+  const REJECT_MS = 1500; // сколько тает плашка потока, получившего отказ (столько модель семафора помнит вышедших)
 
   // Отказ (409 — кто-то внутри) событий не порождает: пишем его в строку-уведомление, иначе он виден только в логе HTTP
   async function remove(store, id) {
@@ -59,7 +59,7 @@ const SemaphoreTaskView = (() => {
    */
   function createStore(render) {
     const items = new Map();
-    const semaphores = SemaphoreView.createStore(render);
+    const semaphores = SemaphoreModel.createStore(render);
     const tasks = new Map();
 
     function apply(env) {
