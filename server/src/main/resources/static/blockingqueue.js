@@ -1,6 +1,6 @@
 /*
  * LinkedBlockingQueue<Runnable>: модель по событиям WebSocket, отрисовка очереди и REST-вызовы.
- * Общий для linkedblockingqueue.html и плиток index.html.
+ * Плитки на index.html и tiles.html.
  * Подключение: после base.js и components.js. Стили — blockingqueue.css. Всё лежит в объекте BlockingQueueView.
  *
  * Вид — как у очереди внутри пула (pool.js): мини-конверты задач, пустые ячейки до capacity; общий вид цепочки — KV.renderChain
@@ -46,7 +46,7 @@ const BlockingQueueView = (() => {
    * законченные старше VISIT_MS удаляются. offer длится микросекунды: без визита диорама не узнала бы, что машина
    * вообще приезжала; у take визит говорит, кто какую задачу получил. Визит offer заводится уже на METHOD_IN
    * (accepted = null — ещё неизвестно): METHOD_OUT take той же задачи может прийти раньше METHOD_OUT offer,
-   * и диорама должна знать, на чьей машине ящик приехал. Плитки index.html визиты не читают
+   * и диорама должна знать, на чьей машине ящик приехал. Плитки tiles.html визиты не читают
    */
   function createStore(render) {
     const items = new Map();

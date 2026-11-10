@@ -50,7 +50,7 @@ const Tiles = (() => {
     tile.body = KV.el('div', 'tile-body');
     tile.main = KV.el('div', 'tile-main');
     if (fold) {
-      // Точный вид объекта — свёрнутым: на twin.html главное — диорама, цифры — по запросу
+      // Точный вид объекта — свёрнутым: на index.html главное — диорама, цифры — по запросу
       const details = KV.el('details', 'tile-fold');
       details.append(KV.el('summary', '', fold), tile.body);
       tile.main.append(tile.controls, details);

@@ -1,6 +1,6 @@
 /*
  * ThreadPoolExecutor: модель по событиям WebSocket, отрисовка состояния пула и REST-вызовы.
- * Общий для threadpoolexecutor.html и плиток index.html.
+ * Плитки на index.html и tiles.html.
  * Подключение: после base.js, components.js и synchronousqueue.js (очередь CachedThreadPool).
  * Стили — pool.css и synchronousqueue.css. Всё лежит в объекте Pool.
  *
@@ -214,14 +214,14 @@ const Pool = (() => {
       }, fadeMs);
     }
 
-    // items — то же, что pools: под этим именем store читают плитки index.html (общее описание структуры)
+    // items — то же, что pools: под этим именем store читают плитки tiles.html (общее описание структуры)
     return { pools, items: pools, queues, sync, factories, threads, polling, tasks, apply, notify, queueById, queueCapacity };
   }
 
   // ---------- Отрисовка ----------
 
   /** Состояние пула — элементы подряд: статус, строка-уведомление, очередь, воркеры. */
-  // options.status: false — без runState в ряду бейджей (плитка index.html показывает его рядом с названием)
+  // options.status: false — без runState в ряду бейджей (плитка tiles.html показывает его рядом с названием)
   function renderState(store, pool, options = {}) {
     const status = renderStatus(pool, options.status !== false);
     if (!pool.state) return [status];
@@ -365,7 +365,7 @@ const Pool = (() => {
     return b;
   }
 
-  // ---------- Описание для плиток index.html ----------
+  // ---------- Описание для плиток tiles.html ----------
   // Как у ArrayListView / LinkedListView: title, params, types, createStore, create(values), remove, operations, renderState
 
   const operations = ['execute', 'shutdown', 'shutdownNow'].map(name => ({ name, fields: [], title: titles[name], run: id => api[name](id) }));

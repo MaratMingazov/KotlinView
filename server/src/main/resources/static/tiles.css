@@ -1,7 +1,7 @@
 /*
  * Плитки (tiles.js): одна плитка — один живой объект. Спит (название, параметры, start) или живёт (пульт и состояние).
- * Подключать после base.css. Сетку плиток (.tiles) задаёт страница: на index.html — две колонки плиток,
- * на twin.html — плитка и её диорама рядом.
+ * Подключать после base.css. Сетку плиток (.tiles) задаёт страница: на tiles.html — две колонки плиток,
+ * на index.html — плитка и её диорама рядом.
  */
 .tile {
   background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
@@ -16,7 +16,7 @@
 .tile-params input { width: 48px; }
 .tile-params input[type=checkbox] { width: auto; margin: 0; }
 .tile-params select { font: inherit; }
-/* Как карточка на threadpoolexecutor.html: слева команды, справа визуализация */
+/* Слева команды, справа визуализация */
 .tile-main { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 16px; align-items: start; }
 /* Тонкая сплошная черта между командами и визуализацией — на всю высоту плитки.
    Сплошная, а не пунктир: пунктиром уже разделены queue и workers внутри визуализации */

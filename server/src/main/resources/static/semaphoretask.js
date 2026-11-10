@@ -1,6 +1,6 @@
 /*
  * SemaphoreRunnableTask — задача под семафором: модель по событиям WebSocket, отрисовка и REST-вызовы.
- * Общий для semaphoretask.html и плитки Semaphore на index.html.
+ * Плитка Semaphore на index.html и tiles.html.
  * Подключение: после base.js, components.js и semaphore.js (его модель семафора). Стили — semaphore.css.
  * Всё лежит в объекте SemaphoreTaskView.
  *
@@ -228,18 +228,17 @@ const SemaphoreTaskView = (() => {
     };
   }
 
-  // ---------- Описание для плитки index.html ----------
+  // ---------- Описание для плитки tiles.html ----------
   // fair — булев параметр: плитка рисует его чекбоксом
 
   const types = [GUARDED, SEMAPHORE, TASK];
 
   return {
     title: 'Semaphore',
-    // Способ входа — списком; таймаут — только у tryAcquire(timeout). На twin.html — свои params
+    // Способ входа — списком; таймаут — только у tryAcquire(timeout). На index.html — свои params
     params: [['permits', 2], ['durationMs', 5000], ['fair', false], ['mode', 'ACQUIRE', { options: MODES }],
       ['timeoutMs', 2000, { showIf: values => values.mode === 'TRY_ACQUIRE_TIMEOUT' }]],
     types, createStore, remove, operations, renderState,
     create: values => create(values.permits, values.durationMs, values.fair, values.mode, values.timeoutMs),
-    createWith: create, // для semaphoretask.html: с fair; mode и timeoutMs — по умолчанию (acquire)
   };
 })();

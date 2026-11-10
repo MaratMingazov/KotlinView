@@ -1,6 +1,6 @@
 /*
  * ArrayList<Int>: модель по событиям WebSocket, отрисовка ячеек и REST-вызовы.
- * Общий для arraylist.html и плиток index.html.
+ * Плитка на tiles.html.
  * Подключение: после base.js и components.js. Стили — arraylist.css. Всё лежит в объекте ArrayListView.
  */
 const ArrayListView = (() => {

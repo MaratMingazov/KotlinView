@@ -230,4 +230,4 @@ ws.onmessage = e => console.log(JSON.parse(e.data));
 ## Документы
 
 - [docs/DIORAMAS.md](docs/DIORAMAS.md) — диорамы: структуры как «уютный остров» в изометрии (`prototype.html`,
-  `twin.html`), как это устроено и следующие шаги.
+  `index.html`), как это устроено и следующие шаги.

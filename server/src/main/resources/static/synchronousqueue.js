@@ -1,6 +1,6 @@
 /*
  * SynchronousQueue<Runnable>: модель по событиям WebSocket, отрисовка «места передачи» и REST-вызовы.
- * Общий для synchronousqueue.html и плиток index.html (и очереди CachedThreadPool — позже).
+ * Плитка на tiles.html (и очередь CachedThreadPool — позже).
  * Подключение: после base.js и components.js. Стили — synchronousqueue.css. Всё лежит в объекте SynchronousQueueView.
  *
  * Ячеек нет: элементы в SynchronousQueue не хранятся. Рисуем место передачи:

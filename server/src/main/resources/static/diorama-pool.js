@@ -4,7 +4,7 @@
  * Задача в очереди — на своём месте; у воркера — в его боксе (взятая сразу, firstTask, — мимо очереди);
  * выполнена — пропадает из снимка, и набор увозит машину за мост.
  *
- * Подключение: после diorama-kit.js. На twin.html нужны ещё pool.js и tiles.js (снимок из плитки).
+ * Подключение: после diorama-kit.js. На index.html нужны ещё pool.js и tiles.js (снимок из плитки).
  * Всё лежит в объекте PoolDiorama: kind — описание для Kit.panel / Kit.show, LIMITS, demo — снимок для prototype.html.
  */
 const PoolDiorama = (() => {
@@ -12,7 +12,7 @@ const PoolDiorama = (() => {
   const O = IsoObjects;
   const percent = fraction => `${Math.round(fraction * 100)}%`;
 
-  // Сколько помещается на острове. Больше не рисуем: плитка на twin.html не даёт создать больше (tiles.js, max)
+  // Сколько помещается на острове. Больше не рисуем: плитка на index.html не даёт создать больше (tiles.js, max)
   const LIMITS = { slots: 5, bays: 3 };
 
   // Раскладка сцены (клетки мира)
@@ -124,7 +124,7 @@ const PoolDiorama = (() => {
     return specs;
   }
 
-  // ---------- Снимок из плитки (twin.html) ----------
+  // ---------- Снимок из плитки (index.html) ----------
 
   /**
    * Снимок из store pool.js. Боксы — по одному на место до maximumPoolSize: сначала живые потоки фабрики пула

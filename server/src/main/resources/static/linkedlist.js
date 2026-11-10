@@ -1,6 +1,6 @@
 /*
  * LinkedList<Int>: модель по событиям WebSocket, отрисовка цепочки узлов и REST-вызовы.
- * Общий для linkedlist.html и плиток index.html.
+ * Плитка на tiles.html.
  * Подключение: после base.js и components.js. Цепочка узлов — общий компонент KV.renderChain. Всё лежит в объекте LinkedListView.
  */
 const LinkedListView = (() => {

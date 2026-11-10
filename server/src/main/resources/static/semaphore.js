@@ -1,6 +1,6 @@
 /*
  * Semaphore: модель по событиям WebSocket, отрисовка разрешений и ждущих потоков, REST-вызовы.
- * Страница semaphore.html; модель (createStore) переиспользует semaphoretask.js — плитка Semaphore на index.html.
+ * Плитка на tiles.html; модель (createStore) переиспользует semaphoretask.js — плитка Semaphore.
  * Подключение: после base.js и components.js. Стили — semaphore.css. Всё лежит в объекте SemaphoreView.
  *
  * Что рисуем сверху вниз:

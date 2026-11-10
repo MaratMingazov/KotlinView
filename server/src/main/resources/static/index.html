@@ -2,23 +2,76 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>KotlinView</title>
+  <title>KotlinView — twin</title>
   <link rel="stylesheet" href="base.css">
   <link rel="stylesheet" href="components.css">
   <link rel="stylesheet" href="pool.css">
-  <link rel="stylesheet" href="arraylist.css">
   <link rel="stylesheet" href="blockingqueue.css">
   <link rel="stylesheet" href="synchronousqueue.css">
   <link rel="stylesheet" href="semaphore.css">
   <link rel="stylesheet" href="tiles.css">
   <style>
-    /* Плитки в две колонки; на узком экране — в одну */
-    /* Ширина ограничена: на широком мониторе плитки не растягиваются на весь экран (~540px каждая) */
-    .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; max-width: 1100px; margin: 12px auto 0; } /* по центру страницы */
-    @media (max-width: 900px) { .tiles { grid-template-columns: 1fr; } }
+    /*
+     * Тёмное оформление «Night Harbour»: ночная гавань вокруг островов, тёплые акценты-фонари. Переопределены
+     * переменные base.css — плитки, бейджи и конверты перекрашиваются сами, их стили не трогаем. Диорама — своя палитра
+     */
+    :root {
+      --bg: #14202b; --panel: #1c2b38; --border: #2a3c4b; --text: #d6e2ea; --dim: #7f95a6;
+      --keyword: #f0b37e; --fn: #7cc4e4; --num: #8fd3c1; --str: #8fcf7a;
+      --in: #7cc4e4; --out: #8fcf7a; --fail: #f08a7e;
+      --shadow: 0 2px 0 rgba(0, 0, 0, .3), 0 6px 18px rgba(0, 0, 0, .35);
+    }
+    body { max-width: 1400px; margin: 0 auto; padding: 16px 24px; }
+    header h2 { margin: 0; color: var(--text); font-weight: bold; }
+    button, input { border-radius: 6px; }
 
-    details { margin-top: 24px; }
-    summary { color: var(--dim); cursor: pointer; }
+    /* Выбор структуры: лента карточек — миниатюра диорамы и название */
+    .carousel { display: flex; gap: 14px; overflow-x: auto; padding: 14px 4px 16px; scrollbar-width: none; }
+    .card {
+      flex: none; width: 220px; padding: 6px 6px 4px; text-align: center; text-decoration: none; color: var(--text);
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow);
+      transition: transform .2s;
+    }
+    .card:hover { transform: translateY(-3px); }
+    .card.on { outline: 3px solid var(--keyword); transform: translateY(-3px); }
+    /* Одна высота у всех миниатюр (у сцен разные пропорции): вода — фон рамки, остров — по центру */
+    .card svg { display: block; width: 100%; height: 130px; border-radius: 6px; pointer-events: none; background: #79c4df; }
+    .card .name { padding: 4px 0 2px; font-weight: bold; }
+
+    /*
+     * Выбранная структура — одной колонкой по центру: сверху полоса структуры (пульт слева, точное состояние
+     * правее), ниже диорама той же ширины
+     */
+    .stage { display: flex; flex-direction: column; gap: 14px; max-width: 720px; margin: 0 auto; }
+    .stage > * { box-sizing: border-box; } /* полоса и диорама — одной ширины */
+    .diorama-panel, .tile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+    .diorama-panel { padding: 8px; }
+    .diorama { display: block; }
+    .diorama text { font-family: inherit; }
+    .diorama .hoverable { cursor: pointer; }
+
+    /* Полоса структуры: живая — шапка (название, статус, ✕), под ней «пульт | состояние» */
+    .tile { min-height: 0; padding: 12px 16px; }
+    .tile.live { border-color: var(--border); }
+    .tile-title { font-weight: bold; }
+    .tile button, .tile input { background: var(--bg); }
+    .tile-main { grid-template-columns: max-content minmax(0, 1fr); gap: 20px; min-height: 96px; } /* не прыгать по высоте */
+    .tile-controls { padding-right: 20px; }
+    /* Состояние — в ряд, с переносом, если не влезает: очередь, воркеры, ждущие… */
+    .tile-body { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: flex-start; }
+    /* Первая строка — бейджи методов (у пула: execute / shutdown / shutdownNow / terminated), под ними — очередь,
+       правее неё — воркеры */
+    .tile-body > .badges { flex-basis: 100%; }
+    .tile-body .part { margin-top: 0; padding-top: 0; border-top: none; }
+    .tile-body .chain { margin-top: 0; min-height: 0; }
+    .tile-body .notice, .tile-body .semtask-notice { flex-basis: 100%; min-height: 0; margin-top: 0; }
+    .tile-body .notice:empty { display: none; }
+    /* Спящая — в одну строку: название, параметры, start */
+    .tile.sleeping { flex-direction: row; justify-content: flex-start; gap: 28px; }
+    .tile.sleeping .tile-params { flex-direction: row; gap: 18px; }
+
+    details.logs { margin-top: 24px; }
+    details.logs summary { color: var(--dim); cursor: pointer; }
   </style>
 </head>
 <body>
@@ -28,10 +81,11 @@
   <span id="status" class="off">● ws disconnected</span>
 </header>
 
-<div id="tiles" class="tiles"></div>
+<nav id="carousel" class="carousel"></nav>
+<main id="stage" class="stage"></main>
 
 <!-- Логи нужны UI.call / UI.connect; свёрнуты — открыть при отладке -->
-<details>
+<details class="logs">
   <summary>logs</summary>
   <h3>HTTP <button class="link" id="clearHttp">clear</button></h3>
   <div id="http" class="log"></div>
@@ -41,22 +95,74 @@
 
 <script src="base.js"></script>
 <script src="components.js"></script>
-<script src="arraylist.js"></script>
-<script src="linkedlist.js"></script>
-<script src="blockingqueue.js"></script>
 <script src="synchronousqueue.js"></script>
-<!-- pool.js — после synchronousqueue.js: очередь CachedThreadPool рисуется им -->
 <script src="pool.js"></script>
+<script src="blockingqueue.js"></script>
 <script src="semaphore.js"></script>
-<!-- semaphoretask.js — после semaphore.js: семафор задачи рисуется им -->
 <script src="semaphoretask.js"></script>
 <script src="tiles.js"></script>
+<!-- Диорамы: движок → реквизит → набор → каркас → описания структур -->
+<script src="iso-scene.js"></script>
+<script src="iso-vehicles.js"></script>
+<script src="iso-ground.js"></script>
+<script src="iso-buildings.js"></script>
+<script src="iso-nature.js"></script>
+<script src="diorama-kit.js"></script>
+<script src="diorama-street.js"></script>
+<script src="diorama-pool.js"></script>
+<script src="diorama-semaphore.js"></script>
+<script src="diorama-queue.js"></script>
 <script>
-  // Плитки — tiles.js: здесь только какие структуры показать и куда положить
-  const VIEWS = [Pool.single, Pool.fixed, Pool.cached, ArrayListView, LinkedListView, BlockingQueueView, SynchronousQueueView,
-    SemaphoreTaskView];
-  const root = document.getElementById('tiles');
-  Tiles.mount(VIEWS, { place: tile => root.append(tile.el) });
+  /*
+   * Структуры: плитка (пульт и точный вид) и её диорама. Плитки — те же, что на tiles.html, но с пределами:
+   * столько, сколько помещается на острове (LIMITS описания). id — адрес (#pool), diorama — описание для набора
+   */
+  const STRUCTURES = [
+    { id: 'pool', diorama: PoolDiorama,
+      view: { ...Pool.fixed, params: [['nThreads', 2, { min: 1, max: PoolDiorama.LIMITS.bays }]] } },
+    { id: 'sem', diorama: SemaphoreDiorama,
+      // durationMs, fair, timeoutMs не вводятся: по умолчанию (5000 и false — сервер, 2000 — create в semaphoretask.js)
+      view: { ...SemaphoreTaskView, params: [['permits', 2, { min: 1, max: SemaphoreDiorama.LIMITS.inside }],
+        ['mode', 'ACQUIRE', { options: [['ACQUIRE', 'blocking'], ['TRY_ACQUIRE', 'non-blocking'], ['TRY_ACQUIRE_TIMEOUT', 'timeout 2s']] }]] } },
+    { id: 'lbq', diorama: QueueDiorama,
+      view: { ...BlockingQueueView, params: [['capacity', 3, { min: 1, max: QueueDiorama.LIMITS.slots }]] } },
+  ];
+
+  const stage = document.getElementById('stage');
+  let selected = null, panel = null; // выбранная структура и её живая диорама (остальные не рисуются)
+
+  // Карточки: миниатюра — демо-снимок диорамы без шапки и табличек
+  const carousel = document.getElementById('carousel');
+  const cards = new Map();
+  for (const item of STRUCTURES) {
+    const { kind, demo, demoShape } = item.diorama;
+    const svg = Kit.show({ ...kind, uid: `${kind.uid}-card` }, demo, demoShape);
+    svg.querySelectorAll(':scope > g[style*="pointer-events: none"], .labels').forEach(n => n.remove());
+    const card = KV.el('a', 'card');
+    card.href = `#${item.id}`;
+    card.append(svg, KV.el('div', 'name', item.view.title));
+    carousel.append(card);
+    cards.set(item.id, card);
+  }
+
+  // Плитки: все живут (их store принимает события), на странице — только плитка выбранной структуры (полоса над диорамой)
+  const { tiles, render } = Tiles.mount(STRUCTURES.map(s => s.view), {
+    place: tile => { STRUCTURES.find(s => s.view === tile.view).tile = tile; },
+    onRender: () => { if (selected) panel.update(selected.tile); },
+  });
+  // Пока плитка спит, диорама показывает «пустой» остров по полю параметров — обновлять при вводе
+  for (const tile of tiles) for (const input of Object.values(tile.inputs)) input.addEventListener('input', render);
+
+  // Выбор по адресу (#pool, #sem, #lbq): новая живая диорама — сразу с машинами на местах
+  function select() {
+    selected = STRUCTURES.find(s => `#${s.id}` === location.hash) ?? STRUCTURES[0];
+    for (const [id, card] of cards) card.classList.toggle('on', id === selected.id);
+    panel = Kit.panel(selected.diorama.kind);
+    stage.replaceChildren(selected.tile.el, panel.el); // полоса структуры — сверху, диорама — под ней
+    panel.update(selected.tile);
+  }
+  window.addEventListener('hashchange', select);
+  select();
 </script>
 </body>
 </html>

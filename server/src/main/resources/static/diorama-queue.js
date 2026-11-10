@@ -6,7 +6,7 @@
  * take — машина приезжает справа и ждёт у выгрузки в порядке входа в take (блокирующий: ждёт, пока появится ящик);
  * получила задачу — забирает ящик с головы ленты и уезжает назад.
  *
- * Подключение: после diorama-kit.js. На twin.html нужны ещё blockingqueue.js и tiles.js (снимок из плитки).
+ * Подключение: после diorama-kit.js. На index.html нужны ещё blockingqueue.js и tiles.js (снимок из плитки).
  * Всё лежит в объекте QueueDiorama: kind — описание для Kit.panel / Kit.show, LIMITS, demo — снимок для prototype.html.
  */
 const QueueDiorama = (() => {
@@ -123,7 +123,7 @@ const QueueDiorama = (() => {
     return specs;
   }
 
-  // ---------- Снимок из плитки (twin.html) ----------
+  // ---------- Снимок из плитки (index.html) ----------
 
   /** Снимок из store blockingqueue.js: очередь и ждущие — из состояния, offer и take — из недавних визитов. */
   function queueSnapshot(store, queue) {

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>KotlinView</title>
+  <link rel="stylesheet" href="base.css">
+  <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="pool.css">
+  <link rel="stylesheet" href="arraylist.css">
+  <link rel="stylesheet" href="blockingqueue.css">
+  <link rel="stylesheet" href="synchronousqueue.css">
+  <link rel="stylesheet" href="semaphore.css">
+  <link rel="stylesheet" href="tiles.css">
+  <style>
+    /* Плитки в две колонки; на узком экране — в одну */
+    /* Ширина ограничена: на широком мониторе плитки не растягиваются на весь экран (~540px каждая) */
+    .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; max-width: 1100px; margin: 12px auto 0; } /* по центру страницы */
+    @media (max-width: 900px) { .tiles { grid-template-columns: 1fr; } }
+
+    details { margin-top: 24px; }
+    summary { color: var(--dim); cursor: pointer; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h2>KotlinView</h2>
+  <span id="status" class="off">● ws disconnected</span>
+</header>
+
+<div id="tiles" class="tiles"></div>
+
+<!-- Логи нужны UI.call / UI.connect; свёрнуты — открыть при отладке -->
+<details>
+  <summary>logs</summary>
+  <h3>HTTP <button class="link" id="clearHttp">clear</button></h3>
+  <div id="http" class="log"></div>
+  <h3>WebSocket <button class="link" id="clearWs">clear</button></h3>
+  <div id="ws" class="log"></div>
+</details>
+
+<script src="base.js"></script>
+<script src="components.js"></script>
+<script src="arraylist.js"></script>
+<script src="linkedlist.js"></script>
+<script src="blockingqueue.js"></script>
+<script src="synchronousqueue.js"></script>
+<!-- pool.js — после synchronousqueue.js: очередь CachedThreadPool рисуется им -->
+<script src="pool.js"></script>
+<script src="semaphore.js"></script>
+<!-- semaphoretask.js — после semaphore.js: семафор задачи рисуется им -->
+<script src="semaphoretask.js"></script>
+<script src="tiles.js"></script>
+<script>
+  // Плитки — tiles.js: здесь только какие структуры показать и куда положить
+  const VIEWS = [Pool.single, Pool.fixed, Pool.cached, ArrayListView, LinkedListView, BlockingQueueView, SynchronousQueueView,
+    SemaphoreTaskView];
+  const root = document.getElementById('tiles');
+  Tiles.mount(VIEWS, { place: tile => root.append(tile.el) });
+</script>
+</body>
+</html>

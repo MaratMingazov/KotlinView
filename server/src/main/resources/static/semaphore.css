@@ -1,6 +1,6 @@
 /* Semaphore (semaphore.js): ряды «ждут / жетоны / вышли» и очередь AQS.
    Подключать после base.css и components.css; плашка потока — .thread-chip в components.css.
-   Всё под .sem-*: на index.html рядом стили других структур */
+   Всё под .sem-*: на tiles.html рядом стили других структур */
 .sem-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; min-height: 22px; }
 .sem-label { color: var(--dim); width: 64px; flex: none; }
 .sem-count { color: var(--dim); margin-left: 8px; }

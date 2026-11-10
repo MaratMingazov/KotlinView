@@ -5,7 +5,7 @@
  * пока он там: группа мест spot*) и заправляется — табло колонки показывает прогресс run(); закончил — пропадает
  * из снимка, и набор увозит машину за мост.
  *
- * Подключение: после diorama-kit.js. На twin.html нужны ещё semaphoretask.js и tiles.js (снимок из плитки).
+ * Подключение: после diorama-kit.js. На index.html нужны ещё semaphoretask.js и tiles.js (снимок из плитки).
  * Всё лежит в объекте SemaphoreDiorama: kind — описание для Kit.panel / Kit.show, LIMITS, demo — снимок для prototype.html.
  */
 const SemaphoreDiorama = (() => {
@@ -164,7 +164,7 @@ const SemaphoreDiorama = (() => {
     ];
   }
 
-  // ---------- Снимок из плитки (twin.html) ----------
+  // ---------- Снимок из плитки (index.html) ----------
 
   /**
    * Снимок из store semaphoretask.js: ждущие и получившие отказ — из модели семафора (отказ — leaving вида none,
