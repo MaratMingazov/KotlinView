@@ -378,7 +378,7 @@ const Iso = (() => {
 
     // Шапка — в первом углу, где не налезает на постоянные таблички (обычно там вода)
     function hudNode(vb) {
-      const L = C.label, g = svg('g', { style: 'pointer-events: none' });
+      const L = C.label, g = svg('g', { class: 'hud', style: 'pointer-events: none' });
       const w = Math.max(...hud.map((t, i) => t.length * LABEL.char * (i ? LABEL.small / LABEL.font : 1))) + 2 * 10;
       const h = hud.length * 14 + 10, m = 12;
       const corners = [[vb.x + m, vb.y + m], [vb.x + m, vb.y + vb.h - h - m], [vb.x + vb.w - w - m, vb.y + m], [vb.x + vb.w - w - m, vb.y + vb.h - h - m]];

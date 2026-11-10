@@ -38,6 +38,11 @@ input {
   color: var(--num); font: inherit; padding: 0 4px;
 }
 input::placeholder { color: var(--dim); }
+/* Выпадающий список — как поле ввода; color-scheme: dark — и открытое меню (рисует браузер) тёмное */
+select {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
+  color: var(--num); font: inherit; padding: 0 4px; color-scheme: dark; cursor: pointer;
+}
 
 /* Сетка пульта: метод | поля | ▶ — кнопки запуска выровнены в столбик */
 .ops { display: grid; grid-template-columns: max-content max-content max-content; gap: 6px 10px; align-items: center; }

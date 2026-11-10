@@ -28,7 +28,7 @@
 .tile button.close { background: none; border: none; padding: 0 2px; color: var(--fail); font-size: 15px; line-height: 1; opacity: .8; }
 .tile button.close:hover { opacity: 1; }
 /* Внутри плитки фон уже --panel: поля и кнопки — на тон темнее, чтобы не сливались */
-.tile button, .tile input { background: var(--bg); }
+.tile button, .tile input, .tile select { background: var(--bg); }
 
 /* Спящая плитка: только название (с параметрами создания) и start — по центру */
 .tile.sleeping { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
