@@ -15,6 +15,7 @@ const SynchronousQueueView = (() => {
   const TASK_DURATION_MS = 5000; // все задачи пока одной длины — как в пуле
   const FLASH_MS = 1500;         // сколько видна передача / отказ посередине
   const VISIT_MS = 1200;         // сколько помнится законченный визит (для диорамы: курьер успевает подъехать и отдать)
+  const POLL_TIMEOUT_MS = 2000;  // poll(timeout) с пульта — фиксированный, без поля ввода (как timeout 2s у семафора)
 
   // ---------- REST ----------
   // Запросы и лог HTTP — UI.call из base.js
@@ -36,13 +37,16 @@ const SynchronousQueueView = (() => {
       run: id => withNewTask(id, 'put') },
     { name: 'take', fields: [], title: id => `POST ${base}/${id}/take — take() in a new thread, waits for a giver`,
       run: id => UI.call('POST', `${base}/${id}/take`) },
+    { name: 'poll', fields: [], title: id => `POST ${base}/${id}/poll {timeoutMs: ${POLL_TIMEOUT_MS}} — poll() in a new thread, waits for a giver at most ${KV.seconds(POLL_TIMEOUT_MS)}`,
+      run: id => UI.call('POST', `${base}/${id}/poll`, { timeoutMs: POLL_TIMEOUT_MS }) },
   ];
 
   // ---------- Модель ----------
 
   /**
    * store.items — objectId → { id, methods, putting, takers, flash, leaving }; store.apply(env) — учесть событие.
-   * putting — thread → taskId: кто висит в put и с какой задачей. takers — thread → 'take' | 'poll': кто ждёт получить.
+   * putting — thread → taskId: кто висит в put и с какой задачей. takers — thread → { method, timeoutMs, since }: кто ждёт
+   * получить (take / poll; у poll — таймаут и когда вошёл: плашка показывает, сколько осталось).
    * Обе Map — в порядке прихода (вид «комната» ставит у рамки последнего: нечестная очередь — стек).
    * flash — что показать посередине: { taskId, ok: true, to } — передача, { taskId, ok: false } — offer вернул false.
    * leaving — кто только что вышел из offer / put (side: 'give') или take / poll (side: 'take'): его плашка тает,
@@ -81,7 +85,7 @@ const SynchronousQueueView = (() => {
         else queue.putting.delete(d.thread);
       }
       if (d.method === 'take' || d.method === 'poll') {
-        if (phase === 'IN') queue.takers.set(d.thread, d.method);
+        if (phase === 'IN') queue.takers.set(d.thread, { method: d.method, timeoutMs: d.args?.timeoutMs, since: performance.now() });
         else queue.takers.delete(d.thread);
       }
       // Передачу видно со стороны получателя: take / poll вернули задачу — неважно, отдали её через offer или put
@@ -101,7 +105,8 @@ const SynchronousQueueView = (() => {
       if (!isGive(d.method) && d.method !== 'take' && d.method !== 'poll') return; // drainTo — не визит
       const now = performance.now(), give = isGive(d.method);
       queue.visits = queue.visits.filter(v => v.state === 'inside' || now - v.at < VISIT_MS);
-      const open = () => ({ id: ++visitSeq, method: d.method, thread: d.thread, taskId: give ? d.args?.taskId ?? null : null, state: 'inside', at: now, pair: null });
+      const open = () => ({ id: ++visitSeq, method: d.method, thread: d.thread, taskId: give ? d.args?.taskId ?? null : null,
+        timeoutMs: d.args?.timeoutMs ?? null, state: 'inside', at: now, pair: null }); // timeoutMs — только у poll
       if (phase === 'IN') { queue.visits.push(open()); return; }
 
       // Тот же поток не может быть внутри метода дважды: открытый визит — последний 'inside' этого потока и метода.
@@ -270,12 +275,22 @@ const SynchronousQueueView = (() => {
     return side;
   }
 
-  // У выхода — так же: вышедшие, за ними ждущие в take / poll — от последнего к первому
+  // У выхода — так же: вышедшие, за ними ждущие в take / poll — от последнего к первому. У poll внизу убывает
+  // полоска — сколько осталось до таймаута (как у семафора при tryAcquire(timeout))
   function renderRoomTakers(queue) {
     const side = KV.el('div', 'room-queue exit');
     side.append(...roomLeaving(queue, 'take'));
-    for (const [thread, method] of [...queue.takers].reverse()) {
-      side.append(roomChip(thread, `${thread} is inside ${method}(): waits for a giver · ${UNFAIR}`));
+    const now = performance.now();
+    for (const [thread, w] of [...queue.takers].reverse()) {
+      const timed = w.timeoutMs != null;
+      const call = timed ? `${w.method}(${KV.seconds(w.timeoutMs)})` : `${w.method}()`;
+      const chip = roomChip(thread, `${thread} is inside ${call}: waits for a giver${timed ? ', gives up after the timeout' : ''} · ${UNFAIR}`);
+      if (timed) {
+        const bar = KV.el('div', 'countdown');
+        bar.style.animation = `room-count ${w.timeoutMs}ms linear ${-(now - w.since)}ms forwards`;
+        chip.prepend(bar);
+      }
+      side.append(chip);
     }
     return side;
   }

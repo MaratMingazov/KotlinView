@@ -155,8 +155,10 @@ const SyncDiorama = (() => {
     for (const t of snap.takers) {
       const place = places.get(takerKey(t));
       if (!place) continue;
+      // poll(2s) — ждёт не дольше таймаута; не дождался — пропадает из снимка и уходит в дверь без пакета
+      const call = t.timeoutMs != null ? `${t.method}(${t.timeoutMs / 1000}s)` : `${t.method}()`;
       out.push({ key: takerKey(t), place, model: 'person', color: threadColor(t.thread),
-        label: label(t.thread, t.state === 'inside' ? 'take(): waits for a giver' : `take() got task #${t.taskId}`), entry: 'door', exit: 'door' });
+        label: label(t.thread, t.state === 'inside' ? `${call}: waits for a giver` : `${call} got task #${t.taskId}`), entry: 'door', exit: 'door' });
     }
     return out;
   }

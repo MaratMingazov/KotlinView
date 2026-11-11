@@ -7,6 +7,7 @@ data class CreatedResponse(val objectId: Long)
 data class ElementRequest(val element: Int)
 data class IndexRequest(val index: Int)
 data class IndexElementRequest(val index: Int, val element: Int)
+data class TimeoutRequest(val timeoutMs: Long)
 data class ResultResponse<T>(val result: T)
 data class ErrorResponse(val error: String)
 /** Метод запущен в отдельном потоке: ответ — имя потока, ход выполнения — в событиях METHOD_*. */

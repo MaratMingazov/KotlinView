@@ -4,6 +4,7 @@ import mingazov.kotlinview.instrumented.collection.InstrumentedSynchronousQueueR
 import mingazov.kotlinview.instrumented.collection.registry.InstrumentedSynchronousQueueRunnableRegistry
 import mingazov.kotlinview.instrumented.executor.registry.InstrumentedRunnableTaskRegistry
 import org.springframework.stereotype.Service
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 @Service
@@ -14,6 +15,7 @@ class SynchronousQueueRunnableService(
 
     private val takerIds = AtomicLong()
     private val putterIds = AtomicLong()
+    private val pollerIds = AtomicLong()
 
     fun create(): InstrumentedSynchronousQueueRunnable = registry.create()
     fun get(queueId: Long): InstrumentedSynchronousQueueRunnable = registry.get(queueId)
@@ -38,6 +40,15 @@ class SynchronousQueueRunnableService(
     fun take(queueId: Long): String {
         val queue = registry.get(queueId)
         return startDaemon("taker-${takerIds.incrementAndGet()}") { queue.take() }
+    }
+
+    /**
+     * poll(timeout): как take, но ждёт не дольше timeoutMs (так ждут задачу воркеры CachedThreadPool — keepAlive).
+     * В новом потоке; METHOD_OUT poll — taskId или null, если никто не отдал. Утечки, как у take, нет: поток сам выйдет по таймауту
+     */
+    fun poll(queueId: Long, timeoutMs: Long): String {
+        val queue = registry.get(queueId)
+        return startDaemon("poller-${pollerIds.incrementAndGet()}") { queue.poll(timeoutMs, TimeUnit.MILLISECONDS) }
     }
 
     // Поток, ждущий в очереди, не должен мешать остановке приложения

@@ -37,6 +37,12 @@ class SynchronousQueueRunnableController(
     @ResponseStatus(HttpStatus.ACCEPTED)
     fun take(@PathVariable queueId: Long): ThreadResponse = ThreadResponse(queueService.take(queueId))
 
+    // Как take, но ждёт не дольше timeoutMs: в отдельном потоке; METHOD_OUT poll — taskId или null (не дождался)
+    @PostMapping("/{queueId}/poll")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    fun poll(@PathVariable queueId: Long, @RequestBody request: TimeoutRequest): ThreadResponse =
+        ThreadResponse(queueService.poll(queueId, request.timeoutMs))
+
     @DeleteMapping("/{queueId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun remove(@PathVariable queueId: Long) = queueService.remove(queueId)
