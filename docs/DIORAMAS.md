@@ -94,23 +94,27 @@
 
 ## Файлы и слои
 
-Порядок подключения важен (обычные скрипты, не ES-модули: модули Chrome блокирует на `file://`, а проверяем так):
+Порядок подключения важен (обычные скрипты, не ES-модули: модули Chrome блокирует на `file://`, а проверяем так).
+Пути — от `static/`; папка = слой:
 
 ```
-iso-scene.js         → Iso               движок: палитра, цвета, геометрия, сцена, примитивы, тени, таблички, актёры
-iso-vehicles.js      → IsoObjects        реквизит, транспорт: машина, погрузчик, их актёры (vehicleActor), ящик; объявляет IsoObjects
-iso-ground.js        → IsoObjects        реквизит, земля: остров, дорога и мост (вдоль x или y), разметка, плитка, рабочая зона, столбик (ROAD)
-iso-buildings.js     → IsoObjects        реквизит, постройки: мойка, бензоколонка, конвейер, склад, стеллаж, шлагбаум, светофор, скамейка, фонарь, штакетник
-iso-nature.js        → IsoObjects        реквизит, растительность: деревья, кусты, цветы, decorate
-iso-people.js        → IsoObjects        реквизит, люди: жилец-пешеход, курьер на самокате (через vehicleActor), пакет с едой
-diorama-kit.js       → Kit               набор: контракты, сеть маршрутов, актёры, модели, панель, статичный показ
-diorama-street.js    → Kit.street        каркас «остров с дорогой»: остров, дорога, места на полосе, ожидание с «+N», растительность
-diorama-pool.js      → PoolDiorama       описание структуры: автомойка = fixed-пул
-diorama-semaphore.js → SemaphoreDiorama  описание структуры: бензоколонка за шлагбаумом = задача под семафором
-diorama-queue.js     → QueueDiorama      описание структуры: склад с конвейером = LinkedBlockingQueue
-diorama-sync.js      → SyncDiorama       описание структуры: доставка к подъезду = SynchronousQueue
-tiles.js             → Tiles             плитки (общие для index.html и tiles.html), стили — tiles.css
+diorama/engine/iso-scene.js         → Iso               движок: палитра, цвета, геометрия, сцена, примитивы, тени, таблички, актёры
+diorama/props/iso-vehicles.js       → IsoObjects        реквизит, транспорт: машина, погрузчик, их актёры (vehicleActor), ящик; объявляет IsoObjects
+diorama/props/iso-ground.js         → IsoObjects        реквизит, земля: остров, плита, дорога и мост (вдоль x или y), разметка, плитка, рабочая зона, столбик (ROAD)
+diorama/props/iso-buildings.js      → IsoObjects        реквизит, постройки: мойка, бензоколонка, конвейер, склад, стеллаж, дом с крыльцом, шлагбаум, светофор, скамейка, фонарь, штакетник
+diorama/props/iso-nature.js         → IsoObjects        реквизит, растительность: деревья, кусты, цветы, decorate
+diorama/props/iso-people.js         → IsoObjects        реквизит, люди: жилец-пешеход, курьер на самокате (через vehicleActor), пакет с едой
+diorama/kit/diorama-kit.js          → Kit               набор: контракты, сеть маршрутов, актёры, модели, панель, статичный показ
+diorama/kit/diorama-street.js       → Kit.street        каркас «остров (или плита) с дорогой»: основание, дорога, места на полосе, ожидание с «+N», растительность
+diorama/scenes/diorama-pool.js      → PoolDiorama       описание структуры: автомойка = fixed-пул
+diorama/scenes/diorama-semaphore.js → SemaphoreDiorama  описание структуры: бензоколонка за шлагбаумом = задача под семафором
+diorama/scenes/diorama-queue.js     → QueueDiorama      описание структуры: склад с конвейером = LinkedBlockingQueue
+diorama/scenes/diorama-sync.js      → SyncDiorama       описание структуры: доставка к подъезду = SynchronousQueue
+core/tiles.js                       → Tiles             плитки (общие для index.html и tiles.html), стили — core/tiles.css
 ```
+
+Store плиток, из которых описания берут снимок, — в `structures/` (`pool.js`, `blockingqueue.js`, `synchronousqueue.js`,
+`semaphoretask.js`); общее (`base.js`, `components.js`) — в `core/`. Страницы — в корне `static/`.
 
 Слои зависят только вниз: движок ничего не знает о реквизите, реквизит — о структурах, набор — о конкретных структурах.
 Структура знает всё, что ниже, и store своей плитки — больше никто.
@@ -255,9 +259,9 @@ tiles.js             → Tiles             плитки (общие для index
 
 ## Как добавить структуру
 
-1. **Реквизит**, если нужного нет: функция в подходящем `iso-*.js` (машины / земля / постройки / растительность), рисующая объект примитивами сцены. Если реквизит
+1. **Реквизит**, если нужного нет: функция в подходящем `diorama/props/iso-*.js` (машины / земля / постройки / растительность / люди), рисующая объект примитивами сцены. Если реквизит
    меняется на живой сцене — пусть вернёт ручку (как `trafficLight().set`, `washHouse().paintBay`).
-2. **Описание** `static/diorama-<структура>.js` по образцу `diorama-pool.js`:
+2. **Описание** `static/diorama/scenes/diorama-<структура>.js` по образцу `diorama-pool.js`:
    - раскладка константами и `LIMITS` — сколько помещается;
    - `layout(s, shape)` — на каркасе `Kit.street`: реквизит, места (`lanePlace`, `place`, `waitLine`), зоны
      `keepOut`, в конце `st.layout(decorSeed, { links, update })`;
@@ -266,7 +270,7 @@ tiles.js             → Tiles             плитки (общие для index
    - `shapeOf(tile)` — от чего зависит неподвижная сцена (число боксов, мест);
    - `demo` и `demoShape` — для `prototype.html`.
 3. **Новая модель актёра** (погрузчик, лодка) — запись в `Kit.models` с тем же интерфейсом, что у `carActor`.
-4. **Страницы:** `<script>` после `diorama-street.js`; в `index.html` — запись `{ id, diorama, view }` в `STRUCTURES`
+4. **Страницы:** `<script src="diorama/scenes/…">` после `diorama/kit/diorama-street.js`; в `index.html` — запись `{ id, diorama, view }` в `STRUCTURES`
    (`id` — адрес `#id`, `diorama` — объект описания с `kind`, `demo`, `demoShape`; `view` — плитка с пределами ввода
    из `LIMITS`): карточка в карусели и полоса над диорамой появятся сами; в `prototype.html` — `Kit.show(kind, demo, demoShape)`.
 5. **Проверка:** логику живой диорамы можно проверить без сервера синтетическими событиями

@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <title>KotlinView</title>
-  <link rel="stylesheet" href="base.css">
-  <link rel="stylesheet" href="components.css">
-  <link rel="stylesheet" href="pool.css">
-  <link rel="stylesheet" href="synchronousqueue.css">
-  <link rel="stylesheet" href="semaphore.css">
-  <link rel="stylesheet" href="tiles.css">
+  <link rel="stylesheet" href="core/base.css">
+  <link rel="stylesheet" href="core/components.css">
+  <link rel="stylesheet" href="structures/pool.css">
+  <link rel="stylesheet" href="structures/synchronousqueue.css">
+  <link rel="stylesheet" href="structures/semaphore.css">
+  <link rel="stylesheet" href="core/tiles.css">
   <style>
     /*
      * Тёмное оформление «Night Harbour»: ночная гавань вокруг островов, тёплые акценты-фонари. Переопределены
@@ -140,27 +140,27 @@
 </details>
 </div>
 
-<script src="base.js"></script>
-<script src="components.js"></script>
-<script src="synchronousqueue.js"></script>
-<script src="pool.js"></script>
-<script src="blockingqueue.js"></script>
-<script src="semaphore.js"></script>
-<script src="semaphoretask.js"></script>
-<script src="tiles.js"></script>
+<script src="core/base.js"></script>
+<script src="core/components.js"></script>
+<script src="structures/synchronousqueue.js"></script>
+<script src="structures/pool.js"></script>
+<script src="structures/blockingqueue.js"></script>
+<script src="structures/semaphore.js"></script>
+<script src="structures/semaphoretask.js"></script>
+<script src="core/tiles.js"></script>
 <!-- Диорамы: движок → реквизит → набор → каркас → описания структур -->
-<script src="iso-scene.js"></script>
-<script src="iso-vehicles.js"></script>
-<script src="iso-ground.js"></script>
-<script src="iso-buildings.js"></script>
-<script src="iso-nature.js"></script>
-<script src="iso-people.js"></script>
-<script src="diorama-kit.js"></script>
-<script src="diorama-street.js"></script>
-<script src="diorama-pool.js"></script>
-<script src="diorama-semaphore.js"></script>
-<script src="diorama-queue.js"></script>
-<script src="diorama-sync.js"></script>
+<script src="diorama/engine/iso-scene.js"></script>
+<script src="diorama/props/iso-vehicles.js"></script>
+<script src="diorama/props/iso-ground.js"></script>
+<script src="diorama/props/iso-buildings.js"></script>
+<script src="diorama/props/iso-nature.js"></script>
+<script src="diorama/props/iso-people.js"></script>
+<script src="diorama/kit/diorama-kit.js"></script>
+<script src="diorama/kit/diorama-street.js"></script>
+<script src="diorama/scenes/diorama-pool.js"></script>
+<script src="diorama/scenes/diorama-semaphore.js"></script>
+<script src="diorama/scenes/diorama-queue.js"></script>
+<script src="diorama/scenes/diorama-sync.js"></script>
 <script>
   /*
    * Структуры: плитка (пульт и точный вид) и её диорама. Плитки — те же, что на tiles.html, но с пределами:

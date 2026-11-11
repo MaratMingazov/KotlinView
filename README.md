@@ -172,7 +172,10 @@ KotlinView/
 │   ├── controller/  ← REST, по пакету на тему
 │   ├── service/     ← фасады: составные объекты и правила владения частями
 │   ├── ws/          ← WebSocket и протокол (конверт, payload'ы)
-│   └── static/      ← фронт: страницы, общие компоненты, диорамы
+│   └── static/      ← фронт: страницы (index, tiles, prototype) в корне, остальное — по слоям:
+│       ├── core/        ← общее: REST и WebSocket, компоненты, плитки
+│       ├── structures/  ← по файлу на структуру: REST, модель по событиям, вид плитки
+│       └── diorama/     ← диорамы: engine/ → props/ → kit/ → scenes/
 └── docs/            ← рабочие документы по отдельным направлениям
 ```
 
@@ -180,10 +183,11 @@ KotlinView/
 
 - Пакеты совпадают с папками; тема — отдельный пакет в каждом слое (`collection`, `executor`, `concurrent.locks`…).
 - У каждого инструментированного типа одна и та же связка: класс в `algorithms` → реестр → сервис → контроллер
-  → вид на клиенте в `static/`.
-- Фронт — обычные скрипты без сборки: у вида структуры свой `*.js` (модель по событиям, отрисовка, REST) и `*.css`;
-  общее — `base.js` (REST, WebSocket), `components.js` (бейджи, цепочки, задачи), `tiles.js` (плитки).
-  Как устроены диорамы — в [docs/DIORAMAS.md](docs/DIORAMAS.md).
+  → вид на клиенте в `static/structures/` (и, если есть, диорама в `static/diorama/scenes/`).
+- Фронт — обычные скрипты без сборки: у вида структуры свой `*.js` (модель по событиям, отрисовка, REST) и `*.css`
+  в `structures/`; общее — в `core/`: `base.js` (REST, WebSocket), `components.js` (бейджи, цепочки, задачи),
+  `tiles.js` (плитки). Слои зависят только вниз (`core` ← `structures`; `diorama/engine` ← `props` ← `kit` ← `scenes`),
+  порядок `<script>` на страницах — тот же. Как устроены диорамы — в [docs/DIORAMAS.md](docs/DIORAMAS.md).
 
 ## Стек
 

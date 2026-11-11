@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <title>KotlinView</title>
-  <link rel="stylesheet" href="base.css">
-  <link rel="stylesheet" href="components.css">
-  <link rel="stylesheet" href="pool.css">
-  <link rel="stylesheet" href="arraylist.css">
-  <link rel="stylesheet" href="synchronousqueue.css">
-  <link rel="stylesheet" href="tiles.css">
+  <link rel="stylesheet" href="core/base.css">
+  <link rel="stylesheet" href="core/components.css">
+  <link rel="stylesheet" href="structures/pool.css">
+  <link rel="stylesheet" href="structures/arraylist.css">
+  <link rel="stylesheet" href="structures/synchronousqueue.css">
+  <link rel="stylesheet" href="core/tiles.css">
   <style>
     /* Плитки в две колонки; на узком экране — в одну */
     /* Ширина ограничена: на широком мониторе плитки не растягиваются на весь экран (~540px каждая) */
@@ -37,14 +37,14 @@
   <div id="ws" class="log"></div>
 </details>
 
-<script src="base.js"></script>
-<script src="components.js"></script>
-<script src="arraylist.js"></script>
-<script src="linkedlist.js"></script>
+<script src="core/base.js"></script>
+<script src="core/components.js"></script>
+<script src="structures/arraylist.js"></script>
+<script src="structures/linkedlist.js"></script>
 <!-- synchronousqueue.js — для pool.js: очередь CachedThreadPool рисуется им -->
-<script src="synchronousqueue.js"></script>
-<script src="pool.js"></script>
-<script src="tiles.js"></script>
+<script src="structures/synchronousqueue.js"></script>
+<script src="structures/pool.js"></script>
+<script src="core/tiles.js"></script>
 <script>
   // Плитки — tiles.js: здесь только какие структуры показать и куда положить.
   // Только те, что ещё не перенесли на index.html (там — FixedThreadPool, Semaphore, LinkedBlockingQueue, SynchronousQueue)
