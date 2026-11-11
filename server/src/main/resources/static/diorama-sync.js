@@ -6,7 +6,7 @@
  * получит не первый пришедший). take — жилец выходит из двери и ждёт на крыльце. Нашлась пара — курьер подъезжает
  * к ступеньке, жилец спускается к нему, пакет переходит из короба в руки; курьер уезжает, жилец уносит пакет домой.
  * offer — курьер подъезжает к ступеньке: если жилец ждёт — передача, если нет — постоял и уехал назад с пакетом.
- * Обе стороны сразу не ждут: ждут либо курьеры, либо жильцы.
+ * Обе стороны сразу не ждут: ждут либо курьеры, либо жильцы. Сцена — на парящей плите, без воды.
  *
  * Подключение: после diorama-kit.js, diorama-street.js и iso-people.js. На index.html нужны ещё synchronousqueue.js
  * и tiles.js (снимок). Всё лежит в объекте SyncDiorama: kind — описание для Kit.panel / Kit.show, LIMITS, demo.
@@ -57,7 +57,8 @@ const SyncDiorama = (() => {
    */
   function layout(s) {
     const L = STREET, H = L.house;
-    const st = Kit.street(s, { island: L.island, seed: L.seed, at: L.road.at, ends: L.road.ends });
+    // Парящая плита вместо острова (фон сцены прозрачный — kind.backdrop)
+    const st = Kit.street(s, { island: L.island, seed: L.seed, at: L.road.at, ends: L.road.ends, ground: 'slab' });
     s.title(['SynchronousQueue', '…']);
 
     O.paved(s, ...L.walk);
@@ -202,7 +203,7 @@ const SyncDiorama = (() => {
 
   /** @type {Kind} */
   const kind = {
-    name: 'sync', uid: 'sync',
+    name: 'sync', uid: 'sync', backdrop: 'none',
     shapeOf: tile => ({ key: `${tile.id ?? 'idle'}` }),
     layout,
     snapshotOf(tile) {

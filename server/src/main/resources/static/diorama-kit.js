@@ -15,6 +15,7 @@
  * @typedef {Object} Kind
  * @property {string} name                                   — для отладки
  * @property {string} uid                                    — префикс id сцены (градиенты, таблички) на странице
+ * @property {string} [backdrop='water']                     — фон сцены: 'water' или 'none' (парящая плита)
  * @property {(tile: Object) => Shape} shapeOf               — «форма» сцены по плитке: другая форма — пересобрать сцену
  * @property {(s: Object, shape: Shape) => Layout} layout    — построить неподвижную сцену и объявить места
  * @property {(tile: Object, shape: Shape) => Object} snapshotOf — снимок из store плитки: единственное место, знающее store
@@ -508,7 +509,7 @@ const Kit = (() => {
 
   // Построить сцену по форме: неподвижное — один раз, актёры — потом, через sync
   function stage(kind, shape) {
-    const s = Iso.createScene({ uid: kind.uid });
+    const s = Iso.createScene({ uid: kind.uid, backdrop: kind.backdrop }); // backdrop — 'water' (по умолчанию) или 'none'
     const layout = kind.layout(s, shape);
     const root = s.render();
     const actors = cast(s, layout);

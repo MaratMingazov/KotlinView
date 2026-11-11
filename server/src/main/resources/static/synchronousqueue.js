@@ -1,10 +1,10 @@
 /*
- * SynchronousQueue<Runnable>: модель по событиям WebSocket, отрисовка «места передачи» и REST-вызовы.
- * Плитка на tiles.html (и очередь CachedThreadPool — позже).
+ * SynchronousQueue<Runnable>: модель по событиям WebSocket, отрисовка и REST-вызовы.
+ * Плитка на index.html — вид «комната» (renderState): ждущие отдать и получить по бокам от стенки «handoff».
+ * Очередь CachedThreadPool (pool.js) — прежним видом renderHandoff: «отдают → место передачи → получают».
  * Подключение: после base.js и components.js. Стили — synchronousqueue.css. Всё лежит в объекте SynchronousQueueView.
  *
- * Ячеек нет: элементы в SynchronousQueue не хранятся. Рисуем место передачи:
- *   слева — кто ждёт отдать (put, с задачей в руках) → посередине — передача → справа — кто ждёт получить (take / poll)
+ * Ячеек нет: элементы в SynchronousQueue не хранятся, задача передаётся из рук в руки.
  */
 const SynchronousQueueView = (() => {
   const base = '/api/synchronousqueuerunnable';
@@ -140,12 +140,8 @@ const SynchronousQueueView = (() => {
     return { items, tasks, apply };
   }
 
-  // ---------- Отрисовка ----------
-
-  /** Состояние очереди — элементы подряд: бейджи методов и место передачи. */
-  function renderState(store, queue) {
-    return [KV.renderBadges(queue.methods), renderHandoff(store, queue)];
-  }
+  // ---------- Отрисовка: место передачи для очереди CachedThreadPool (pool.js) ----------
+  // Когда дойдём до cached-пула — перевести его очередь на вид «комната» ниже и удалить этот раздел
 
   // Ряд «отдают → передача → получают». Стрелки — направление передачи, это суть SynchronousQueue.
   // options.neutralReject — offer → false не красным: в CachedThreadPool это не ошибка, а сигнал пулу создать поток
@@ -219,9 +215,8 @@ const SynchronousQueueView = (() => {
     return c;
   }
 
-  // ---------- Вид «комната» (index.html) ----------
-  // Новый вид в общем стиле LBQ и семафора (.room* — components.css), рядом со старым — для сравнения:
-  // старый — на tiles.html, новый — на index.html. Когда выберем, лишний удалить.
+  // ---------- Отрисовка: вид «комната» (плитка) ----------
+  // В общем стиле LBQ и семафора (.room* — components.css):
   //
   //                 handoff
   //   [give][give]     ┃     [take][take]     мест нет — стенка, а не рамка; передаваемая задача
@@ -232,7 +227,7 @@ const SynchronousQueueView = (() => {
   const UNFAIR = 'unfair: the last one who came is matched first';
 
   /** Состояние очереди — бейджи методов, под ними «комната» без мест. */
-  function renderRoomState(store, queue) {
+  function renderState(store, queue) {
     const row = KV.el('div', 'room-row');
     row.append(renderRoomGivers(queue), renderRoomFrame(store, queue), renderRoomTakers(queue));
     return [KV.renderBadges(queue.methods), row];
@@ -304,7 +299,6 @@ const SynchronousQueueView = (() => {
   // Визиты, которые ещё не устарели (store удаляет старые только при новом событии); незаконченные — всегда
   const recentVisits = queue => queue.visits.filter(v => v.state === 'inside' || performance.now() - v.at < VISIT_MS);
 
-  // renderHandoff — отдельно: им рисует очередь CachedThreadPool (pool.js), без своих бейджей.
-  // renderRoomState — новый вид для index.html (сравнение со старым renderState на tiles.html); recentVisits — для диорамы
-  return { title: 'SynchronousQueue', params: [], types: [QUEUE, TASK], createStore, create, remove, operations, renderState, renderHandoff, renderRoomState, recentVisits };
+  // renderHandoff — отдельно: им рисует очередь CachedThreadPool (pool.js), без своих бейджей; recentVisits — для диорамы
+  return { title: 'SynchronousQueue', params: [], types: [QUEUE, TASK], createStore, create, remove, operations, renderState, renderHandoff, recentVisits };
 })();

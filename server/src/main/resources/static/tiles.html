@@ -8,7 +8,6 @@
   <link rel="stylesheet" href="pool.css">
   <link rel="stylesheet" href="arraylist.css">
   <link rel="stylesheet" href="synchronousqueue.css">
-  <link rel="stylesheet" href="semaphore.css">
   <link rel="stylesheet" href="tiles.css">
   <style>
     /* Плитки в две колонки; на узком экране — в одну */
@@ -42,18 +41,14 @@
 <script src="components.js"></script>
 <script src="arraylist.js"></script>
 <script src="linkedlist.js"></script>
-<script src="blockingqueue.js"></script>
+<!-- synchronousqueue.js — для pool.js: очередь CachedThreadPool рисуется им -->
 <script src="synchronousqueue.js"></script>
-<!-- pool.js — после synchronousqueue.js: очередь CachedThreadPool рисуется им -->
 <script src="pool.js"></script>
-<script src="semaphore.js"></script>
-<!-- semaphoretask.js — после semaphore.js: модель семафора задачи — оттуда -->
-<script src="semaphoretask.js"></script>
 <script src="tiles.js"></script>
 <script>
-  // Плитки — tiles.js: здесь только какие структуры показать и куда положить
-  const VIEWS = [Pool.single, Pool.fixed, Pool.cached, ArrayListView, LinkedListView, BlockingQueueView, SynchronousQueueView,
-    SemaphoreTaskView];
+  // Плитки — tiles.js: здесь только какие структуры показать и куда положить.
+  // Только те, что ещё не перенесли на index.html (там — FixedThreadPool, Semaphore, LinkedBlockingQueue, SynchronousQueue)
+  const VIEWS = [Pool.single, Pool.cached, ArrayListView, LinkedListView];
   const root = document.getElementById('tiles');
   Tiles.mount(VIEWS, { place: tile => root.append(tile.el) });
 </script>

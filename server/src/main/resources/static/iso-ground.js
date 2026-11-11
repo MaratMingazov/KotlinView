@@ -5,7 +5,7 @@
  * Подключение: после iso-vehicles.js (ROAD считается от размера машины).
  */
 (() => {
-  const { svg, shade, PALETTE: C, inside, blob, scaled } = Iso;
+  const { svg, shade, PALETTE: C, inside, blob, scaled, roundedRect } = Iso;
   const { CAR } = IsoObjects;
 
   // ---------- Остров ----------
@@ -62,6 +62,35 @@
       s.shadow(bx + 0.5, by + 0.2, 0.55, 0.25, -0.45);
       s.add(bx + by, g);
     }
+  }
+
+  // ---------- Парящая плита (вместо острова) ----------
+
+  const SLAB = { thick: 0.35, turf: 0.07, radius: 0.6, soil: '#d8c39a', drop: 1.3, blur: 9 };
+
+  /**
+   * Плита по прямоугольнику (x0, y0) – (x1, y1): скруглённые углы, видимые бока — слой травы и под ним грунт, верх —
+   * трава; далеко под плитой — мягкая размытая тень, по ней видно, что плита висит в воздухе. Воды, пляжа и мостов нет:
+   * дорога кончается у края (s.shore — контур плиты). Для сцены с прозрачным фоном (createScene({ backdrop: 'none' }))
+   */
+  function slab(s, x0, y0, x1, y1) {
+    const K = SLAB, top = roundedRect(x0, y0, x1 - x0, y1 - y0, K.radius, 6);
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    const flatPoly = (poly, z, style) => svg('polygon', { points: s.pts(poly.map(([x, y]) => [x, y, z])), style });
+
+    // Тень в слое земли (слой теней рисуется поверх земли — закрыл бы плиту): свой фильтр с сильным размытием
+    const blur = svg('filter', { id: `${s.uid}-float`, x: '-30%', y: '-30%', width: '160%', height: '160%' });
+    blur.append(svg('feGaussianBlur', { stdDeviation: K.blur }));
+    const fall = scaled(top, cx, cy, 0.92).map(([x, y]) => [x + 0.5, y + 0.5]);
+    // Чёрная, а не C.shadowColor: тот светлее тёмного фона страницы и выглядел бы свечением, а не тенью
+    s.ground.push(blur, flatPoly(fall, -K.thick - K.drop, `fill: #000; opacity: .45; filter: url(#${s.uid}-float)`));
+
+    // Бока: грунт, над ним — слой травы; верх — трава
+    s.ground.push(s.prism(top, -K.thick, K.thick - K.turf, K.soil), s.prism(top, -K.turf, K.turf, shade(C.grass, -0.05)));
+    s.ground.push(flatPoly(top, 0, `fill: ${C.grass}; stroke: ${shade(C.grass, -0.08)}; stroke-width: 1.5`));
+    s.setLand(scaled(top, cx, cy, 0.9));
+    s.shore = top;
+    s.shoreCenter = [cx, cy];
   }
 
   // Камень: призма с неровным основанием, верх светлее — как обкатанный булыжник
@@ -175,5 +204,5 @@
    */
   const ROAD = { laneY: 0.35, lane: 0.35 + CAR.W / 2, ends: [-6.3, 16.3] };
 
-  Object.assign(IsoObjects, { ROAD, island, road, zebra, stopLine, slot, paved, workZone, sign });
+  Object.assign(IsoObjects, { ROAD, island, slab, road, zebra, stopLine, slot, paved, workZone, sign });
 })();

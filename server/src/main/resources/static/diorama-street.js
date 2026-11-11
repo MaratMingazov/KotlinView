@@ -13,10 +13,19 @@
    * at — где её полоса поперёк (начало полосы шириной 1.2: y у дороги вдоль x, x у дороги вдоль y), ends — концы
    * вдоль хода (по умолчанию R.ends); roads — куски дороги [[от, до], …] (по умолчанию — вся), skip — [от, до] без
    * пунктира (только для дороги целиком); entry / exit — имена въезда и выезда (по умолчанию 'entry' / 'exit':
-   * в начале и в конце дороги, за мостами). Места на полосе задаются по ходу дороги: lanePlace(name, u)
+   * в начале и в конце дороги, за мостами). Места на полосе задаются по ходу дороги: lanePlace(name, u).
+   * ground — основание: 'island' (остров в воде) или 'slab' (парящая плита: на ней же поместится то, что на острове;
+   * дорога — от края до края плиты, без мостов; въезд и выезд — у краёв)
    */
-  function street(s, { island, seed, axis = 'x', at = 0, ends = R.ends, roads = null, skip = null, entry = 'entry', exit = 'exit' }) {
-    O.island(s, ...island, seed);
+  function street(s, { island, seed, axis = 'x', at = 0, ends = R.ends, roads = null, skip = null, entry = 'entry', exit = 'exit', ground = 'island' }) {
+    if (ground === 'slab') {
+      // Плита — по размеру острова (у острова берег шире прямоугольника); дорога — до краёв плиты
+      const [x0, y0, x1, y1] = [island[0] - 0.4, island[1] - 0.6, island[2] + 0.4, island[3] + 0.6];
+      O.slab(s, x0, y0, x1, y1);
+      ends = axis === 'y' ? [y0 + 0.35, y1 - 0.35] : [x0 + 0.35, x1 - 0.35];
+    } else {
+      O.island(s, ...island, seed);
+    }
     const band = { axis, v0: at, v1: at + 1.2 };
     if (roads) for (const [u0, u1] of roads) O.road(s, u0, u1, band);
     else O.road(s, ...ends, { ...band, skip });

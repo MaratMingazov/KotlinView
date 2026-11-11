@@ -62,6 +62,8 @@
     .card.on { outline: 3px solid var(--keyword); transform: translateY(-3px); }
     /* Одна высота у всех миниатюр (у сцен разные пропорции): вода — фон рамки, остров — по центру */
     .card svg, .card .blank { display: block; width: 100%; height: 130px; border-radius: 6px; pointer-events: none; background: #79c4df; }
+    /* Парящая плита (backdrop: 'none') — без воды: на фоне страницы */
+    .card svg.floating { background: var(--bg); }
     .card .name { padding: 4px 0 2px; font-weight: bold; }
 
     /*
@@ -173,10 +175,7 @@
         ['mode', 'ACQUIRE', { options: [['ACQUIRE', 'blocking'], ['TRY_ACQUIRE', 'non-blocking'], ['TRY_ACQUIRE_TIMEOUT', 'timeout 2s']] }]] } },
     { id: 'lbq', diorama: QueueDiorama,
       view: { ...BlockingQueueView, params: [['capacity', 3, { min: 1, max: QueueDiorama.LIMITS.slots }]] } },
-    // Вид плитки — новый («комната»), старый остаётся на tiles.html — для сравнения
-    { id: 'sync', diorama: SyncDiorama,
-      view: { ...SynchronousQueueView, renderState: SynchronousQueueView.renderRoomState } },
-  ];
+    { id: 'sync', diorama: SyncDiorama, view: SynchronousQueueView },  ];
 
   const stage = document.getElementById('stage');
   let selected = null, panel = null; // выбранная структура и её живая диорама (остальные не рисуются)

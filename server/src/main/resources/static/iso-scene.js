@@ -149,7 +149,8 @@ const Iso = (() => {
    * uid — префикс id градиентов и табличек. Живая диорама перерисовывается с тем же uid: у тех же объектов
    * те же id табличек — так табличка под курсором остаётся на месте после перерисовки
    */
-  function createScene({ uid: fixedUid } = {}) {
+  // backdrop — фон сцены: 'water' (вода вокруг острова) или 'none' (прозрачный: плита парит на фоне страницы)
+  function createScene({ uid: fixedUid, backdrop = 'water' } = {}) {
     const P = (x, y, z) => [(x - y) * 0.866 * S, (x + y) * 0.5 * S - z * S]; // изометрия 30°
     const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
     const track = (sx, sy) => {
@@ -450,8 +451,9 @@ const Iso = (() => {
     function render(options = {}) {
       const pad = 18;
       const vb = { x: bounds.minX - pad, y: bounds.minY - pad, w: bounds.maxX - bounds.minX + 2 * pad, h: bounds.maxY - bounds.minY + 2 * pad };
-      const root = svg('svg', { viewBox: `${vb.x} ${vb.y} ${vb.w} ${vb.h}`, width: '100%', class: 'diorama' });
-      root.append(defs(), svg('rect', { x: vb.x, y: vb.y, width: vb.w, height: vb.h, rx: 6, style: `fill: url(#${uid}-water)` }));
+      const root = svg('svg', { viewBox: `${vb.x} ${vb.y} ${vb.w} ${vb.h}`, width: '100%', class: backdrop === 'water' ? 'diorama' : 'diorama floating' });
+      root.append(defs());
+      if (backdrop === 'water') root.append(svg('rect', { x: vb.x, y: vb.y, width: vb.w, height: vb.h, rx: 6, style: `fill: url(#${uid}-water)` }));
       root.append(...ground);
       const shadowsG = shadowLayer(shadows, C.shadow, `${uid}-soft`), contactsG = shadowLayer(contacts, Math.min(C.shadow * 1.8, 0.5), `${uid}-contact`);
       root.append(shadowsG, contactsG);
@@ -541,7 +543,7 @@ const Iso = (() => {
     }
 
     const scene = {
-      P, S, pts, faceStyle, ground, add, setLand, onLand, render, actor, actors,
+      uid, P, S, pts, faceStyle, ground, add, setLand, onLand, render, actor, actors,
       box, prism, disc, panel, gableRoof, flat, line,
       shadow, castShadow, contact,
       label, relabel, showLabel, hover, title, retitle,
