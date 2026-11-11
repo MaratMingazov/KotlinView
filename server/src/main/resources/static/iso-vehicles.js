@@ -237,5 +237,6 @@ const IsoObjects = {};
     return { key, moveTo: (x, y, z = 0) => a.moveTo(x, y, z), remove: () => a.remove() };
   }
 
-  Object.assign(IsoObjects, { CAR, carColor, carNode, car, carActor, FORKLIFT, forkliftActor, CRATE, crateActor });
+  // vehicleActor — наружу: им строятся и другие актёры с маршрутом (люди — iso-people.js)
+  Object.assign(IsoObjects, { CAR, carColor, carNode, car, vehicleActor, carActor, FORKLIFT, forkliftActor, CRATE, crateActor });
 })();

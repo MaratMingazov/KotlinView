@@ -77,7 +77,9 @@
  * @property {string|number} [actor]                         — на ком (ключ актёра) — или:
  * @property {string} [place]                                — на каком месте (имя из Layout.cargoPlaces)
  * @property {string} [via]                                  — передача — когда актёр встанет здесь (имя места сети)
- * @property {Array<{ actor?: string|number, place?: string, via?: string }>} [from] — путь до держателя: через кого груз
+ * @property {string} [viaFrom]                              — передача актёр → актёр: отдающий (нынешний держатель)
+ *                                                              тоже должен стоять — здесь; держатся оба, пока груз летит
+ * @property {Array<{ actor?: string|number, place?: string, via?: string, viaFrom?: string }>} [from] — путь до держателя: через кого груз
  *                                                              пройдёт. Новый появляется у первого шага, чей актёр есть;
  *                                                              уже стоящий на одном из шагов — проходит оставшиеся. Ящик,
  *                                                              взятый за микросекунды после offer, всё равно проедет на
@@ -95,11 +97,15 @@ const Kit = (() => {
   const models = {
     car: (s, key, spec) => IsoObjects.carActor(s, key, spec.color, { ...spec.look, label: spec.label }),
     forklift: (s, key, spec) => IsoObjects.forkliftActor(s, key, spec.color, { label: spec.label }),
+    // Люди — iso-people.js (подключать, если диорама их использует)
+    courier: (s, key, spec) => IsoObjects.courierActor(s, key, spec.color, { label: spec.label }),
+    person: (s, key, spec) => IsoObjects.personActor(s, key, spec.color, { label: spec.label }),
   };
 
   /** Модели грузов: имя → (s, key, spec) => { moveTo(x, y, z), remove() }. У актёра-носителя — cargoZ (высота груза). */
   const cargoModels = {
     crate: (s, key, spec) => IsoObjects.crateActor(s, key, { label: spec.label }),
+    bag: (s, key, spec) => IsoObjects.bagActor(s, key, { label: spec.label }),
   };
 
   // ---------- Сеть маршрутов ----------
@@ -354,19 +360,22 @@ const Kit = (() => {
    * instant — всех сразу к держателям, планы очистить.
    * tick(now): передачи и следование за актёрами; true — кто-то летит или ждёт передачи.
    * Участник передачи с via не уезжает из via, пока груз не долетел (cast.holdWith): иначе машина, чей take
-   * закончился в том же снимке, уехала бы раньше, чем ящик на неё лёг
+   * закончился в том же снимке, уехала бы раньше, чем ящик на неё лёг. Передача актёр → актёр (viaFrom) ждёт обоих:
+   * берущий — в via, отдающий — в viaFrom; держатся тоже оба
    */
   function freight(s, layout, cast) {
     const places = layout.cargoPlaces ?? {};
-    // ключ → { item, holder, plan: [{ holder, via }], flight: { from, start, via, who } | null, pos, gone }
+    // ключ → { item, holder, plan: [{ holder, via, viaFrom }], flight: { from, start, pairs } | null, pos, gone }
     const items = new Map();
     const holderOf = spec => spec.actor != null ? { actor: spec.actor } : { place: spec.place };
-    const stepOf = spec => ({ holder: holderOf(spec), via: spec.via ?? null });
+    const stepOf = spec => ({ holder: holderOf(spec), via: spec.via ?? null, viaFrom: spec.viaFrom ?? null });
     const same = (a, b) => a.actor === b.actor && a.place === b.place;
 
     function check(spec, key) {
       if (spec.actor == null && !places[spec.place]) throw new Error(`Kit: неизвестное место груза «${spec.place}» у ${key}`);
-      if (spec.via != null && !layout.places[spec.via]) throw new Error(`Kit: неизвестное место передачи «${spec.via}» у груза ${key}`);
+      for (const via of [spec.via, spec.viaFrom]) {
+        if (via != null && !layout.places[via]) throw new Error(`Kit: неизвестное место передачи «${via}» у груза ${key}`);
+      }
     }
 
     // Точка держателя [x, y, z]; null — актёра-держателя больше нет
@@ -420,34 +429,44 @@ const Kit = (() => {
           const steps = (spec.from ?? []).map(stepOf), k = steps.findIndex(step => same(step.holder, lastHolder));
           if (k >= 0) it.plan.push(...steps.slice(k + 1));
           it.plan.push(final);
-        } else if (last) last.via = final.via; // тот же держатель — только место передачи могло уточниться
+        } else if (last) Object.assign(last, { via: final.via, viaFrom: final.viaFrom }); // тот же держатель — только места передачи могли уточниться
       }
       for (const [key, it] of items) if (!wanted.has(key)) it.gone = true;
     }
 
-    // Участник передачи: актёр, который заберёт груз, или тот, у кого груз сейчас
-    const participantOf = (it, step) => step.holder.actor ?? it.holder.actor;
+    /**
+     * Кто где должен стоять при передаче step от держателя prev: пары [актёр, место]. via — участник: актёр, который
+     * заберёт груз, или тот, у кого груз сейчас; viaFrom — отдающий актёр (передача актёр → актёр)
+     */
+    function pairsOf(prev, step) {
+      const pairs = [];
+      const who = step.holder.actor ?? prev.actor;
+      if (step.via != null && who != null) pairs.push([who, step.via]);
+      if (step.viaFrom != null && prev.actor != null) pairs.push([prev.actor, step.viaFrom]);
+      return pairs;
+    }
 
     // Место занято другим грузом (лежит или подлетает): на ленте следующий ящик ждёт, пока с места снимут прежний
     const occupied = (it, place) => [...items.values()].some(o => o !== it && o.holder?.place === place);
 
-    // Передача готова: место свободно; via не задан, или участник стоит в via; если того актёра уже нет — передать как есть
+    // Передача готова: место свободно и каждый участник стоит в своём месте; актёра уже нет — передать как есть
     function ready(it, step) {
       if (step.holder.place != null && occupied(it, step.holder.place)) return false;
-      const who = participantOf(it, step);
-      if (step.via == null || who == null) return true;
-      const w = cast.where(who);
-      return !w || (w.standing && w.at === step.via);
+      return pairsOf(it.holder, step).every(([who, at]) => {
+        const w = cast.where(who);
+        return !w || (w.standing && w.at === at);
+      });
     }
 
     // Актёру key нельзя уезжать из места at: с ним летит или ещё будет передача через это место — по всему плану
     // груза (машина take ждёт у выгрузки, пока ящик ещё едет на машине offer и не лёг на ленту)
+    const holds = (pairs, key, at) => pairs.some(([who, place]) => who === key && place === at);
     cast.holdWith((key, at) => {
       for (const it of items.values()) {
-        if (it.flight?.via === at && it.flight.who === key) return true;
+        if (it.flight && holds(it.flight.pairs, key, at)) return true;
         let prev = it.holder;
         for (const step of it.plan) {
-          if (step.via === at && (step.holder.actor ?? prev.actor) === key) return true;
+          if (holds(pairsOf(prev, step), key, at)) return true;
           prev = step.holder;
         }
       }
@@ -462,7 +481,7 @@ const Kit = (() => {
         const step = it.plan[0];
         if (step && !it.flight) {
           if (ready(it, step)) {
-            const flight = it.pos ? { from: it.pos, start: now, via: step.via, who: participantOf(it, step) } : null;
+            const flight = it.pos ? { from: it.pos, start: now, pairs: pairsOf(it.holder, step) } : null;
             it.plan.shift();
             Object.assign(it, { holder: step.holder, flight });
           }

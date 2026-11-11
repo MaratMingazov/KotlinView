@@ -14,6 +14,7 @@ const SynchronousQueueView = (() => {
   const METHODS = ['offer', 'put', 'take', 'poll'];
   const TASK_DURATION_MS = 5000; // все задачи пока одной длины — как в пуле
   const FLASH_MS = 1500;         // сколько видна передача / отказ посередине
+  const VISIT_MS = 1200;         // сколько помнится законченный визит (для диорамы: курьер успевает подъехать и отдать)
 
   // ---------- REST ----------
   // Запросы и лог HTTP — UI.call из base.js
@@ -40,19 +41,29 @@ const SynchronousQueueView = (() => {
   // ---------- Модель ----------
 
   /**
-   * store.items — objectId → { id, methods, putting, flash, leaving }; store.apply(env) — учесть событие.
-   * putting — thread → taskId: кто висит в put и с какой задачей. Кто ждёт получить — methods.inside.take / .poll.
+   * store.items — objectId → { id, methods, putting, takers, flash, leaving }; store.apply(env) — учесть событие.
+   * putting — thread → taskId: кто висит в put и с какой задачей. takers — thread → 'take' | 'poll': кто ждёт получить.
+   * Обе Map — в порядке прихода (вид «комната» ставит у рамки последнего: нечестная очередь — стек).
    * flash — что показать посередине: { taskId, ok: true, to } — передача, { taskId, ok: false } — offer вернул false.
    * leaving — кто только что вышел из offer / put (side: 'give') или take / poll (side: 'take'): его плашка тает,
-   * как бейдж метода, — иначе при мгновенной передаче (put, когда taker уже ждёт) отдающего не было бы видно вовсе
+   * как бейдж метода, — иначе при мгновенной передаче (put, когда taker уже ждёт) отдающего не было бы видно вовсе.
+   * visits — для диорамы: по визиту на каждый вызов offer / put / take / poll { id, method, thread, taskId, state, at, pair }.
+   * id — порядковый номер (ключ актёра: один HTTP-поток может сделать несколько offer подряд); taskId — у отдающего
+   * из аргументов, у получающего — из результата (до выхода null); state — 'inside' (ещё в методе), 'done' (отдал /
+   * получил), 'rejected' (offer → false, poll не дождался), 'failed' (упал, например прерван); at — когда сменилось
+   * состояние; pair — id визита с другой стороны. Открывается на METHOD_IN (offer длится микросекунды — без визита
+   * курьер не появился бы), законченные старше VISIT_MS удаляются. Пара — когда получающий вышел с задачей: отдающий
+   * с тем же taskId уже открыт (вошёл раньше, чем задача кому-то досталась), а METHOD_OUT сторон приходят в любом порядке.
+   * putting / takers / leaving / flash и visits дублируют друг друга: первые читает плитка, visits — диорама
    */
   function createStore(render) {
     const items = new Map();
     // taskId → задача из KV.trackTask: передаваемая задача рисуется её конвертом
     const tasks = new Map();
+    let visitSeq = 0;
 
     function queueOf(id) {
-      if (!items.has(id)) items.set(id, { id, methods: KV.methodsState(METHODS), putting: new Map(), flash: null, leaving: [] });
+      if (!items.has(id)) items.set(id, { id, methods: KV.methodsState(METHODS), putting: new Map(), takers: new Map(), flash: null, leaving: [], visits: [] });
       return items.get(id);
     }
 
@@ -69,6 +80,10 @@ const SynchronousQueueView = (() => {
         if (phase === 'IN') queue.putting.set(d.thread, d.args.taskId);
         else queue.putting.delete(d.thread);
       }
+      if (d.method === 'take' || d.method === 'poll') {
+        if (phase === 'IN') queue.takers.set(d.thread, d.method);
+        else queue.takers.delete(d.thread);
+      }
       // Передачу видно со стороны получателя: take / poll вернули задачу — неважно, отдали её через offer или put
       if ((d.method === 'take' || d.method === 'poll') && phase === 'OUT' && d.result != null) {
         flash(queue, { taskId: d.result, ok: true, to: d.thread });
@@ -77,6 +92,33 @@ const SynchronousQueueView = (() => {
         flash(queue, { taskId: d.args.taskId, ok: false });
       }
       if (phase !== 'IN') leave(queue, d, phase);
+      trackVisit(queue, d, phase);
+    }
+
+    const isGive = method => method === 'offer' || method === 'put';
+
+    function trackVisit(queue, d, phase) {
+      if (!isGive(d.method) && d.method !== 'take' && d.method !== 'poll') return; // drainTo — не визит
+      const now = performance.now(), give = isGive(d.method);
+      queue.visits = queue.visits.filter(v => v.state === 'inside' || now - v.at < VISIT_MS);
+      const open = () => ({ id: ++visitSeq, method: d.method, thread: d.thread, taskId: give ? d.args?.taskId ?? null : null, state: 'inside', at: now, pair: null });
+      if (phase === 'IN') { queue.visits.push(open()); return; }
+
+      // Тот же поток не может быть внутри метода дважды: открытый визит — последний 'inside' этого потока и метода.
+      // Нет такого — страницу открыли, когда поток уже был внутри
+      let v = queue.visits.findLast(v => v.thread === d.thread && v.method === d.method && v.state === 'inside');
+      if (!v) queue.visits.push(v = open());
+      if (phase === 'OUT_FAILED') v.state = 'failed';
+      else if (give) v.state = d.method === 'offer' && d.result !== true ? 'rejected' : 'done';
+      else Object.assign(v, { taskId: d.result ?? null, state: d.result != null ? 'done' : 'rejected' });
+      v.at = now;
+
+      // Получающий вышел с задачей — найти, кто её отдал
+      if (!give && v.state === 'done') {
+        const giver = queue.visits.findLast(g => isGive(g.method) && g.taskId === v.taskId && g.pair == null && (g.state === 'inside' || g.state === 'done'));
+        if (giver) { giver.pair = v.id; v.pair = giver.id; }
+      }
+      setTimeout(render, VISIT_MS); // визит устарел — диорама увидит, что его нет
     }
 
     // Поток вышел из метода — его плашка тает. ok: отдал / получил задачу; иначе — offer вернул false,
@@ -177,6 +219,92 @@ const SynchronousQueueView = (() => {
     return c;
   }
 
-  // renderHandoff — отдельно: им рисует очередь CachedThreadPool (pool.js), без своих бейджей
-  return { title: 'SynchronousQueue', params: [], types: [QUEUE, TASK], createStore, create, remove, operations, renderState, renderHandoff };
+  // ---------- Вид «комната» (index.html) ----------
+  // Новый вид в общем стиле LBQ и семафора (.room* — components.css), рядом со старым — для сравнения:
+  // старый — на tiles.html, новый — на index.html. Когда выберем, лишний удалить.
+  //
+  //                 handoff
+  //   [give][give]     ┃     [take][take]     мест нет — стенка, а не рамка; передаваемая задача
+  //                 ─#12→┃→                   проезжает поверх неё слева направо и тает
+  // Ждут либо слева (put), либо справа (take / poll) — обе стороны сразу не ждут. Очередь нечестная (стек):
+  // у рамки — последний пришедший, он получит пару следующим
+
+  const UNFAIR = 'unfair: the last one who came is matched first';
+
+  /** Состояние очереди — бейджи методов, под ними «комната» без мест. */
+  function renderRoomState(store, queue) {
+    const row = KV.el('div', 'room-row');
+    row.append(renderRoomGivers(queue), renderRoomFrame(store, queue), renderRoomTakers(queue));
+    return [KV.renderBadges(queue.methods), row];
+  }
+
+  function roomChip(thread, title, cls = '') {
+    const chip = KV.el('div', `room-chip ${cls}`.trim());
+    chip.style.setProperty('--thread', KV.threadColor(thread));
+    chip.title = title;
+    chip.append(KV.el('span', 'name', KV.THREAD_LABEL));
+    return chip;
+  }
+
+  // Только что вышедший — у рамки (он только что был там): отдал / получил — тает; offer → false — отскакивает
+  // от рамки, как у полной LBQ; прерван или poll не дождался — пунктир и тает
+  function roomLeaving(queue, side) {
+    const now = performance.now();
+    return queue.leaving.filter(l => l.side === side && now - l.start < FLASH_MS).reverse().map(l => {
+      const age = now - l.start;
+      if (side === 'give' && !l.ok && !l.failed) {
+        const chip = roomChip(l.thread, `${l.thread}: offer() returned false — nobody waits in take`, 'rejected');
+        chip.style.animation = `room-bounce ${FLASH_MS}ms ease-in-out ${-age}ms forwards`;
+        return chip;
+      }
+      const title = l.failed ? `${l.thread}: interrupted` : side === 'give'
+        ? `${l.thread} gave a task` : l.ok ? `${l.thread} got a task` : `${l.thread}: poll() timed out, left without a task`;
+      const chip = roomChip(l.thread, title, l.ok ? '' : 'rejected');
+      chip.style.animation = `fade-out ${FLASH_MS}ms ease-in ${-age}ms forwards`;
+      return chip;
+    });
+  }
+
+  // У входа (.room-queue.entry: первый в DOM — у рамки): вышедшие, за ними ждущие в put — от последнего к первому
+  function renderRoomGivers(queue) {
+    const side = KV.el('div', 'room-queue entry');
+    side.append(...roomLeaving(queue, 'give'));
+    for (const [thread, taskId] of [...queue.putting].reverse()) {
+      side.append(roomChip(thread, `${thread} is inside put(task #${taskId}): waits for a taker · ${UNFAIR}`));
+    }
+    return side;
+  }
+
+  // У выхода — так же: вышедшие, за ними ждущие в take / poll — от последнего к первому
+  function renderRoomTakers(queue) {
+    const side = KV.el('div', 'room-queue exit');
+    side.append(...roomLeaving(queue, 'take'));
+    for (const [thread, method] of [...queue.takers].reverse()) {
+      side.append(roomChip(thread, `${thread} is inside ${method}(): waits for a giver · ${UNFAIR}`));
+    }
+    return side;
+  }
+
+  // Не рамка, а стенка: мест нет даже визуально — задачу положить некуда. Передача — ячейка задачи проезжает
+  // поверх стенки слева направо (от отдающего к получающему) и тает: прошла насквозь, нигде не остановилась
+  function renderRoomFrame(store, queue) {
+    const wall = KV.el('div', 'room-wall');
+    wall.append(KV.el('span', 'room-wall-label', 'handoff'));
+    wall.title = 'capacity 0: nothing is stored — a task goes straight from a giver to a taker';
+    const f = queue.flash, elapsed = f ? performance.now() - f.start : Infinity;
+    if (f?.ok && elapsed < FLASH_MS) {
+      const cell = KV.el('div', 'room-task crossing', `#${f.taskId}`);
+      cell.title = `task #${f.taskId}, ${KV.seconds(store.tasks.get(f.taskId)?.durationMs)} · handed over to ${f.to}`;
+      cell.style.animation = `room-new ${FLASH_MS}ms ease-out ${-elapsed}ms forwards, handoff-cross ${FLASH_MS}ms ease-in-out ${-elapsed}ms forwards`;
+      wall.append(cell);
+    }
+    return wall;
+  }
+
+  // Визиты, которые ещё не устарели (store удаляет старые только при новом событии); незаконченные — всегда
+  const recentVisits = queue => queue.visits.filter(v => v.state === 'inside' || performance.now() - v.at < VISIT_MS);
+
+  // renderHandoff — отдельно: им рисует очередь CachedThreadPool (pool.js), без своих бейджей.
+  // renderRoomState — новый вид для index.html (сравнение со старым renderState на tiles.html); recentVisits — для диорамы
+  return { title: 'SynchronousQueue', params: [], types: [QUEUE, TASK], createStore, create, remove, operations, renderState, renderHandoff, renderRoomState, recentVisits };
 })();

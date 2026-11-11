@@ -9,3 +9,19 @@
 .thread-chip.leaving.ok { border-color: var(--out); }
 .thread-chip.leaving.failed { border-color: var(--fail); }
 .thread-chip.leaving.empty-handed { border-style: dashed; }
+
+/* Вид «комната» (renderRoomState): вместо рамки — стенка «handoff», мест нет. Высота — как у рамки LBQ
+   (ячейка 18 + отступы); по бокам — место, чтобы ячейка задачи проехала поверх стенки, не залезая на плашки */
+.room-wall { position: relative; flex: none; width: 2px; height: 32px; margin: 0 36px; background: var(--border); cursor: default; }
+.room-wall-label {
+  position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+  color: var(--dim); font-size: 10px; line-height: 12px; white-space: nowrap;
+}
+/* Задача поверх стенки — по центру, едет слева направо */
+.room-task.crossing { position: absolute; top: 50%; left: 50%; margin: -9px 0 0 -26px; }
+@keyframes handoff-cross {
+  0% { transform: translateX(-16px); opacity: 0; }
+  15% { opacity: 1; }
+  70% { transform: translateX(16px); opacity: 1; }
+  100% { transform: translateX(16px); opacity: 0; }
+}

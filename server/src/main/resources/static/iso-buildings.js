@@ -341,6 +341,65 @@
     return { set };
   }
 
+  // ---------- Жилой дом с крыльцом ----------
+
+  const HOUSE = { wall: '#fbe9d0', frame: '#fff8ee', lit: '#ffe3a0', door: '#a8744a', doorway: '#4a3a33', stone: '#e6dccb', floorH: 0.8 };
+
+  /**
+   * Жилой дом (общежитие): коробка (x, y) – (x + w, y + d) высотой floors этажей, двускатная крыша вдоль x.
+   * Дверь — посередине ближней грани +y, над ней козырёк и фонарик; перед дверью — низкое крыльцо со ступенькой
+   * (низкое: актёры стоят на земле, z у них нет). Окна — на гранях +y и +x, часть светится (детерминированно).
+   * Почтового ящика нет — у SynchronousQueue задачу оставить негде.
+   * Возвращает doorAt — [x, y] на крыльце у двери (отсюда выходят и сюда уходят жильцы), stepAt — перед ступенькой
+   * (здесь передают пакет), setOpen(open) — дверь открыта (тёмный проём) или закрыта
+   */
+  function house(s, x, y, w, d, floors = 2) {
+    const K = HOUSE, h = floors * K.floorH + 0.2, g = svg('g'), front = y + d + 0.003, side = x + w + 0.003;
+    const dx = x + w / 2, rand = Iso.rng(Math.round((x + y) * 100) + floors);
+    // Цоколь — до стены: стена закрывает его верх, видна только кромка
+    g.append(s.box(x - 0.02, y - 0.02, 0, w + 0.04, d + 0.04, 0.12, shade(K.wall, -0.12)));
+    g.append(s.box(x, y, 0, w, d, h, K.wall));
+
+    // Окно: рама и стекло; некоторые светятся тёплым
+    const glass = () => rand() < 0.3 ? K.lit : C.glass;
+    const window = (plane, at, a, z) => {
+      g.append(s.panel(plane, at, a - 0.04, a + 0.44, z - 0.04, z + 0.48, K.frame), s.panel(plane, at + 0.001, a, a + 0.4, z, z + 0.44, glass()));
+    };
+    for (let f = 0; f < floors; f++) {
+      const z = 0.3 + f * K.floorH;
+      for (let a = x + 0.35; a + 0.45 < x + w - 0.2; a += 0.75) {
+        if (f === 0 && Math.abs(a + 0.2 - dx) < 0.6) continue; // у двери — без окон
+        window('y', front, a, z);
+      }
+      for (let a = y + 0.3; a + 0.45 < y + d - 0.1; a += 0.75) window('x', side, a, z);
+    }
+
+    // Дверь: коробка-рама, полотно (или тёмный проём), ручка; козырёк и фонарик над ней
+    g.append(s.panel('y', front, dx - 0.3, dx + 0.3, 0.12, 0.95, K.frame));
+    const door = svg('g');
+    g.append(door);
+    function setOpen(open) {
+      door.replaceChildren(s.panel('y', front + 0.002, dx - 0.24, dx + 0.24, 0.12, 0.9, open ? K.doorway : K.door));
+      if (!open) door.append(s.panel('y', front + 0.004, dx + 0.14, dx + 0.18, 0.48, 0.53, '#e8d9b0'));
+    }
+    setOpen(false);
+    g.append(s.box(dx - 0.45, y + d, 1.02, 0.9, 0.42, 0.05, C.roof));
+    const [lx, ly] = s.P(dx + 0.4, front, 0.85);
+    g.append(svg('circle', { cx: lx, cy: ly, r: 6, style: 'fill: #ffe9a8; opacity: .35' }), svg('circle', { cx: lx, cy: ly, r: 2.5, style: 'fill: #fff3c4' }));
+
+    g.append(s.gableRoof(x, y, w, d, h, 0.7, C.roof));
+    s.castShadow(x, y, w, d, h + 0.4);
+    s.add(x + y + w * 0.5, g);
+
+    // Крыльцо — в слое земли, а не объектом по глубине: оно почти плоское, и всё, что на нём стоит, всегда поверх
+    // (объектом с глубиной своей середины оно закрывало жильца на левом краю). Шириной на троих: двое ждущих
+    // по бокам от двери, проход посередине
+    const py = y + d, PW = 2.1, PD = 0.6;
+    s.ground.push(s.box(dx - PW / 2, py, 0, PW, PD, 0.05, K.stone), s.box(dx - PW / 2 + 0.1, py + PD, 0, PW - 0.2, 0.22, 0.025, shade(K.stone, -0.05)));
+
+    return { doorAt: [dx, py + 0.3], stepAt: [dx, py + PD + 0.6], porch: [dx - PW / 2, py, dx + PW / 2, py + PD + 0.22], setOpen };
+  }
+
   // ---------- Площадка: скамейка, фонарь, штакетник ----------
 
   // Скамейка: ножки, сиденье, спинка
@@ -373,5 +432,5 @@
     s.add(x0 + y0 + (along === 'x' ? 0 : len / 2), g);
   }
 
-  Object.assign(IsoObjects, { washHouse, fuelStation, conveyor, conveyorLength, warehouse, rack, barrierGate, trafficLight, bench, streetLamp, picket });
+  Object.assign(IsoObjects, { washHouse, fuelStation, conveyor, conveyorLength, warehouse, rack, house, barrierGate, trafficLight, bench, streetLamp, picket });
 })();

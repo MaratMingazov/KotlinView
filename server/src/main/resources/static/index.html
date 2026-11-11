@@ -61,7 +61,7 @@
     .card:hover { transform: translateY(-3px); }
     .card.on { outline: 3px solid var(--keyword); transform: translateY(-3px); }
     /* Одна высота у всех миниатюр (у сцен разные пропорции): вода — фон рамки, остров — по центру */
-    .card svg { display: block; width: 100%; height: 130px; border-radius: 6px; pointer-events: none; background: #79c4df; }
+    .card svg, .card .blank { display: block; width: 100%; height: 130px; border-radius: 6px; pointer-events: none; background: #79c4df; }
     .card .name { padding: 4px 0 2px; font-weight: bold; }
 
     /*
@@ -152,11 +152,13 @@
 <script src="iso-ground.js"></script>
 <script src="iso-buildings.js"></script>
 <script src="iso-nature.js"></script>
+<script src="iso-people.js"></script>
 <script src="diorama-kit.js"></script>
 <script src="diorama-street.js"></script>
 <script src="diorama-pool.js"></script>
 <script src="diorama-semaphore.js"></script>
 <script src="diorama-queue.js"></script>
+<script src="diorama-sync.js"></script>
 <script>
   /*
    * Структуры: плитка (пульт и точный вид) и её диорама. Плитки — те же, что на tiles.html, но с пределами:
@@ -171,40 +173,46 @@
         ['mode', 'ACQUIRE', { options: [['ACQUIRE', 'blocking'], ['TRY_ACQUIRE', 'non-blocking'], ['TRY_ACQUIRE_TIMEOUT', 'timeout 2s']] }]] } },
     { id: 'lbq', diorama: QueueDiorama,
       view: { ...BlockingQueueView, params: [['capacity', 3, { min: 1, max: QueueDiorama.LIMITS.slots }]] } },
+    // Вид плитки — новый («комната»), старый остаётся на tiles.html — для сравнения
+    { id: 'sync', diorama: SyncDiorama,
+      view: { ...SynchronousQueueView, renderState: SynchronousQueueView.renderRoomState } },
   ];
 
   const stage = document.getElementById('stage');
   let selected = null, panel = null; // выбранная структура и её живая диорама (остальные не рисуются)
 
-  // Карточки: миниатюра — демо-снимок диорамы без шапки и табличек
+  // Карточки: миниатюра — демо-снимок диорамы без шапки и табличек; диорамы ещё нет — пустая вода той же высоты
   const carousel = document.getElementById('carousel');
   const cards = new Map();
   for (const item of STRUCTURES) {
-    const { kind, demo, demoShape } = item.diorama;
-    const svg = Kit.show({ ...kind, uid: `${kind.uid}-card` }, demo, demoShape);
-    svg.querySelectorAll(':scope > g[style*="pointer-events: none"], .labels').forEach(n => n.remove());
     const card = KV.el('a', 'card');
     card.href = `#${item.id}`;
-    card.append(svg, KV.el('div', 'name', item.view.title));
+    card.append(item.diorama ? miniature(item.diorama) : KV.el('div', 'blank'), KV.el('div', 'name', item.view.title));
     carousel.append(card);
     cards.set(item.id, card);
+  }
+
+  function miniature({ kind, demo, demoShape }) {
+    const svg = Kit.show({ ...kind, uid: `${kind.uid}-card` }, demo, demoShape);
+    svg.querySelectorAll(':scope > g[style*="pointer-events: none"], .labels').forEach(n => n.remove());
+    return svg;
   }
 
   // Плитки: все живут (их store принимает события), на странице — только плитка выбранной структуры (полоса над диорамой)
   const { tiles, render } = Tiles.mount(STRUCTURES.map(s => s.view), {
     place: tile => { STRUCTURES.find(s => s.view === tile.view).tile = tile; },
-    onRender: () => { if (selected) panel.update(selected.tile); },
+    onRender: () => { if (selected) panel?.update(selected.tile); },
   });
   // Пока плитка спит, диорама показывает «пустой» остров по полю параметров — обновлять при вводе
   for (const tile of tiles) for (const input of Object.values(tile.inputs)) input.addEventListener('input', render);
 
-  // Выбор по адресу (#pool, #sem, #lbq): новая живая диорама — сразу с машинами на местах
+  // Выбор по адресу (#pool, #sem, #lbq, #sync): новая живая диорама — сразу с машинами на местах; нет диорамы — только полоса
   function select() {
     selected = STRUCTURES.find(s => `#${s.id}` === location.hash) ?? STRUCTURES[0];
     for (const [id, card] of cards) card.classList.toggle('on', id === selected.id);
-    panel = Kit.panel(selected.diorama.kind);
-    stage.replaceChildren(selected.tile.el, panel.el); // полоса структуры — сверху, диорама — под ней
-    panel.update(selected.tile);
+    panel = selected.diorama ? Kit.panel(selected.diorama.kind) : null;
+    stage.replaceChildren(selected.tile.el, ...(panel ? [panel.el] : [])); // полоса структуры — сверху, диорама — под ней
+    panel?.update(selected.tile);
   }
   window.addEventListener('hashchange', select);
   select();
