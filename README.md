@@ -140,7 +140,7 @@ REST-запросы — корабли к другим островам-серв
 |---|---|
 | `/api/arraylistint` | `POST` создать, `/{id}/add`, `/{id}/addAt`, `/{id}/get`, `DELETE /{id}` |
 | `/api/linkedlistint` | `POST` создать, `/{id}/add`, `/offer`, `/offerFirst`, `/offerLast`, `/poll`, `/pop`, `DELETE /{id}` |
-| `/api/linkedblockingqueuerunnable` | `POST` создать, `/{id}/offer`, `/{id}/take`, `DELETE /{id}` |
+| `/api/linkedblockingqueuerunnable` | `POST` создать, `/{id}/offer`, `/{id}/put`, `/{id}/take`, `/{id}/poll` (`timeoutMs`), `DELETE /{id}` |
 | `/api/synchronousqueuerunnable` | `POST` создать, `/{id}/offer`, `/{id}/put`, `/{id}/take`, `/{id}/poll` (`timeoutMs`), `DELETE /{id}` |
 | `/api/tasks` | `POST` создать задачу на `durationMs`, `/{id}/run`, `DELETE /{id}` |
 | `/api/threadpoolexecutor` | `POST` создать с параметрами, `/fixed`, `/single`, `/cached`, `/{id}/execute`, `/{id}/shutdown`, `/{id}/shutdownNow`, `DELETE /{id}` |

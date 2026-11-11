@@ -43,6 +43,18 @@ class LinkedBlockingQueueRunnableController(
         return response
     }
 
+    // Не ждёт места: put() идёт в отдельном потоке, когда задача ляжет в очередь — событие METHOD_OUT put
+    @PostMapping("/{queueId}/put")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    fun put(@PathVariable queueId: Long, @RequestBody request: TaskIdRequest): ThreadResponse =
+        ThreadResponse(queueService.put(queueId, request.taskId))
+
+    // Как take, но ждёт не дольше timeoutMs: в отдельном потоке; METHOD_OUT poll — taskId или null (не дождался)
+    @PostMapping("/{queueId}/poll")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    fun poll(@PathVariable queueId: Long, @RequestBody request: TimeoutRequest): ThreadResponse =
+        ThreadResponse(queueService.poll(queueId, request.timeoutMs))
+
     @DeleteMapping("/{queueId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun remove(@PathVariable queueId: Long) = queueService.remove(queueId)

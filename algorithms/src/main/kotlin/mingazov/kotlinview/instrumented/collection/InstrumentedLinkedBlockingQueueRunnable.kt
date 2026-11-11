@@ -56,6 +56,20 @@ class InstrumentedLinkedBlockingQueueRunnable private constructor(
         }
     }
 
+    // Блокирующий: на полной очереди поток ждёт, пока освободится место. Ждёт вне emitLock — никого не держит
+    override fun put(runnable: Runnable) {
+        val args = mapOf("taskId" to InstrumentedRunnableTask.taskIdOf(runnable))
+        emit { state -> MethodIn(ObjectType.LINKED_BLOCKING_QUEUE_RUNNABLE, id, threadName(), "put", args, state) }
+        try {
+            delegate.put(runnable)
+            emit { state -> MethodOut(ObjectType.LINKED_BLOCKING_QUEUE_RUNNABLE, id, threadName(), "put", args, null, state) }
+        } catch (e: Exception) {
+            // Например, InterruptedException
+            emit { MethodOutFailed(ObjectType.LINKED_BLOCKING_QUEUE_RUNNABLE, id, threadName(), "put", args, e.toString(), it) }
+            throw e
+        }
+    }
+
     // METHOD_OUT take может прийти раньше METHOD_OUT offer той же задачи — это честная гонка потоков,
     // но state в них согласован (см. emitLock): последнее событие показывает актуальную очередь
     override fun take(): Runnable {
