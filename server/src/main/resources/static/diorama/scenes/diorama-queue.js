@@ -1,13 +1,15 @@
 /*
- * Диорама LinkedBlockingQueue — «склад с конвейером» — описанием для набора (diorama-kit.js).
- * ящик = задача · конвейер = очередь (хвост у дороги, голова у двора) · транспорт = поток (цвет потока).
- * offer — грузовик (HTTP-поток) едет по дороге сверху с ящиком на крыше и встаёт у хвоста: принят — ящик ложится
+ * Диорама LinkedBlockingQueue — «конвейер-мост между двумя дорогами» — описанием для набора (diorama-kit.js).
+ * ящик = задача · конвейер = очередь (хвост у левой дороги, голова у правой) · транспорт = поток (цвет потока).
+ * Сцена — на парящей плите: слева дорога отдающих (грузовики), справа — берущих (погрузчики), между ними только
+ * конвейер: «производители → очередь → потребители».
+ * offer — грузовик (HTTP-поток) едет по левой дороге сверху с ящиком на крыше и встаёт у хвоста: принят — ящик ложится
  * на ленту, грузовик едет дальше вниз; очередь полна — разворачивается и увозит ящик назад (offer неблокирующий).
- * take — погрузчик (поток в take) выезжает из ворот склада и ждёт на своём месте во дворе (блокирующий: ждёт, пока
- * появится ящик); получил задачу — подъезжает к голове, берёт ящик на вилы и увозит в ворота склада.
+ * take — погрузчик (поток в take) приезжает по правой дороге сверху и ждёт на ней ниже подъезда к голове (блокирующий:
+ * ждёт, пока появится ящик); получил задачу — подъезжает к голове, берёт ящик на вилы и увозит наверх.
  * put — как offer, но на полной ленте грузовик не разворачивается, а ждёт в очереди на дороге перед погрузкой; место
  * освободилось — подъезжает, ящик ложится на хвост. poll — как take, но ждёт не дольше таймаута: не дождался —
- * погрузчик пустым возвращается в ворота.
+ * погрузчик уезжает пустым.
  *
  * Подключение: после diorama-kit.js и diorama-street.js. На index.html нужны ещё blockingqueue.js и tiles.js (снимок).
  * Всё лежит в объекте QueueDiorama: kind — описание для Kit.panel / Kit.show, LIMITS, demo — снимок для prototype.html.
@@ -16,22 +18,21 @@ const QueueDiorama = (() => {
   const { threadColor, PALETTE: C } = Iso;
   const O = IsoObjects;
 
-  // Сколько помещается на острове: мест на ленте (ёмкость больше не даёт поле плитки), ждущих в take / poll во дворе
-  // и ждущих в put на дороге; сверх — «+N» (на местах — первые пришедшие: стоящие не уезжают, когда приходит новый)
+  // Сколько помещается на плите: мест на ленте (ёмкость больше не даёт поле плитки), ждущих в take / poll на правой
+  // дороге и ждущих в put на левой; сверх — «+N» (на местах — первые пришедшие: стоящие не уезжают, когда приходит новый)
   const LIMITS = { slots: 5, waiting: 3, putWaiting: 3 };
-  const PUT_WAIT_STEP = 1.25; // очередь put на дороге: от погрузки вверх (к въезду), шаг — длина машины с зазором
 
-  // Раскладка сцены (клетки мира). Дорога — вдоль y слева, конвейер — от неё вправо, двор со складом — справа
-  const YARD = {
-    island: [-4.6, -7.0, 12.2, 6.6], seed: 5, decorSeed: 13,
-    road: { at: -2.8, ends: [-9.6, 9.2] },  // полоса дороги по x и её концы по y (за мостами)
-    belt: { x0: -1.1, yc: -0.6 },            // хвост конвейера — у дороги; середина ленты по y
-    zonePad: 0.3,                            // рабочая зона вокруг конвейера
-    unload: 1.35,                            // выгрузка: центр погрузчика правее головы — вилы с ящиком за коробом мотора
-    approach: 1.0, wait: { gap: 1.1, step: 1.25, y: 0.75 }, // подъезд к выгрузке; места ожидания — рядом ниже полосы
-    paved: [-2.7, 11.2, 2.6],                // двор: y0, x1, y1; слева — вплотную к рабочей зоне
-    warehouse: { x: 6.6, y: -3.9, w: 4.4, d: 1.2, h: 1.3, gate: 1 }, // склад и ворота, через которые ездят погрузчики
-    racks: [[6.0, 1.8, 3], [8.5, 1.8, 3]],   // стеллажи у края двора: не на пути погрузчиков
+  // Раскладка сцены (клетки мира): обе дороги — вдоль y, конвейер — между ними. Плита — вплотную к содержимому:
+  // по y хватает на очередь put выше погрузки и на ждущих take ниже подъезда
+  const BRIDGE = {
+    slab: [-2.9, -4.0, 6.7, 2.6], seed: 5, decorSeed: 13,
+    road: -2.8,                   // левая дорога (отдающие): начало полосы по x
+    takeRoad: 5.4,                // правая дорога (берущие)
+    belt: { x0: -1.1, yc: -0.6 }, // хвост конвейера — у левой дороги; середина ленты по y
+    zonePad: 0.3,                 // рабочая зона вокруг конвейера
+    unload: 1.35,                 // выгрузка: центр погрузчика правее головы — вилы с ящиком за коробом мотора
+    putStep: 1.1,                 // очередь put на левой дороге: от погрузки вверх, шаг — длина машины с зазором
+    waitStep: 1.1,                // ждущие take на правой дороге: от подъезда вниз
   };
 
   /**
@@ -52,22 +53,23 @@ const QueueDiorama = (() => {
   const titleOf = snap => [`LinkedBlockingQueue(${snap.capacity})`,
     `${snap.queue.length} / ${snap.capacity} · ${waitingPuts(snap).length} waiting in put · ${snap.waiting.length} waiting in take / poll`];
   const waitingPuts = snap => snap.puts.filter(p => p.accepted === null);
-  const beltLines = snap => ['queue: offer → tail (at the road), take ← head (at the yard)', `${snap.queue.length} / ${snap.capacity}`];
+  const beltLines = snap => ['queue: offer → tail (left road), take ← head (right road)', `${snap.queue.length} / ${snap.capacity}`];
 
   // ---------- Сцена ----------
 
   /**
-   * Неподвижная сцена: остров, дорога вдоль y, рабочая зона с конвейером на shape.capacity мест, двор со складом.
-   * Места: на дороге — north (въезд), load (у хвоста), south (выезд); во дворе — gate (у ворот склада), unload
-   * (у головы), approach (подъезд к ней), wait0… (места ожидания take) и их выезды на полосу двора
+   * Неподвижная сцена: плита, две дороги вдоль y, между ними — рабочая зона с конвейером на shape.capacity мест.
+   * Места: на левой дороге — north (въезд), putWait0… (очередь put), load (у хвоста), south (выезд); на правой —
+   * gate (въезд и выезд погрузчиков, сверху), approach (подъезд к голове), wait0… (ждущие take / poll, ниже подъезда);
+   * unload — у головы, между конвейером и правой дорогой
    */
   function layout(s, shape) {
-    const L = YARD, cap = shape.capacity;
-    const st = Kit.street(s, { island: L.island, seed: L.seed, axis: 'y', at: L.road.at, ends: L.road.ends, entry: 'north', exit: 'south' });
+    const L = BRIDGE, cap = shape.capacity;
+    const st = Kit.street(s, { island: L.slab, seed: L.seed, axis: 'y', at: L.road, ground: 'slab', entry: 'north', exit: 'south' });
     s.title(['LinkedBlockingQueue', '…']);
 
-    // Конвейер на рабочей зоне: хвост у дороги; лента всегда на LIMITS.slots мест, сверх ёмкости — закрыты у хвоста
-    // (сцена одна при любой ёмкости, двор — вплотную к зоне, погрузчики не едут по траве)
+    // Конвейер на рабочей зоне: хвост у левой дороги; лента всегда на LIMITS.slots мест, сверх ёмкости — закрыты у хвоста
+    // (сцена одна при любой ёмкости)
     const D = 1.5, by0 = L.belt.yc - D / 2, len = O.conveyorLength(LIMITS.slots), headX = L.belt.x0 + len;
     const zone = [L.belt.x0 - L.zonePad, by0 - L.zonePad, headX + 0.45 + L.zonePad, by0 + D + L.zonePad]; // + короб мотора
     O.workZone(s, ...zone);
@@ -75,41 +77,33 @@ const QueueDiorama = (() => {
     // Счётчик — у дальнего угла зоны за мотором: у хвоста его табличка закрывала бы грузовик
     const counter = O.sign(s, zone[2] - 0.15, zone[1] - 0.25, `0 / ${cap}`, C.text);
 
-    // Двор: плитка, склад, стеллажи
-    const yard = [zone[2], ...L.paved];
-    O.paved(s, ...yard);
-    const W = L.warehouse, house = O.warehouse(s, W.x, W.y, W.w, W.d, W.h);
-    for (const [x, y, n] of L.racks) O.rack(s, x, y, n);
+    // Левая дорога (отдающие): погрузка у хвоста, выше — очередь put, первый пришедший — ближе к погрузке
+    const y = L.belt.yc;
+    st.lanePlace('load', y);
+    const putLine = st.waitLine('putWait', LIMITS.putWaiting, i => y - L.putStep * (i + 1));
 
-    // Дорога: погрузка — у хвоста; выше неё — очередь put (ждут места на ленте), первый пришедший — ближе к погрузке
-    st.lanePlace('load', L.belt.yc);
-    const putLine = st.waitLine('putWait', LIMITS.putWaiting, i => L.belt.yc - PUT_WAIT_STEP * (i + 1));
-
-    // Двор: полоса вдоль головы (y = yc) — выгрузка, подъезд, выезды мест ожидания, поворот к воротам; места ожидания —
-    // ниже полосы (там стоящие погрузчики не мешают едущим по ней); ворота — выше
-    const y = L.belt.yc, unloadX = headX + L.unload, approachX = unloadX + L.approach;
-    const [gateX, gateY] = house.gateAt(W.gate);
-    st.place('unload', [unloadX, y]);
-    st.place('approach', [approachX, y]);
-    st.place('gateJoin', [gateX, y]);
-    st.place('gate', [gateX, gateY + 0.45]);
-    const yardLane = ['unload', 'approach', 'gateJoin'];
-    const links = [['gate', 'gateJoin']];
-    const waitX = i => approachX + L.wait.gap + i * L.wait.step;
+    // Правая дорога (берущие) — от края до края плиты; погрузчики въезжают и уезжают сверху (gate), ждут на полосе ниже
+    // подъезда (первый — ближе к нему); выгрузка — у головы, между конвейером и дорогой
+    const band = [L.takeRoad, L.takeRoad + 1.2], laneX = L.takeRoad + O.ROAD.lane;
+    const top = L.slab[1] - 0.6 + 0.35, bottom = L.slab[3] + 0.6 - 0.35; // края плиты по y (как у Kit.street)
+    O.road(s, top, bottom, { axis: 'y', v0: band[0], v1: band[1] });
+    st.place('unload', [headX + L.unload, y]);
+    st.place('gate', [laneX, top - 0.3]);
+    st.place('approach', [laneX, y]);
+    const takeLane = ['gate', 'approach'];
     for (let i = 0; i < LIMITS.waiting; i++) {
-      st.place(`wait${i}`, [waitX(i), L.wait.y]);
-      st.place(`waitLane${i}`, [waitX(i), y]);
-      yardLane.push(`waitLane${i}`);
-      links.push([`waitLane${i}`, `wait${i}`]);
+      st.place(`wait${i}`, [laneX, y + L.waitStep * (i + 1)]);
+      takeLane.push(`wait${i}`);
     }
-    links.push(...Kit.lane(st.places, yardLane));
+    const links = [['unload', 'approach'], ...Kit.lane(st.places, takeLane, 'y')];
     // Ждущих больше мест — «+N» над последним
-    const more = s.label(waitX(LIMITS.waiting - 1), L.wait.y, 0.95, ['+0'], { permanent: true });
+    const more = s.label(laneX, y + L.waitStep * LIMITS.waiting, 0.95, ['+0'], { permanent: true });
 
     const cargoPlaces = Object.fromEntries(Array.from({ length: cap }, (_, i) => [`slot${i}`, belt.slotAt(i)]));
 
-    // Растительность — не на рабочей зоне, не во дворе и не у дороги там, где стоит грузовик
-    st.keepOut(zone, [yard[0] - 0.3, W.y - 0.3, yard[2] + 0.3, yard[3] + 0.3], [L.road.at - 0.5, y - 1.6, L.belt.x0, y + 2.2]);
+    // Растительность — не на рабочей зоне, не на правой дороге, не между головой и ней, не у погрузки
+    st.keepOut(zone, [band[0] - 0.3, top - 1, band[1] + 0.3, bottom + 1], [zone[2], y - 0.5, band[0], y + 0.5],
+      [L.road - 0.5, y - 1.6, L.belt.x0, y + 2.2]);
 
     function update(snap) {
       s.retitle(titleOf(snap));
@@ -121,10 +115,10 @@ const QueueDiorama = (() => {
       putLine.update(waitingPuts(snap).length);
     }
 
-    // Поставленные сразу (первая расстановка, статичный показ) — как приехали бы: грузовики — вниз по дороге,
-    // у выгрузки — вилами к ленте, ждущие — к зрителю
+    // Поставленные сразу (первая расстановка, статичный показ) — как приехали бы: грузовики — вниз по левой дороге,
+    // у выгрузки — вилами к ленте, ждущие на правой — к подъезду (вверх)
     const facing = { load: 'y+', unload: 'x-', gate: 'y+',
-      ...Object.fromEntries(Array.from({ length: LIMITS.waiting }, (_, i) => [`wait${i}`, 'y+'])),
+      ...Object.fromEntries(Array.from({ length: LIMITS.waiting }, (_, i) => [`wait${i}`, 'y-'])),
       ...Object.fromEntries(Array.from({ length: LIMITS.putWaiting }, (_, i) => [`putWait${i}`, 'y+'])) };
     return st.layout(L.decorSeed, { links, cargoPlaces, update, facing });
   }
@@ -133,8 +127,8 @@ const QueueDiorama = (() => {
    * Кто где. offer — грузовик на визит (ключ визита: один HTTP-поток может сделать несколько offer подряд): сверху
    * к погрузке; принят — дальше вниз, отклонён — разворачивается и назад наверх. put — грузовик на визит: ждёт места
    * в очереди на дороге (первые пришедшие — на местах, остальные — «+N»), положил — от погрузки вниз. take / poll —
-   * погрузчик на поток: из ворот склада на своё место ожидания; получил задачу — к выгрузке, оттуда с ящиком в ворота;
-   * poll не дождался — пропал из снимка и пустым едет в ворота
+   * погрузчик на поток: по правой дороге сверху (gate) на своё место ожидания; получил задачу — к выгрузке, оттуда
+   * с ящиком наверх; poll не дождался — пропал из снимка и пустым уезжает наверх
    */
   function actorsOf(snap) {
     const actor = (key, thread, place, lines, model, entry, exit) => {
@@ -213,7 +207,7 @@ const QueueDiorama = (() => {
 
   /** @type {Kind} */
   const kind = {
-    name: 'queue', uid: 'lbq',
+    name: 'queue', uid: 'lbq', backdrop: 'none', // плита парит над страницей — без воды
     shapeOf(tile) {
       const queue = Tiles.itemOf(tile);
       const capacity = Math.min(queue?.capacity ?? Kit.field(tile, 'capacity', LIMITS.slots), LIMITS.slots);

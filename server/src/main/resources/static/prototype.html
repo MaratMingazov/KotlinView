@@ -37,9 +37,10 @@
 
 <section>
   <div class="diorama-title">Conveyor = LinkedBlockingQueue</div>
-  <div class="legend">crate = task · conveyor = queue (head on the right) · car = thread (in its color): offer brings a crate from the left, take picks one up on the right</div>
+  <div class="legend">crate = task · conveyor = queue between two roads · truck = thread in offer / put (left road) · forklift = thread in take / poll (right road)</div>
   <div id="queueRoot"></div>
 </section>
+
 
 <section>
   <div class="diorama-title">Delivery to the door = SynchronousQueue</div>
