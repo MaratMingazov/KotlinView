@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <title>KotlinView — dioramas</title>
-  <!-- Только палитра страницы и шрифт из base.css. Ни сервера, ни WebSocket: статичные снимки -->
+  <!-- Пробы, которые сейчас сравниваем, и сцена в работе (статичный демо-снимок); готовые диорамы — на index.html. Только палитра страницы и шрифт из base.css.
+       Ни сервера, ни WebSocket: статичные снимки -->
   <link rel="stylesheet" href="core/base.css">
   <style>
     body { max-width: 1100px; margin: 16px auto; }
@@ -20,53 +21,27 @@
 
 <header>
   <h2>Dioramas</h2>
-  <span class="dim">static snapshots, no server · hover objects for details</span>
+  <span class="dim">probes to compare · static snapshots, no server · hover objects for details</span>
 </header>
 
+<!-- Порт CachedThreadPool (diorama-cached.js) — демо-снимок, как миниатюра в карусели index.html -->
 <section>
-  <div class="diorama-title">Car wash = fixed thread pool</div>
-  <div class="legend">car = task · road marks = queue slots · wash bay = worker thread (awning in its color)</div>
-  <div id="washRoot"></div>
+  <div class="diorama-title">Cargo port = CachedThreadPool (max 2 cranes)</div>
+  <div class="legend">barge = caller thread in execute · container = task · gantry crane = worker (in its color) · hangar = ThreadFactory · no yard at the pier: SynchronousQueue, the crane takes the container straight from the barge · run() = the crane stays, its trolley carries the container to its hazard-striped slot · done = the container stays on the slot while the run fades</div>
+  <div id="portRoot"></div>
 </section>
 
-<section>
-  <div class="diorama-title">Fuel station behind a barrier = semaphore guarding a task</div>
-  <div class="legend">car = runner thread (in its color) · barrier + traffic light = semaphore · double-sided pump = task (up to 2 permits) · fueling = run()</div>
-  <div id="barrierRoot"></div>
-</section>
-
-<section>
-  <div class="diorama-title">Conveyor = LinkedBlockingQueue</div>
-  <div class="legend">crate = task · conveyor = queue between two roads · truck = thread in offer / put (left road) · forklift = thread in take / poll (right road)</div>
-  <div id="queueRoot"></div>
-</section>
-
-
-<section>
-  <div class="diorama-title">Delivery to the door = SynchronousQueue</div>
-  <div class="legend">food bag = task · courier = thread in put / offer · resident = thread in take (in its color) · no mailbox: hand to hand only</div>
-  <div id="syncRoot"></div>
-</section>
-
-<!-- Порядок важен: движок → реквизит → набор → описания структур -->
+<!-- Движок → реквизит → набор → описание сцены -->
 <script src="diorama/engine/iso-scene.js"></script>
 <script src="diorama/props/iso-vehicles.js"></script>
 <script src="diorama/props/iso-ground.js"></script>
 <script src="diorama/props/iso-buildings.js"></script>
 <script src="diorama/props/iso-nature.js"></script>
-<script src="diorama/props/iso-people.js"></script>
+<script src="diorama/props/iso-port.js"></script>
 <script src="diorama/kit/diorama-kit.js"></script>
-<script src="diorama/kit/diorama-street.js"></script>
-<script src="diorama/scenes/diorama-pool.js"></script>
-<script src="diorama/scenes/diorama-semaphore.js"></script>
-<script src="diorama/scenes/diorama-queue.js"></script>
-<script src="diorama/scenes/diorama-sync.js"></script>
+<script src="diorama/scenes/diorama-cached.js"></script>
 <script>
-  // Диорамы — на наборе (diorama-kit.js): описание структуры + демо-снимок
-  document.getElementById('washRoot').replaceChildren(Kit.show(PoolDiorama.kind, PoolDiorama.demo, PoolDiorama.demoShape));
-  document.getElementById('barrierRoot').replaceChildren(Kit.show(SemaphoreDiorama.kind, SemaphoreDiorama.demo, SemaphoreDiorama.demoShape));
-  document.getElementById('queueRoot').replaceChildren(Kit.show(QueueDiorama.kind, QueueDiorama.demo, QueueDiorama.demoShape));
-  document.getElementById('syncRoot').replaceChildren(Kit.show(SyncDiorama.kind, SyncDiorama.demo, SyncDiorama.demoShape));
+  document.getElementById('portRoot').replaceChildren(Kit.show(CachedDiorama.kind, CachedDiorama.demo, CachedDiorama.demoShape));
 </script>
 </body>
 </html>

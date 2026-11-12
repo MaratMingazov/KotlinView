@@ -1,6 +1,6 @@
 /*
  * ThreadPoolExecutor: модель по событиям WebSocket, отрисовка состояния пула и REST-вызовы.
- * Плитки на index.html и tiles.html.
+ * Плитки на index.html.
  * Подключение: после base.js, components.js и synchronousqueue.js (очередь CachedThreadPool).
  * Стили — pool.css и synchronousqueue.css. Всё лежит в объекте Pool.
  *
@@ -42,9 +42,9 @@ const Pool = (() => {
   const api = {
     // Пул появится по событию OBJECT_CREATED; ответ ({ objectId }) нужен, чтобы знать, чей это пул
     create: config => UI.call('POST', base, config),
-    createSingle: () => UI.call('POST', `${base}/single`),
     createFixed: nThreads => UI.call('POST', `${base}/fixed`, { nThreads }),
-    createCached: () => UI.call('POST', `${base}/cached`),
+    // maxThreads не задан — по умолчанию сервера (5)
+    createCached: maxThreads => maxThreads ? UI.call('POST', `${base}/cached`, { maxThreads }) : UI.call('POST', `${base}/cached`),
     // execute новой задачи — два обычных запроса подряд: сервер принимает только taskId
     async execute(poolId, durationMs = TASK_DURATION_MS) {
       const created = await UI.call('POST', tasksBase, { durationMs });
@@ -74,12 +74,12 @@ const Pool = (() => {
 
   // Узнать готовую конфигурацию Executors по параметрам: сервер не помечает пул, но набор параметров однозначен.
   // Очередь — как в пресетах сервера (PRESET_QUEUE_CAPACITY = 5), а не бесконечная, как в JDK.
-  // Cached — как на сервере: не больше 5 потоков и keepAlive 10 с (в JDK — Integer.MAX_VALUE и 60 с)
+  // Cached — как на сервере: core 0, SynchronousQueue, keepAlive 10 с (в JDK — 60 с); максимум потоков — любой
+  // (на сервере по умолчанию 5, страница может задать свой — maxThreads)
   const PRESET_QUEUE_CAPACITY = 5;
-  const CACHED_MAX_THREADS = 5;
   const CACHED_KEEP_ALIVE_MS = 10000;
   function presetOf(s, queueCapacity) {
-    const cached = s.corePoolSize === 0 && s.maximumPoolSize === CACHED_MAX_THREADS && s.keepAliveMs === CACHED_KEEP_ALIVE_MS && queueCapacity === 0;
+    const cached = s.corePoolSize === 0 && s.keepAliveMs === CACHED_KEEP_ALIVE_MS && queueCapacity === 0;
     if (cached) return 'newCachedThreadPool()';
     const fixed = s.corePoolSize === s.maximumPoolSize && s.keepAliveMs === 0 && queueCapacity === PRESET_QUEUE_CAPACITY;
     if (!fixed) return null;
@@ -280,7 +280,7 @@ const Pool = (() => {
       }, fadeMs);
     }
 
-    // items — то же, что pools: под этим именем store читают плитки tiles.html (общее описание структуры)
+    // items — то же, что pools: под этим именем store читают плитки (tiles.js — общее описание структуры)
     return { pools, items: pools, queues, sync, factories, threads, polling, tasks, apply, notify, queueById, queueCapacity };
   }
 
@@ -290,7 +290,7 @@ const Pool = (() => {
    * Состояние пула — элементы подряд: статус, строка-уведомление, «комната» (общие стили .room* — components.css):
    * труба очереди (голова справа, хвост слева — как у LinkedBlockingQueue), правее — рамка воркеров
    */
-  // options.status: false — без runState в ряду бейджей (плитка tiles.html показывает его рядом с названием)
+  // options.status: false — без runState в ряду бейджей (плитка показывает его рядом с названием)
   function renderState(store, pool, options = {}) {
     const status = renderStatus(pool, options.status !== false);
     if (!pool.state) return [status];
@@ -300,6 +300,10 @@ const Pool = (() => {
     renderFlights(row, flights);
     return [status, renderNotice(pool), row];
   }
+
+  // Визиты execute, которые ещё не устарели (store удаляет старые только при новом execute); незаконченные — всегда.
+  // Нужны плитке (плашки у входа) и диораме порта (баржи)
+  const recentVisits = pool => pool.visits.filter(v => v.outcome === null || performance.now() - v.at < VISIT_MS);
 
   // Задачи, которые ещё летят к своему воркеру: firstTask (новому) и handed (ждущему в poll SynchronousQueue)
   const flightsOf = pool => pool.visits.filter(v => v.worker && performance.now() - v.flyAt < FLY_MS);
@@ -345,23 +349,18 @@ const Pool = (() => {
   function renderCallers(pool) {
     const side = KV.el('div', 'room-queue entry');
     const now = performance.now();
-    const recent = pool.visits.filter(v => v.outcome === null || now - v.at < VISIT_MS);
-    for (const v of recent.slice(-CALLERS_SHOWN).reverse()) {
+    for (const v of recentVisits(pool).slice(-CALLERS_SHOWN).reverse()) {
       const call = `execute(task #${v.taskId})`, age = now - v.at;
-      const chip = KV.el('div', v.outcome === 'rejected' ? 'room-chip rejected' : 'room-chip');
+      const title = v.outcome === null ? `${v.thread} is inside ${call}`
+        : v.outcome === 'rejected' ? `${v.thread}: ${call} ✗ RejectedExecutionException`
+        : v.outcome === 'queued' ? `${v.thread}: ${call} — the task went to the queue`
+        : v.outcome === 'handed' ? `${v.thread}: ${call} — handed over to a worker waiting in poll()`
+        : `${v.thread}: ${call} — the pool created a worker and gave it the task (firstTask, past the queue)`;
+      const chip = KV.roomChip(v.thread, title, v.outcome === 'rejected' ? 'rejected' : '');
       chip.dataset.visit = v.id; // отсюда вылетает задача к воркеру (firstTask, handed)
-      chip.style.setProperty('--thread', KV.threadColor(v.thread));
-      chip.append(KV.el('span', 'name', KV.THREAD_LABEL));
-      if (v.outcome === null) chip.title = `${v.thread} is inside ${call}`;
-      else if (v.outcome === 'rejected') {
-        chip.title = `${v.thread}: ${call} ✗ RejectedExecutionException`;
-        chip.style.animation = `room-bounce ${VISIT_MS}ms ease-in-out ${-age}ms forwards`;
-      } else {
-        chip.title = v.outcome === 'queued' ? `${v.thread}: ${call} — the task went to the queue`
-          : v.outcome === 'handed' ? `${v.thread}: ${call} — handed over to a worker waiting in poll()`
-          : `${v.thread}: ${call} — the pool created a worker and gave it the task (firstTask, past the queue)`;
-        chip.style.animation = `fade-out ${VISIT_MS}ms ease-in ${-age}ms forwards`;
-      }
+      // Ещё внутри — просто стоит; отказ — отскакивает; иначе — тает: execute для вызывающего закончился
+      if (v.outcome === 'rejected') chip.style.animation = `room-bounce ${VISIT_MS}ms ease-in-out ${-age}ms forwards`;
+      else if (v.outcome !== null) chip.style.animation = `fade-out ${VISIT_MS}ms ease-in ${-age}ms forwards`;
       side.append(chip);
     }
     return side;
@@ -511,8 +510,8 @@ const Pool = (() => {
     return place;
   }
 
-  // ---------- Описание для плиток tiles.html ----------
-  // Как у ArrayListView / LinkedListView: title, params, types, createStore, create(values), remove, operations, renderState
+  // ---------- Описание для плиток (tiles.js) ----------
+  // Как у остальных структур: title, params, types, createStore, create(values), remove, operations, renderState
 
   const operations = ['execute', 'shutdown', 'shutdownNow'].map(name => ({ name, fields: [], title: titles[name], run: id => api[name](id) }));
   // В плитке runState стоит сразу после названия (renderTitleExtra), поэтому в ряду бейджей его нет
@@ -521,9 +520,10 @@ const Pool = (() => {
     renderState: (store, pool) => renderState(store, pool, { status: false }),
     renderTitleExtra: (store, pool) => pool.state ? [renderRunState(pool)] : [],
   });
-  const single = view('SingleThreadExecutor', [], () => api.createSingle());
   const fixed = view('FixedThreadPool', [['nThreads', 2]], values => api.createFixed(values.nThreads));
-  const cached = view('CachedThreadPool', [], () => api.createCached());
+  // cachedOf(n) — cached-пул не больше n потоков (порт на index.html — 2 крана); cached — по умолчанию сервера (5)
+  const cachedOf = maxThreads => view('CachedThreadPool', [], () => api.createCached(maxThreads));
+  const cached = cachedOf(null);
 
-  return { PRESET_QUEUE_CAPACITY, presetOf, single, fixed, cached };
+  return { PRESET_QUEUE_CAPACITY, presetOf, fixed, cached, cachedOf, recentVisits };
 })();

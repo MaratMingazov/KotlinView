@@ -92,8 +92,6 @@
     /* Первая строка — бейджи методов (у пула: execute / shutdown / shutdownNow / terminated), под ними — очередь,
        правее неё — воркеры */
     .tile-body > .badges { flex-basis: 100%; }
-    .tile-body .part { margin-top: 0; padding-top: 0; border-top: none; }
-    .tile-body .chain { margin-top: 0; min-height: 0; }
     .tile-body .notice, .tile-body .semtask-notice { flex-basis: 100%; min-height: 0; margin-top: 0; }
     .tile-body .notice:empty { display: none; }
     /* Спящая — в одну строку: название, параметры, start */
@@ -119,7 +117,6 @@
     </a>
     <nav class="topnav">
       <a class="current" href="index.html">Dioramas</a>
-      <a href="tiles.html">Tiles</a>
       <a class="disabled" title="soon">Docs</a>
     </nav>
   </div>
@@ -155,22 +152,24 @@
 <script src="diorama/props/iso-buildings.js"></script>
 <script src="diorama/props/iso-nature.js"></script>
 <script src="diorama/props/iso-people.js"></script>
+<script src="diorama/props/iso-port.js"></script>
 <script src="diorama/kit/diorama-kit.js"></script>
 <script src="diorama/kit/diorama-street.js"></script>
 <script src="diorama/scenes/diorama-pool.js"></script>
 <script src="diorama/scenes/diorama-semaphore.js"></script>
 <script src="diorama/scenes/diorama-queue.js"></script>
 <script src="diorama/scenes/diorama-sync.js"></script>
+<script src="diorama/scenes/diorama-cached.js"></script>
 <script>
   /*
-   * Структуры: плитка (пульт и точный вид) и её диорама. Плитки — те же, что на tiles.html, но с пределами:
+   * Структуры: плитка (пульт и точный вид) и её диорама. Плитки — с пределами:
    * столько, сколько помещается на острове (LIMITS описания). id — адрес (#pool), diorama — описание для набора
    */
   const STRUCTURES = [
     { id: 'pool', diorama: PoolDiorama,
       view: { ...Pool.fixed, params: [['nThreads', 2, { min: 1, max: PoolDiorama.LIMITS.bays }]] } },
-    // Диорамы ещё нет — в карусели пустая вода, на сцене только полоса. Параметров нет: сервер даёт не больше 5 потоков
-    { id: 'cached', view: Pool.cached },
+    // Поля ввода нет: пул — не больше стольких потоков, сколько кранов в порту (на сервере по умолчанию 5)
+    { id: 'cached', diorama: CachedDiorama, view: Pool.cachedOf(CachedDiorama.LIMITS.cranes) },
     { id: 'sem', diorama: SemaphoreDiorama,
       // durationMs, fair, timeoutMs не вводятся: по умолчанию (5000 и false — сервер, 2000 — create в semaphoretask.js)
       view: { ...SemaphoreTaskView, params: [['permits', 2, { min: 1, max: SemaphoreDiorama.LIMITS.inside }],
@@ -207,7 +206,7 @@
   // Пока плитка спит, диорама показывает «пустой» остров по полю параметров — обновлять при вводе
   for (const tile of tiles) for (const input of Object.values(tile.inputs)) input.addEventListener('input', render);
 
-  // Выбор по адресу (#pool, #sem, #lbq, #sync): новая живая диорама — сразу с машинами на местах; нет диорамы — только полоса
+  // Выбор по адресу (#pool, #cached, #sem, #lbq, #sync): новая живая диорама — сразу с машинами на местах; нет диорамы — только полоса
   function select() {
     selected = STRUCTURES.find(s => `#${s.id}` === location.hash) ?? STRUCTURES[0];
     for (const [id, card] of cards) card.classList.toggle('on', id === selected.id);

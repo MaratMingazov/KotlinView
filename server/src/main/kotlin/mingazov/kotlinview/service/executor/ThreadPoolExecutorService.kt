@@ -62,21 +62,22 @@ class ThreadPoolExecutorService(
      * Как Executors.newCachedThreadPool(): core = 0, очередь — SynchronousQueue (ничего не хранит).
      * execute отдаёт задачу воркеру, который ждёт в poll(keepAlive); если такого нет — пул создаёт новый поток.
      * Простаивающие воркеры умирают по keepAlive — пул сжимается до нуля.
-     * Отличие от JDK: потоков не больше CACHED_MAX_THREADS (в JDK — Integer.MAX_VALUE), чтобы был виден отказ,
-     * и keepAlive CACHED_KEEP_ALIVE_MS (в JDK — 60 с), чтобы смерть потоков можно было дождаться
+     * Отличие от JDK: потоков не больше maxThreads (по умолчанию CACHED_MAX_THREADS; в JDK — Integer.MAX_VALUE), чтобы
+     * был виден отказ, и keepAlive CACHED_KEEP_ALIVE_MS (в JDK — 60 с), чтобы смерть потоков можно было дождаться.
+     * maxThreads задаёт страница: диорама порта на index.html рисует не больше 2 кранов — пул ограничен так же
      */
-    fun newCachedThreadPool(): InstrumentedThreadPoolExecutor<*> {
-        requirePoolParams(0, CACHED_MAX_THREADS, CACHED_KEEP_ALIVE_MS)
+    fun newCachedThreadPool(maxThreads: Int = CACHED_MAX_THREADS): InstrumentedThreadPoolExecutor<*> {
+        requirePoolParams(0, maxThreads, CACHED_KEEP_ALIVE_MS)
         val queue = synchronousQueueRegistry.create()
         val threadFactory = threadFactoryRegistry.create()
-        return poolRegistry.create(0, CACHED_MAX_THREADS, CACHED_KEEP_ALIVE_MS, queue, threadFactory)
+        return poolRegistry.create(0, maxThreads, CACHED_KEEP_ALIVE_MS, queue, threadFactory)
     }
 
     private companion object {
         /** В JDK у fixed и single очередь неограниченная (LinkedBlockingQueue()). У нас — 5, чтобы заполнение было видно. */
         const val PRESET_QUEUE_CAPACITY = 5
 
-        /** В JDK у cached потоков до Integer.MAX_VALUE и keepAlive 60 с. У нас — 5 потоков и 10 с. */
+        /** В JDK у cached потоков до Integer.MAX_VALUE и keepAlive 60 с. У нас — по умолчанию 5 потоков, keepAlive 10 с. */
         const val CACHED_MAX_THREADS = 5
         const val CACHED_KEEP_ALIVE_MS = 10_000L
     }

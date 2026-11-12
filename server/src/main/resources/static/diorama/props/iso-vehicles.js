@@ -92,17 +92,20 @@ const IsoObjects = {};
    * build(sc, dir) — нарисовать модель в начале координат. go(points) — проехать через точки [x, y] с постоянной
    * скоростью (speed клеток в секунду), но не быстрее minMs: даже короткий перегон виден глазу. Плавный разгон
    * и торможение. update(now) — на каждом кадре; true — ещё едет.
-   * cargo — где лежит груз: { z, ahead } — высота и вынос вперёд по направлению (у погрузчика — на вилах)
+   * cargo — где лежит груз: { z, ahead } — высота и вынос вперёд по направлению (у погрузчика — на вилах).
+   * single — одна модель на все направления (кран на рельсах не разворачивается): build(sc, 'x') строится один раз
    */
-  function vehicleActor(s, key, build, { z: cargoZ = 0.5, ahead = 0 } = {}) {
-    const models = Object.fromEntries(['x', 'x-', 'y-', 'y+'].map(dir => [dir, s.actor(`${key}~${dir}`, sc => build(sc, dir))]));
+  function vehicleActor(s, key, build, { z: cargoZ = 0.5, ahead = 0, single = false } = {}) {
+    const DIRS = ['x', 'x-', 'y-', 'y+'];
+    const one = single ? s.actor(`${key}~any`, sc => build(sc, 'x')) : null;
+    const models = Object.fromEntries(DIRS.map(dir => [dir, one ?? s.actor(`${key}~${dir}`, sc => build(sc, dir))]));
     let dir = null, route = null;
     const pos = { x: 0, y: 0 };
 
     function moveTo(x, y, d = dir ?? 'x') {
       Object.assign(pos, { x, y });
       if (d !== dir) {
-        for (const [k, m] of Object.entries(models)) m.show(k === d);
+        if (!one) for (const [k, m] of Object.entries(models)) m.show(k === d);
         dir = d;
       }
       models[d].moveTo(x, y);
@@ -133,7 +136,7 @@ const IsoObjects = {};
       return route != null;
     }
 
-    function remove() { for (const m of Object.values(models)) m.remove(); }
+    function remove() { for (const m of new Set(Object.values(models))) m.remove(); }
 
     // К какой из точек последнего go(points) актёр едет сейчас (индекс в points); null — стоит
     function heading() {

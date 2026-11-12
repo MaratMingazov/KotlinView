@@ -1,6 +1,6 @@
 /*
  * LinkedBlockingQueue<Runnable>: модель по событиям WebSocket, отрисовка очереди и REST-вызовы.
- * Плитки на index.html и tiles.html.
+ * Плитка на index.html.
  * Подключение: после base.js и components.js. Всё лежит в объекте BlockingQueueView.
  *
  * Вид — «труба» (общие стили .room* — components.css): рамка с ячейками до capacity, голова справа, хвост слева —
@@ -182,14 +182,6 @@ const BlockingQueueView = (() => {
     return row;
   }
 
-  function pipeChip(thread, title, cls = '') {
-    const chip = KV.el('div', `room-chip ${cls}`.trim());
-    chip.style.setProperty('--thread', KV.threadColor(thread));
-    chip.title = title;
-    chip.append(KV.el('span', 'name', KV.THREAD_LABEL));
-    return chip;
-  }
-
   /**
    * У входа (.room-queue.entry: первый в DOM — у рамки): кто ждёт в put (очередь полна) — в порядке прихода, первый
    * у рамки; за ними — кто только что сделал offer / put: новые ближе. Только что сделавших — не больше OFFERS_SHOWN:
@@ -200,18 +192,18 @@ const BlockingQueueView = (() => {
     const side = KV.el('div', 'room-queue entry');
     const now = performance.now();
     for (const [thread, taskId] of queue.putters) {
-      side.append(pipeChip(thread, `${thread} is inside put(task #${taskId}): the queue is full, waits for space`));
+      side.append(KV.roomChip(thread, `${thread} is inside put(task #${taskId}): the queue is full, waits for space`));
     }
     // offer ещё внутри (микросекунды) — просто плашка; put внутри уже нарисован выше — ждущим
     const recent = recentVisits(queue).filter(v => !v.failed && (v.method === 'offer' || (v.method === 'put' && v.accepted !== null)));
     for (const v of recent.slice(-OFFERS_SHOWN).reverse()) {
       const age = now - v.at, call = `${v.method}(task #${v.taskId})`;
       if (v.accepted === false) {
-        const chip = pipeChip(v.thread, `${v.thread}: ${call} returned false — the queue is full`, 'rejected');
+        const chip = KV.roomChip(v.thread, `${v.thread}: ${call} returned false — the queue is full`, 'rejected');
         chip.style.animation = `room-bounce ${VISIT_MS}ms ease-in-out ${-age}ms forwards`;
         side.append(chip);
       } else {
-        const chip = pipeChip(v.thread, `${v.thread}: ${call}`);
+        const chip = KV.roomChip(v.thread, `${v.thread}: ${call}`);
         if (v.accepted) chip.style.animation = `fade-out ${VISIT_MS}ms ease-in ${-age}ms forwards`;
         side.append(chip);
       }
@@ -270,14 +262,14 @@ const BlockingQueueView = (() => {
     for (const v of recentVisits(queue)) {
       if ((v.method !== 'take' && v.method !== 'poll') || v.failed) continue;
       const chip = v.accepted
-        ? pipeChip(v.thread, `${v.thread}: ${v.method}() got task #${v.taskId}`)
-        : pipeChip(v.thread, `${v.thread}: poll() timed out — no task appeared`, 'rejected');
+        ? KV.roomChip(v.thread, `${v.thread}: ${v.method}() got task #${v.taskId}`)
+        : KV.roomChip(v.thread, `${v.thread}: poll() timed out — no task appeared`, 'rejected');
       chip.style.animation = `fade-out ${VISIT_MS}ms ease-in ${-(now - v.at)}ms forwards`;
       side.append(chip);
     }
     for (const [thread, w] of queue.takers) {
       const timed = w.timeoutMs != null, call = timed ? `${w.method}(${KV.seconds(w.timeoutMs)})` : `${w.method}()`;
-      const chip = pipeChip(thread, `${thread} is inside ${call}: waits until a task appears${timed ? ', gives up after the timeout' : ''}. ` +
+      const chip = KV.roomChip(thread, `${thread} is inside ${call}: waits until a task appears${timed ? ', gives up after the timeout' : ''}. ` +
         'The order is the order they entered; takeLock is not fair, so the next task may go to any of them');
       if (timed) {
         const bar = KV.el('div', 'countdown');

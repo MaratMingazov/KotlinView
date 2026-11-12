@@ -59,14 +59,7 @@ const KV = (() => {
     return badges;
   }
 
-  // ---------- Цепочка узлов ----------
-
-  // Узел цепочки: метка (head/tail), значение, позиция
-  function node(value, label, index) {
-    const n = el('div', 'node');
-    n.append(el('div', 'label', label), el('div', 'box', String(value)), el('div', 'idx', String(index)));
-    return n;
-  }
+  // ---------- Подсветка нового элемента ----------
 
   /**
    * Запомнить эффект и перерисовать, когда он догорит. effect: { new: index } — подсветить узел
@@ -75,25 +68,6 @@ const KV = (() => {
   function setEffect(holder, effect, render) {
     holder.nodeEffect = { ...effect, start: performance.now() };
     setTimeout(render, NODE_FADE_MS);
-  }
-
-  /**
-   * Цепочка узлов (LinkedList; очереди задач — «комната»): квадратные ячейки через равный промежуток, без стрелок ⇄
-   * и без призраков снятых узлов (ряд на время затухания становился бы длиннее и потом сжимался).
-   * Новый узел подсвечен — анимация продолжается с того места, где была до перерисовки
-   */
-  function renderChain(elements, effect) {
-    const chain = el('div', 'chain');
-    if (elements.length === 0) { chain.append(el('span', 'empty', 'head = tail = null')); return chain; }
-    const elapsed = effect ? performance.now() - effect.start : Infinity;
-    const last = elements.length - 1;
-    elements.forEach((value, i) => {
-      const label = i === 0 && i === last ? 'head·tail' : i === 0 ? 'head' : i === last ? 'tail' : '';
-      const n = node(value, label, i);
-      if (elapsed < NODE_FADE_MS && effect.new === i) n.querySelector('.box').style.animation = `node-new ${NODE_FADE_MS}ms ease-out ${-elapsed}ms forwards`;
-      chain.append(n);
-    });
-    return chain;
   }
 
   // ---------- Задача RUNNABLE_TASK: модель ----------
@@ -157,6 +131,20 @@ const KV = (() => {
     }, phase === 'FAILED' ? RUN_FAILED_FADE_MS : RUN_DONE_FADE_MS);
   }
 
+  // ---------- Плашка потока в «комнате» ----------
+
+  /**
+   * Плашка потока (.room-chip — components.css): цвет — по имени потока, подпись — «thread», полное имя — в подсказке.
+   * cls — 'rejected', 'entering'…; заливку прогресса и полоску отсчёта класть в начало (prepend): подпись — поверх них
+   */
+  function roomChip(thread, title, cls = '') {
+    const chip = el('div', `room-chip ${cls}`.trim());
+    chip.style.setProperty('--thread', threadColor(thread));
+    chip.title = title;
+    chip.append(el('span', 'name', THREAD_LABEL));
+    return chip;
+  }
+
   // ---------- Мелочи ----------
 
   /**
@@ -202,8 +190,8 @@ const KV = (() => {
   }
 
   return {
-    el, methodsState, trackMethod, renderBadges, setEffect, renderChain, renderOps,
+    el, methodsState, trackMethod, renderBadges, setEffect, renderOps,
     trackTask,
-    threadColor, seconds, THREAD_LABEL,
+    threadColor, seconds, THREAD_LABEL, roomChip,
   };
 })();

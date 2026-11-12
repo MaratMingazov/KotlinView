@@ -67,6 +67,9 @@
  *                                                              конце дороги — машины take приезжают с другой стороны)
  * @property {string} [exit]                                 — куда уехать, когда пропадёт из снимка (по умолчанию
  *                                                              Layout.exit; например, entry — развернуться и уехать назад)
+ * @property {Object} [pose]                                 — поза частей актёра, не облик (тележка крана на балке):
+ *                                                              сменилась — набор передаёт её actor.pose(pose, now), актёр
+ *                                                              не пересоздаётся; actor.animate(now) — на каждом кадре
  */
 
 /**
@@ -86,6 +89,8 @@
  *                                                              взятый за микросекунды после offer, всё равно проедет на
  *                                                              крыше и полежит на ленте
  * @property {string} [model='crate']                        — модель из Kit.cargoModels
+ * @property {string} [color]                                — цвет груза, если модель его берёт (контейнер)
+ * @property {string} [axis]                                 — вдоль чего груз длиннее, если модель его берёт (контейнер)
  * @property {{ lines: string[], color?: string }} [label]   — табличка при наведении (фиксируется при создании)
  */
 const Kit = (() => {
@@ -101,12 +106,17 @@ const Kit = (() => {
     // Люди — iso-people.js (подключать, если диорама их использует)
     courier: (s, key, spec) => IsoObjects.courierActor(s, key, spec.color, { label: spec.label }),
     person: (s, key, spec) => IsoObjects.personActor(s, key, spec.color, { label: spec.label }),
+    // Порт — iso-port.js. У крана look — геометрия { axis, legs, span, hookZ, trolley }; тележку двигает pose / animate
+    barge: (s, key, spec) => IsoObjects.bargeActor(s, key, spec.color, { label: spec.label }),
+    crane: (s, key, spec) => IsoObjects.craneActor(s, key, spec.color, { ...spec.look, label: spec.label }),
   };
 
   /** Модели грузов: имя → (s, key, spec) => { moveTo(x, y, z), remove() }. У актёра-носителя — cargoZ (высота груза). */
   const cargoModels = {
     crate: (s, key, spec) => IsoObjects.crateActor(s, key, { label: spec.label }),
     bag: (s, key, spec) => IsoObjects.bagActor(s, key, { label: spec.label }),
+    // Морской контейнер (iso-port.js): цвет — spec.color, длина — вдоль spec.axis ('y' по умолчанию)
+    container: (s, key, spec) => IsoObjects.containerActor(s, key, { color: spec.color, axis: spec.axis, label: spec.label }),
   };
 
   // ---------- Сеть маршрутов ----------
@@ -250,6 +260,7 @@ const Kit = (() => {
       entry.actor = create(spec);
       entry.actor.moveTo(x, y, 'x');
       entry.look = lookOf(spec);
+      entry.pose = null; // новый актёр — позу передать заново
       if (entry.route) go(entry, pathOrThrow(anchor, entry.routeTarget), entry.k, now);
     }
 
@@ -296,6 +307,9 @@ const Kit = (() => {
           placeAt(entry, instant ? spec.place : appear);
         }
         entry.exit = exit; // последний снимок решает, куда уехать
+        // Поза частей (тележка крана) — только когда сменилась: актёр сам анимирует переход
+        const pose = spec.pose ? JSON.stringify(spec.pose) : null;
+        if (pose !== entry.pose) { entry.pose = pose; if (spec.pose) entry.actor.pose?.(spec.pose, now); }
         if (instant) { placeAt(entry, spec.place); entry.leaving = false; continue; }
         // Вернулся в снимок, пока собирался уехать: выезд из плана убрать
         if (entry.leaving) {
@@ -329,6 +343,7 @@ const Kit = (() => {
           continue;
         }
         busy ||= !!entry.route || entry.plan.length > 0;
+        if (entry.actor.animate?.(now)) busy = true; // части актёра (тележка крана) ещё движутся
       }
       return busy;
     }

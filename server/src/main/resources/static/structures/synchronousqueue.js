@@ -127,14 +127,6 @@ const SynchronousQueueView = (() => {
     return [KV.renderBadges(queue.methods), row];
   }
 
-  function roomChip(thread, title, cls = '') {
-    const chip = KV.el('div', `room-chip ${cls}`.trim());
-    chip.style.setProperty('--thread', KV.threadColor(thread));
-    chip.title = title;
-    chip.append(KV.el('span', 'name', KV.THREAD_LABEL));
-    return chip;
-  }
-
   // Только что вышедший — у стенки (он только что был там): отдал / получил — тает; offer → false — отскакивает
   // от стенки, как у полной LBQ; прерван или poll не дождался — пунктир и тает
   function roomLeaving(visits, give) {
@@ -142,13 +134,13 @@ const SynchronousQueueView = (() => {
     return visits.filter(v => v.state !== 'inside' && isGive(v.method) === give).reverse().map(v => {
       const age = now - v.at;
       if (give && v.state === 'rejected') {
-        const chip = roomChip(v.thread, `${v.thread}: offer() returned false — nobody waits in take`, 'rejected');
+        const chip = KV.roomChip(v.thread, `${v.thread}: offer() returned false — nobody waits in take`, 'rejected');
         chip.style.animation = `room-bounce ${VISIT_MS}ms ease-in-out ${-age}ms forwards`;
         return chip;
       }
       const title = v.state === 'failed' ? `${v.thread}: interrupted` : give
         ? `${v.thread} gave task #${v.taskId}` : v.state === 'done' ? `${v.thread} got task #${v.taskId}` : `${v.thread}: poll() timed out, left without a task`;
-      const chip = roomChip(v.thread, title, v.state === 'done' ? '' : 'rejected');
+      const chip = KV.roomChip(v.thread, title, v.state === 'done' ? '' : 'rejected');
       chip.style.animation = `fade-out ${VISIT_MS}ms ease-in ${-age}ms forwards`;
       return chip;
     });
@@ -160,7 +152,7 @@ const SynchronousQueueView = (() => {
     const side = KV.el('div', 'room-queue entry');
     side.append(...roomLeaving(visits, true));
     for (const v of visits.filter(v => v.state === 'inside' && v.method === 'put').reverse()) {
-      side.append(roomChip(v.thread, `${v.thread} is inside put(task #${v.taskId}): waits for a taker · ${UNFAIR}`));
+      side.append(KV.roomChip(v.thread, `${v.thread} is inside put(task #${v.taskId}): waits for a taker · ${UNFAIR}`));
     }
     return side;
   }
@@ -174,7 +166,7 @@ const SynchronousQueueView = (() => {
     for (const v of visits.filter(v => v.state === 'inside' && !isGive(v.method)).reverse()) {
       const timed = v.timeoutMs != null;
       const call = timed ? `${v.method}(${KV.seconds(v.timeoutMs)})` : `${v.method}()`;
-      const chip = roomChip(v.thread, `${v.thread} is inside ${call}: waits for a giver${timed ? ', gives up after the timeout' : ''} · ${UNFAIR}`);
+      const chip = KV.roomChip(v.thread, `${v.thread} is inside ${call}: waits for a giver${timed ? ', gives up after the timeout' : ''} · ${UNFAIR}`);
       if (timed) {
         const bar = KV.el('div', 'countdown');
         bar.style.animation = `room-count ${v.timeoutMs}ms linear ${-(now - v.at)}ms forwards`;

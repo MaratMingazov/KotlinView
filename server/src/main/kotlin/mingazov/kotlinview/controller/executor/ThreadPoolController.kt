@@ -26,6 +26,9 @@ data class CreatePoolRequest(
 
 data class FixedPoolRequest(val nThreads: Int)
 
+/** maxThreads == null (или тела нет) — по умолчанию сервиса (5). */
+data class CachedPoolRequest(val maxThreads: Int? = null)
+
 @RestController
 @RequestMapping("/api/threadpoolexecutor")
 class ThreadPoolController(
@@ -58,10 +61,15 @@ class ThreadPoolController(
         return response
     }
 
-    // Как Executors.newCachedThreadPool: SynchronousQueue, потоки создаются по требованию (у нас не больше 5)
+    // Как Executors.newCachedThreadPool: SynchronousQueue, потоки создаются по требованию (у нас не больше maxThreads, по умолчанию 5).
+    // Тело необязательное: POST без тела — как раньше
     @PostMapping("/cached")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    fun createCached(): CreatedResponse = CreatedResponse(poolService.newCachedThreadPool().id)
+    fun createCached(@RequestBody(required = false) request: CachedPoolRequest?): CreatedResponse {
+        val maxThreads = request?.maxThreads
+        val pool = if (maxThreads == null) poolService.newCachedThreadPool() else poolService.newCachedThreadPool(maxThreads)
+        return CreatedResponse(pool.id)
+    }
 
     // Что пул сделал с задачей (новый поток, очередь, отказ) — в событиях между METHOD_IN и METHOD_OUT execute
     @PostMapping("/{poolId}/execute")

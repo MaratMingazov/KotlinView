@@ -18,22 +18,6 @@
   to { background: transparent; border-color: var(--border); color: var(--dim); }
 }
 
-/* --- цепочка узлов head … tail: LinkedList (очереди задач — «комната» ниже) --- */
-/* Ячейки квадратные, как у ArrayList, без стрелок — просто через равный промежуток */
-.chain { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 8px; min-height: 66px; }
-.chain .empty { color: var(--dim); }
-.node { display: flex; flex-direction: column; align-items: center; }
-.node .label { font-size: 11px; color: var(--keyword); height: 16px; }
-.node .box {
-  min-width: 40px; height: 32px; padding: 0 6px; display: flex; align-items: center; justify-content: center;
-  border: 2px solid var(--border); border-radius: 3px; color: var(--num); background: var(--panel);
-}
-.node .idx { font-size: 11px; color: var(--dim); height: 16px; }
-/* Подсветка тоже затухает, а не снимается рывком */
-@keyframes node-new {
-  from { background: color-mix(in srgb, var(--out) 45%, var(--panel)); border-color: var(--out); }
-  to { background: var(--panel); border-color: var(--border); }
-}
 @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
 
 /* Прогресс run() (заливка плашки потока, места воркера): анимация на всю длительность, отрицательная задержка — сколько уже прошло */

@@ -1,6 +1,6 @@
 /*
  * SemaphoreRunnableTask — задача под семафором: модель по событиям WebSocket, отрисовка и REST-вызовы.
- * Плитка Semaphore на index.html и tiles.html.
+ * Плитка Semaphore на index.html.
  * Подключение: после base.js, components.js и semaphore.js (его модель семафора). Стили — semaphore.css.
  * Всё лежит в объекте SemaphoreTaskView.
  *
@@ -136,37 +136,28 @@ const SemaphoreTaskView = (() => {
     return row;
   }
 
-  function roomChip(thread, title, cls = '') {
-    const chip = KV.el('div', `room-chip ${cls}`.trim());
-    chip.style.setProperty('--thread', KV.threadColor(thread));
-    chip.title = title;
-    return chip;
-  }
-
   function renderRoomQueue(item, sem) {
     const queue = KV.el('div', 'room-queue');
     const now = performance.now();
     for (const [thread, w] of sem.waiting) {
       const timed = w.timeoutMs !== undefined;
-      const chip = roomChip(thread, timed
+      const chip = KV.roomChip(thread, timed
         ? `${thread} waits in tryAcquire(${KV.seconds(w.timeoutMs)}): no free permits`
         : `${thread} waits in acquire(): no free permits`);
       if (timed) {
         const bar = KV.el('div', 'countdown');
         bar.style.animation = `room-count ${w.timeoutMs}ms linear ${-(now - (w.since ?? now))}ms forwards`;
-        chip.append(bar);
+        chip.prepend(bar); // подпись — поверх полоски
       }
-      chip.append(KV.el('span', 'name', KV.THREAD_LABEL));
       queue.append(chip);
     }
     for (const l of sem.leaving) {
       const age = now - l.start;
       if (l.kind !== 'none' || age >= REJECT_MS) continue;
-      const chip = roomChip(l.thread, item.mode === 'TRY_ACQUIRE_TIMEOUT'
+      const chip = KV.roomChip(l.thread, item.mode === 'TRY_ACQUIRE_TIMEOUT'
         ? `${l.thread}: tryAcquire() timed out after ${KV.seconds(item.timeoutMs)} — task did not run`
         : `${l.thread}: tryAcquire() returned false — no free permits, task did not run`, 'rejected');
       chip.style.animation = `room-bounce ${REJECT_MS}ms ease-in-out ${-age}ms forwards`;
-      chip.append(KV.el('span', 'name', KV.THREAD_LABEL));
       queue.append(chip);
     }
     return queue;
@@ -190,13 +181,12 @@ const SemaphoreTaskView = (() => {
     // Внутри run(): заливка — прогресс, едет сама до конца задачи
     for (const [thread, run] of task.runs) {
       if (run.phase !== 'RUN') continue;
-      const chip = roomChip(thread, `${thread} runs the task`);
+      const chip = KV.roomChip(thread, `${thread} runs the task`);
       if (task.durationMs) {
         const fill = KV.el('div', 'fill');
         fill.style.animation = `fill-up ${task.durationMs}ms linear ${-Math.min(now - run.startedAt, task.durationMs)}ms forwards`;
-        chip.append(fill);
+        chip.prepend(fill); // подпись — поверх заливки
       }
-      chip.append(KV.el('span', 'name', KV.THREAD_LABEL));
       chips.push(chip);
     }
     // Внутри run() объекта, но не ждёт, не в run задачи и не получил отказ: взял разрешение и ещё не вошёл
@@ -204,8 +194,7 @@ const SemaphoreTaskView = (() => {
     const rejected = new Set(sem.leaving.filter(l => l.kind === 'none').map(l => l.thread));
     for (const thread of item.entered) {
       if (sem.waiting.has(thread) || task.runs.get(thread)?.phase === 'RUN' || rejected.has(thread)) continue;
-      const chip = roomChip(thread, `${thread} holds a permit, not inside task.run()`, 'entering');
-      chip.append(KV.el('span', 'name', KV.THREAD_LABEL));
+      const chip = KV.roomChip(thread, `${thread} holds a permit, not inside task.run()`, 'entering');
       chips.push(chip);
     }
     frame.append(...chips);
@@ -228,7 +217,7 @@ const SemaphoreTaskView = (() => {
     };
   }
 
-  // ---------- Описание для плитки tiles.html ----------
+  // ---------- Описание для плитки (tiles.js) ----------
   // fair — булев параметр: плитка рисует его чекбоксом
 
   const types = [GUARDED, SEMAPHORE, TASK];

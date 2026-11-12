@@ -155,7 +155,7 @@ REST-запросы — корабли к другим островам-серв
 и удаляется вместе с ними — только после `TERMINATED`. Отказ `execute` (`RejectedExecutionException`) — `409`.
 
 Пресеты отличаются от JDK, чтобы граничное поведение было видно на экране:
-у `fixed` / `single` очередь на 5 задач вместо неограниченной, у `cached` не больше 5 потоков
+у `fixed` / `single` очередь на 5 задач вместо неограниченной, у `cached` не больше 5 потоков (или `maxThreads` из тела запроса)
 и `keepAlive` 10 с вместо 60.
 
 ## Структура репозитория
@@ -172,7 +172,7 @@ KotlinView/
 │   ├── controller/  ← REST, по пакету на тему
 │   ├── service/     ← фасады: составные объекты и правила владения частями
 │   ├── ws/          ← WebSocket и протокол (конверт, payload'ы)
-│   └── static/      ← фронт: страницы (index, tiles, prototype) в корне, остальное — по слоям:
+│   └── static/      ← фронт: страницы (index, prototype) в корне, остальное — по слоям:
 │       ├── core/        ← общее: REST и WebSocket, компоненты, плитки
 │       ├── structures/  ← по файлу на структуру: REST, модель по событиям, вид плитки
 │       └── diorama/     ← диорамы: engine/ → props/ → kit/ → scenes/
@@ -185,7 +185,7 @@ KotlinView/
 - У каждого инструментированного типа одна и та же связка: класс в `algorithms` → реестр → сервис → контроллер
   → вид на клиенте в `static/structures/` (и, если есть, диорама в `static/diorama/scenes/`).
 - Фронт — обычные скрипты без сборки: у вида структуры свой `*.js` (модель по событиям, отрисовка, REST) и `*.css`
-  в `structures/`; общее — в `core/`: `base.js` (REST, WebSocket), `components.js` (бейджи, цепочки, задачи),
+  в `structures/`; общее — в `core/`: `base.js` (REST, WebSocket), `components.js` (бейджи, плашки потоков, задачи),
   `tiles.js` (плитки). Слои зависят только вниз (`core` ← `structures`; `diorama/engine` ← `props` ← `kit` ← `scenes`),
   порядок `<script>` на страницах — тот же. Как устроены диорамы — в [docs/DIORAMAS.md](docs/DIORAMAS.md).
 
