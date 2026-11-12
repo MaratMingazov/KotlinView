@@ -176,6 +176,17 @@
     for (let y = y0 + 0.5; y < y1; y += 0.5) s.ground.push(s.line([x0, y, 0], [x1, y, 0], seam));
   }
 
+  // ---------- Асфальт (площадка семафора на плите; плитка paved выше — по умолчанию) ----------
+
+  // Пробовали ещё бетонные плиты, брусчатку и разметку мест (2026-11-12): разметка читается как очередь слотов — не нужна
+  const FLOOR = { asphalt: '#7b8189' };
+
+  // Асфальт: тёмное полотно, по краю — светлая полоса износа; без разметки
+  function asphalt(s, x0, y0, x1, y1) {
+    s.ground.push(s.flat(x0, y0, x1 - x0, y1 - y0, FLOOR.asphalt));
+    s.ground.push(s.flat(x0, y0, x1 - x0, 0.08, shade(FLOOR.asphalt, 0.12), 0.001), s.flat(x0, y1 - 0.08, x1 - x0, 0.08, shade(FLOOR.asphalt, 0.12), 0.001));
+  }
+
   /**
    * Рабочая зона: тёмная площадка с жёлто-чёрной окантовкой — «здесь работает механизм» (под конвейером).
    * На земле: выделяет главный объект сцены, ничего не закрывая
@@ -204,5 +215,5 @@
    */
   const ROAD = { laneY: 0.35, lane: 0.35 + CAR.W / 2, ends: [-6.3, 16.3] };
 
-  Object.assign(IsoObjects, { ROAD, island, slab, road, zebra, stopLine, slot, paved, workZone, sign });
+  Object.assign(IsoObjects, { ROAD, island, slab, asphalt, road, zebra, stopLine, slot, paved, workZone, sign });
 })();

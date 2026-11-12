@@ -83,16 +83,21 @@
   // ---------- Бензоколонка ----------
 
   const PUMP = { w: 0.3, d: 0.24, h: 0.72, gap: 0.22 }; // колонка стоит за машиной: между ними — gap (клетки)
-  const CANOPY = { h: 1.6, t: 0.14, pillar: 0.1, padX: [0.85, 0.75], padY: [0.3, 0.2] };
+  // wideX — правый вынос навеса у двусторонней колонки: столб правее дальней машины (по экрану — за её задним углом)
+  const CANOPY = { h: 1.6, t: 0.14, pillar: 0.1, padX: [0.85, 0.75], padY: [0.3, 0.2], wideX: 1.45 };
 
   /**
    * Бензоколонка: магазинчик (shop — { x, y, w, d, h }), колонки и навес над ними на столбах.
    * pumps — центры машин у колонок [[x, y], …] (машины вдоль x, как на дороге): колонка — сразу за машиной (меньше y),
    * и машина её чуть закрывает — видна верхняя часть с табло. label — табличка магазинчика при наведении.
    * Возвращает label (живая сцена меняет текст) и setFuel(i, fraction, color): идёт заправка — шланг к машине и
-   * полоска на табло цветом потока; fraction = null — колонка свободна (шланг на крючке, табло пустое)
+   * полоска на табло цветом потока; fraction = null — колонка свободна (шланг на крючке, табло пустое).
+   * pairs — двусторонние колонки: машины парами (0, 1), (2, 3)…: чётная — перед колонкой (как обычно), нечётная —
+   * за ней (её центр — тот же x, дальше по y); колонка одна на пару, по центру первой; на ближней грани два табло:
+   * верхнее — дальняя машина, нижнее — ближняя; навес — с выносом вправо (правый столб — правее дальней машины).
+   * Пробовали ещё машины поперёк, носом в бокс, с колонкой сбоку и без навеса (2026-11-12) — не взяли
    */
-  function fuelStation(s, { shop, pumps, label }) {
+  function fuelStation(s, { shop, pumps, label, pairs = false }) {
     const { L, W } = CAR;
 
     // Магазинчик: витрина во всю ближнюю стену, дверь, плоская крыша с бортиком и вывеской
@@ -108,57 +113,77 @@
     s.hover(g, l);
     s.add(x + y + w / 2 + d / 2, g);
 
-    // Колонки: корпус, тёмная голова с табло на ближней грани, крючок с пистолетом на боку +x
-    const pumpViews = pumps.map(([cx, cy]) => {
-      const px = cx - PUMP.w / 2, py = cy - W / 2 - PUMP.gap - PUMP.d, front = py + PUMP.d + 0.003;
-      const node = svg('g'), hose = svg('g'), screen = svg('g');
+    // Колонка для машины i: своя (по умолчанию) или общая на пару (pairs) — по центру первой машины пары
+    const carViews = [], pumpViews = [];
+    pumps.forEach(([cx, cy], i) => {
+      const far = pairs && i % 2 === 1;
+      if (!far) pumpViews.push(pumpNode([cx - PUMP.w / 2, cy - W / 2 - PUMP.gap - PUMP.d]));
+      const pump = pumpViews.at(-1), hose = svg('g'), screen = svg('g');
+      pump.node.append(hose, screen);
+      carViews.push({ cx, cy, far, pump, hose, screen, slot: !pairs ? 'full' : far ? 'top' : 'bottom' });
+    });
+
+    // Колонка: островок, корпус, тёмная голова с табло на ближней грани, крючок с пистолетом на боку +x
+    function pumpNode([px, py]) {
+      const node = svg('g'), front = py + PUMP.d + 0.003;
       s.castShadow(px, py, PUMP.w, PUMP.d, PUMP.h);
       node.append(s.box(px - 0.04, py - 0.04, 0, PUMP.w + 0.08, PUMP.d + 0.08, 0.06, C.curb)); // островок
       node.append(s.box(px, py, 0.06, PUMP.w, PUMP.d, PUMP.h - 0.06, C.post));
       node.append(s.box(px, py, PUMP.h - 0.2, PUMP.w, PUMP.d, 0.2, C.accent));
       node.append(s.box(px + PUMP.w, py + 0.08, 0.3, 0.05, 0.08, 0.14, '#4a4a4a')); // пистолет на крючке
-      node.append(hose, screen);
-      s.add(px + py + 0.3, node); // глубже машины перед ней — машина рисуется поверх
-      return { cx, cy, px, py, front, hose, screen };
-    });
+      // Глубже машины перед ней — машина рисуется поверх; мельче машины за ней (pairs) — колонка поверх неё
+      s.add(px + py + 0.3, node);
+      return { node, px, py, front };
+    }
 
-    // Навес: узкая крыша над рядом колонок — не над машинами: в изометрии длинная крыша вдоль x закрывала бы машины
-    // у своего дальнего конца. Столбы — по краям ряда, на линии колонок (не на пути машин); тень — мягким пятном
-    const xs = pumps.map(p => p[0]), lineY = pumpViews[0].py + PUMP.d / 2;
-    const x0 = Math.min(...xs) - CANOPY.padX[0], x1 = Math.max(...xs) + CANOPY.padX[1];
+    // Навес — над колонками; у pairs — с выносом вправо (wide): иначе правый столб встал бы перед дальней машиной
+    canopy(s, pumps.map(p => p[0]), pumpViews, l, { wide: pairs });
+    return { label: l, setFuel };
+
+    function setFuel(i, fraction, color = C.ok) {
+      const c = carViews[i];
+      if (!c) return;
+      const p = c.pump;
+      c.hose.replaceChildren();
+      c.screen.replaceChildren();
+      if (fraction == null) return;
+      // Табло: тёмная подложка и полоска заправки; у двусторонней колонки — два табло друг над другом
+      const z = { full: [PUMP.h - 0.17, PUMP.h - 0.05], top: [PUMP.h - 0.11, PUMP.h - 0.04], bottom: [PUMP.h - 0.18, PUMP.h - 0.12] }[c.slot];
+      const a0 = p.px + 0.05, a1 = p.px + PUMP.w - 0.05, [z0, z1] = z, inset = c.slot === 'full' ? 0.02 : 0.012;
+      c.screen.append(s.panel('y', p.front, a0, a1, z0, z1, '#3a3a3a'));
+      const f = Math.max(0, Math.min(fraction, 1));
+      if (f > 0) c.screen.append(s.panel('y', p.front + 0.001, a0, a0 + (a1 - a0) * f, z0 + inset, z1 - inset, color));
+      // Шланг: с бока колонки провисает к бензобаку у заднего колеса — на дальнем боку машины перед колонкой
+      // или на ближнем боку машины за ней
+      const [ax, ay] = s.P(p.px + PUMP.w + 0.03, p.py + 0.12, 0.36);
+      const [mx, my] = c.far ? s.P(p.px + PUMP.w + 0.15, c.cy + W / 2 + 0.08, 0.06) : s.P(p.px + PUMP.w + 0.15, c.cy - W / 2 - 0.08, 0.06);
+      const [bx, by] = c.far ? s.P(c.cx - L / 2 + 0.25, c.cy + W / 2, 0.3) : s.P(c.cx - L / 2 + 0.25, c.cy - W / 2, 0.3);
+      c.hose.append(svg('path', { d: `M ${ax} ${ay} Q ${mx} ${my} ${bx} ${by}`, style: 'fill: none; stroke: #3a3a3a; stroke-width: 2; stroke-linecap: round' }));
+    }
+  }
+
+  // Навес: узкая крыша над рядом колонок — не над машинами: в изометрии длинная крыша вдоль x закрывала бы машины
+  // у своего дальнего конца. Столбы — по краям ряда, на линии колонок (не на пути машин); тень — мягким пятном.
+  // xs — центры ряда по x, от них — ширина навеса.
+  // wide — у двусторонней колонки (машина стоит и за колонкой): правый столб — правее дальней машины; на обычном
+  // месте (padX) он встал бы прямо перед ней и перечеркнул. Пробовали ещё столбы за дальней машиной и один столб
+  // у колонки (2026-11-12) — выбрали этот
+  function canopy(s, xs, pumpViews, l, { wide = false } = {}) {
+    const lineY = pumpViews[0].py + PUMP.d / 2;
+    const x0 = Math.min(...xs) - CANOPY.padX[0], x1 = Math.max(...xs) + (wide ? CANOPY.wideX : CANOPY.padX[1]);
     const y0 = Math.min(...pumpViews.map(p => p.py)) - CANOPY.padY[0], y1 = Math.max(...pumpViews.map(p => p.front)) + CANOPY.padY[1];
+    const P = CANOPY.pillar, pillars = [[x0, lineY], [x1 - P, lineY]];
     s.ground.push(svg('polygon', { points: s.pts([[x0 + 0.3, y0 + 0.2, 0], [x1 + 0.3, y0 + 0.2, 0], [x1 + 0.3, y1 + 0.2, 0], [x0 + 0.3, y1 + 0.2, 0]]),
       style: `fill: ${C.shadowColor}; opacity: .08` }));
-    const P = CANOPY.pillar;
-    for (const px of [x0, x1 - P]) {
-      s.castShadow(px, lineY - P / 2, P, P, CANOPY.h);
-      s.add(px + lineY + 0.3, s.box(px, lineY - P / 2, 0, P, P, CANOPY.h, '#d9d2c4'));
+    for (const [px, py] of pillars) {
+      s.castShadow(px, py - P / 2, P, P, CANOPY.h);
+      s.add(px + py + 0.3, s.box(px, py - P / 2, 0, P, P, CANOPY.h, '#d9d2c4'));
     }
     const roof = svg('g');
     roof.append(s.box(x0 - 0.1, y0 - 0.1, CANOPY.h, x1 - x0 + 0.2, y1 - y0 + 0.2, CANOPY.t, C.building));
     roof.append(s.panel('y', y1 + 0.1 + 0.003, x0 - 0.1, x1 + 0.1, CANOPY.h + 0.03, CANOPY.h + CANOPY.t - 0.03, C.accent)); // полоса по кромке
     s.hover(roof, l);
     s.add(x1 + y1 + 1, roof);
-
-    function setFuel(i, fraction, color = C.ok) {
-      const p = pumpViews[i];
-      if (!p) return;
-      p.hose.replaceChildren();
-      p.screen.replaceChildren();
-      if (fraction == null) return;
-      // Табло: тёмная подложка и полоска заправки
-      const a0 = p.px + 0.05, a1 = p.px + PUMP.w - 0.05, z0 = PUMP.h - 0.17, z1 = PUMP.h - 0.05;
-      p.screen.append(s.panel('y', p.front, a0, a1, z0, z1, '#3a3a3a'));
-      const f = Math.max(0, Math.min(fraction, 1));
-      if (f > 0) p.screen.append(s.panel('y', p.front + 0.001, a0, a0 + (a1 - a0) * f, z0 + 0.02, z1 - 0.02, color));
-      // Шланг: с бока колонки провисает к бензобаку на дальнем боку машины (у заднего колеса)
-      const [ax, ay] = s.P(p.px + PUMP.w + 0.03, p.py + 0.12, 0.36);
-      const [mx, my] = s.P(p.px + PUMP.w + 0.15, p.cy - W / 2 - 0.08, 0.06);
-      const [bx, by] = s.P(p.cx - L / 2 + 0.25, p.cy - W / 2, 0.3);
-      p.hose.append(svg('path', { d: `M ${ax} ${ay} Q ${mx} ${my} ${bx} ${by}`, style: 'fill: none; stroke: #3a3a3a; stroke-width: 2; stroke-linecap: round' }));
-    }
-
-    return { label: l, setFuel };
   }
 
   // ---------- Конвейер ----------

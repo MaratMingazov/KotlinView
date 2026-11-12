@@ -23,6 +23,8 @@
       const [x0, y0, x1, y1] = [island[0] - 0.4, island[1] - 0.6, island[2] + 0.4, island[3] + 0.6];
       O.slab(s, x0, y0, x1, y1);
       ends = axis === 'y' ? [y0 + 0.35, y1 - 0.35] : [x0 + 0.35, x1 - 0.35];
+      // Куски дороги — тоже не дальше краёв плиты (иначе за краем построились бы мосты)
+      if (roads) roads = roads.map(([u0, u1]) => [Math.max(u0, ends[0]), Math.min(u1, ends[1])]);
     } else {
       O.island(s, ...island, seed);
     }
