@@ -169,6 +169,8 @@
   const STRUCTURES = [
     { id: 'pool', diorama: PoolDiorama,
       view: { ...Pool.fixed, params: [['nThreads', 2, { min: 1, max: PoolDiorama.LIMITS.bays }]] } },
+    // Диорамы ещё нет — в карусели пустая вода, на сцене только полоса. Параметров нет: сервер даёт не больше 5 потоков
+    { id: 'cached', view: Pool.cached },
     { id: 'sem', diorama: SemaphoreDiorama,
       // durationMs, fair, timeoutMs не вводятся: по умолчанию (5000 и false — сервер, 2000 — create в semaphoretask.js)
       view: { ...SemaphoreTaskView, params: [['permits', 2, { min: 1, max: SemaphoreDiorama.LIMITS.inside }],

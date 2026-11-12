@@ -41,14 +41,15 @@
 <script src="core/components.js"></script>
 <script src="structures/arraylist.js"></script>
 <script src="structures/linkedlist.js"></script>
-<!-- synchronousqueue.js — для pool.js: очередь CachedThreadPool рисуется им -->
+<!-- synchronousqueue.js — для pool.js: его store нужен store пула (очередь CachedThreadPool) -->
 <script src="structures/synchronousqueue.js"></script>
 <script src="structures/pool.js"></script>
 <script src="core/tiles.js"></script>
 <script>
   // Плитки — tiles.js: здесь только какие структуры показать и куда положить.
-  // Только те, что ещё не перенесли на index.html (там — FixedThreadPool, Semaphore, LinkedBlockingQueue, SynchronousQueue)
-  const VIEWS = [Pool.single, Pool.cached, ArrayListView, LinkedListView];
+  // Только те, что ещё не перенесли на index.html (там — FixedThreadPool, CachedThreadPool, Semaphore, LinkedBlockingQueue,
+  // SynchronousQueue)
+  const VIEWS = [Pool.single, ArrayListView, LinkedListView];
   const root = document.getElementById('tiles');
   Tiles.mount(VIEWS, { place: tile => root.append(tile.el) });
 </script>

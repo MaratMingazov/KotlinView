@@ -107,7 +107,7 @@ const SemaphoreTaskView = (() => {
    */
   function renderState(store, item) {
     const sem = item.semaphoreId != null ? store.semaphores.items.get(item.semaphoreId) : null;
-    const task = store.tasks.get(item.taskId) ?? { id: item.taskId ?? '?', durationMs: null, failedAt: null, runs: new Map() };
+    const task = store.tasks.get(item.taskId) ?? { id: item.taskId ?? '?', durationMs: null, runs: new Map() };
     const enter = item.mode && item.mode !== 'ACQUIRE' ? 'tryAcquire' : 'acquire';
     const out = sem ? [KV.renderBadges(pick(sem.methods, [enter, 'release'])), renderRoom(item, sem, task)] : [renderRoom(item, null, task)];
     const n = item.notice;

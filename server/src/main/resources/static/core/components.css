@@ -18,7 +18,7 @@
   to { background: transparent; border-color: var(--border); color: var(--dim); }
 }
 
-/* --- цепочка узлов head … tail: общий вид LinkedList, LinkedBlockingQueue и очереди пула --- */
+/* --- цепочка узлов head … tail: LinkedList (очереди задач — «комната» ниже) --- */
 /* Ячейки квадратные, как у ArrayList, без стрелок — просто через равный промежуток */
 .chain { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 8px; min-height: 66px; }
 .chain .empty { color: var(--dim); }
@@ -29,15 +29,6 @@
   border: 2px solid var(--border); border-radius: 3px; color: var(--num); background: var(--panel);
 }
 .node .idx { font-size: 11px; color: var(--dim); height: 16px; }
-/* Призрак справа от хвоста: то, что в цепочку не попало */
-.node.failed .box { border-style: dashed; border-color: var(--fail); color: var(--fail); background: none; }
-/* Свободная ячейка ограниченной очереди */
-.node.slot .box { border-style: dashed; background: none; }
-/* По размеру тела мини-конверта (48×40) с местом под клапан сверху, как у svg (52×56) */
-.envelope-slot {
-  width: 48px; height: 40px; margin: 12px 2px 4px; box-sizing: border-box;
-  border: 2px dashed var(--border); border-radius: 3px;
-}
 /* Подсветка тоже затухает, а не снимается рывком */
 @keyframes node-new {
   from { background: color-mix(in srgb, var(--out) 45%, var(--panel)); border-color: var(--out); }
@@ -45,57 +36,8 @@
 }
 @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
 
-/* --- задача RUNNABLE_TASK: конверт. Клапан открыт, пока внутри run() есть потоки --- */
-.envelope rect, .envelope path { fill: var(--panel); stroke: var(--border); stroke-width: 2; stroke-linejoin: round; }
-.envelope text { fill: var(--num); font: 11px "JetBrains Mono", ui-monospace, Menlo, monospace; }
-.envelope text.id { fill: var(--keyword); }
-.envelope text.dur { font-size: 9px; }
-.envelope .flap-open { display: none; }
-.envelope.running .flap-open { display: inline; }
-.envelope.running .flap-closed { display: none; }
-.envelope.running rect, .envelope.running path { stroke: var(--out); }
-/* Несколько потоков внутри одной задачи — главное, что хочется заметить */
-.envelope.multi rect, .envelope.multi path { stroke: var(--keyword); }
-/* Ошибка: контур вспыхивает красным и затухает. --flash-delay продолжает вспышку после перерисовки */
-.envelope.failed rect, .envelope.failed path { animation: envelope-failed var(--flash) ease-out var(--flash-delay, 0ms) forwards; }
-@keyframes envelope-failed { from { stroke: var(--fail); } to { stroke: var(--border); } }
-
-/* --- полоска на каждый поток внутри run() задачи: имя потока поверх --- */
-.runs { display: flex; flex-direction: column; gap: 3px; width: 48px; } /* по ширине тела мини-конверта */
-.run-row {
-  position: relative; height: 14px; overflow: hidden; cursor: default;
-  background: var(--panel); border: 1px solid var(--border); border-radius: 3px;
-}
-.run-row .bar {
-  position: absolute; top: 0; bottom: 0; left: 0; width: 0;
-  background: color-mix(in srgb, var(--thread) 35%, transparent);
-}
-.run-row .thread {
-  position: relative; display: block; padding-left: 4px; white-space: nowrap;
-  font-size: 11px; line-height: 14px; font-weight: bold; color: var(--thread);
-}
-.run-row.done .bar { background: color-mix(in srgb, var(--out) 45%, transparent); }
-.run-row.failed .bar { background: color-mix(in srgb, var(--fail) 45%, transparent); }
-.run-row.failed .thread { color: var(--fail); }
-/* Полоски едут сами: анимация на всю длительность, отрицательная задержка — сколько уже прошло */
+/* Прогресс run() (заливка плашки потока, места воркера): анимация на всю длительность, отрицательная задержка — сколько уже прошло */
 @keyframes fill-up { from { width: 0; } to { width: 100%; } }
-
-/* --- конверт как узел цепочки: подсветка нового хвоста и призраки (как .box у обычных узлов) --- */
-.envelope.new rect, .envelope.new path { animation: envelope-new var(--glow) ease-out var(--glow-delay, 0ms) forwards; }
-@keyframes envelope-new { from { stroke: var(--out); fill: color-mix(in srgb, var(--out) 30%, var(--panel)); } to { stroke: var(--border); fill: var(--panel); } }
-.node.ghost .envelope rect, .node.ghost .envelope path { stroke-dasharray: 4 3; fill: none; }
-.node.failed .envelope rect, .node.failed .envelope path { stroke: var(--fail); }
-.node.failed .envelope text { fill: var(--fail); }
-
-/* --- задача целиком: конверт, под ним полоски потоков внутри run() --- */
-.task-view { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-
-/* --- плашка потока: имя его цветом (--thread = KV.threadColor) — потоки, ждущие в очереди --- */
-.thread-chip {
-  padding: 0 6px; border-radius: 3px; font-weight: bold; color: var(--thread);
-  border: 1px solid color-mix(in srgb, var(--thread) 60%, transparent);
-  background: color-mix(in srgb, var(--thread) 15%, transparent);
-}
 
 /* --- «комната»: структура — рамка с подписью, места — ячейки в ней; потоки — плашки снаружи у входа и выхода.
    Семафор (semaphoretask.js): задача, места — разрешения; очередь (blockingqueue.js): труба, места — ёмкость --- */
