@@ -1,81 +1,45 @@
 /*
- * Реквизит диорам, часть 3 — постройки: автомойка, бензоколонка, конвейер, склад, стеллаж, шлагбаум, светофор; мебель площадки — скамейка, фонарь, штакетник.
- * Подключение: после iso-vehicles.js (в боксах мойки стоят машины).
+ * Реквизит диорам, часть 3 — постройки: верстак, бензоколонка, конвейер, склад, стеллаж, шлагбаум, светофор; мебель площадки — скамейка, фонарь, штакетник.
+ * Подключение: после iso-vehicles.js (размер машины — для бензоколонки).
  */
 (() => {
-  const { svg, shade, threadColor, PALETTE: C } = Iso;
-  const { CAR, carColor, carNode } = IsoObjects;
+  const { svg, shade, PALETTE: C } = Iso;
+  const { CAR } = IsoObjects;
 
-  const FREE_BAY = '#d8cfbf'; // маркиза свободного бокса: потока ещё нет — цвета у него тоже нет
+  // ---------- Верстак ----------
 
-  // ---------- Постройки ----------
+  const BENCH = { W: 0.9, D: 0.8, H: 0.42, board: '#5b5f66', screen: '#3a3a3a' };
 
   /**
-   * Автомойка: одно здание с воротами на каждый бокс, двускатная крыша, над воротами полосатые маркизы цветом потока,
-   * над крышей — пузыри. Здание — два объекта разной глубины, чтобы машина в боксе (в том числе едущая, актёр)
-   * вставала между ними: «зад» (пол, задняя стена, перегородки) → машины → «перёд» (простенки и перемычка, торец,
-   * крыша, маркизы). workers — [{ name, task }]: name = null — свободный бокс (потока ещё нет: пул создаёт их лениво),
-   * маркиза нейтральная; task = null — воркер есть, но ждёт задачу (бокс пуст). labelOf(worker) — табличка бокса
-   * { lines, color, bar }: одна на машину и маркизу.
-   * Возвращает геометрию боксов (ворота, место машины) и paintBay — перекрасить маркизу и табличку на живой сцене
+   * Верстак вдоль x (x, y — дальний угол): ножки, столешница, справа (+x) стойка с табло на грани +x — её видно
+   * зрителю, а погрузчик подъезжает слева (с −x). Груз на столешнице — место для ящика (top).
+   * Стойка — отдельным объектом глубже ящика: она ближе к зрителю и закрывает его правый край.
+   * label — табличка при наведении. Возвращает top — [x, y, z], куда класть ящик, и set(fraction, color) — полоска
+   * на табло цветом потока; fraction = null — табло пустое
    */
-  function washHouse(s, x0, y0, workers, labelOf) {
-    const BAY = 1.85, D = 1.9, H = 1.25, GATE = 0.95, T = 0.12;
-    const W = workers.length * BAY + T, yf = y0 + D;
-    const carX = i => x0 + i * BAY + (BAY - CAR.L) / 2 + T / 2, carY = yf - 0.85; // машина — ближе к воротам
-
-    // Зад. Внутри темнее, чем снаружи: так проёмы ворот читаются как проёмы
-    const back = svg('g');
-    back.append(s.box(x0, y0, 0, W, D, 0.04, shade(C.pad, -0.25)));
-    back.append(s.box(x0, y0, 0, W, T, H, shade(C.building, -0.3)));
-    for (let i = 0; i <= workers.length; i++) back.append(s.box(x0 + i * BAY, y0, 0, T, D - T, H, shade(C.building, -0.2)));
-    s.add(x0 + y0, back);
-
-    // Машины в боксах (снимок) — между задом и передом, как и машины-актёры
-    const bayLabels = workers.map((w, i) => { const l = labelOf(w); return s.label(x0 + i * BAY + BAY / 2, yf + 0.15, H, l.lines, l); });
-    workers.forEach((w, i) => {
-      if (w.task) s.add(carX(i) + carY + 0.7, s.hover(carNode(s, carX(i), carY, carColor(w.task.id)), bayLabels[i]));
-    });
-
-    // Перёд: перемычка над воротами, простенки между ними, торец с окошком, крыша
-    const front = svg('g');
-    front.append(s.box(x0, yf - T, GATE, W, T, H - GATE, C.building));
-    for (let i = 0; i <= workers.length; i++) front.append(s.box(x0 + i * BAY, yf - T, 0, T, T, GATE, C.building));
-    front.append(s.box(x0 + W - T, y0, 0, T, D, H, C.building));
-    front.append(s.panel('x', x0 + W + 0.003, y0 + 0.6, y0 + 1.3, 0.45, 0.85, C.glass));
-    front.append(s.gableRoof(x0, y0, W, D, H, 0.4, C.roof, 0.1));
-    // Маркизы: короткая наклонная полосатая ткань на перемычке, выше проёма — ворота не закрывает.
-    // Полосы — цвет потока и белый: какой бокс чей, видно издалека
-    const stripeStyle = (color, k) => `fill: ${k % 2 ? '#fffaf0' : color}; stroke: ${shade(color, -0.2)}; stroke-width: .5`;
-    const awnings = workers.map((w, i) => {
-      const color = w.name ? threadColor(w.name) : FREE_BAY, a0 = x0 + i * BAY + T, a1 = a0 + BAY - T, n = 6;
-      const top = H - 0.02, low = H - 0.17, out = 0.3, awning = svg('g');
-      for (let k = 0; k < n; k++) {
-        const u0 = a0 + (a1 - a0) * (k / n), u1 = a0 + (a1 - a0) * ((k + 1) / n);
-        awning.append(svg('polygon', { points: s.pts([[u0, yf, top], [u1, yf, top], [u1, yf + out, low], [u0, yf + out, low]]), style: stripeStyle(color, k) }));
-      }
-      front.append(s.hover(awning, bayLabels[i]));
-      return awning;
-    });
-    // Пузыри над крышей — «тут моют»
-    for (const [bx, bz, r] of [[0.25, 0.3, 5], [0.55, 0.55, 3.5], [0.75, 0.25, 4], [0.4, 0.8, 2.5]]) {
-      const [sx, sy] = s.P(x0 + W * bx, y0 + D / 2, H + 0.5 + bz);
-      front.append(svg('circle', { cx: sx, cy: sy, r, style: 'fill: #ffffff; opacity: .75; stroke: #bfe3f2; stroke-width: 1' }));
+  function workbench(s, x, y, label) {
+    const { W, D, H } = BENCH, g = svg('g'), topW = W - 0.12;
+    for (const [lx, ly] of [[x + 0.04, y + 0.04], [x + topW - 0.06, y + 0.04], [x + 0.04, y + D - 0.1], [x + topW - 0.06, y + D - 0.1]]) {
+      g.append(s.box(lx, ly, 0, 0.06, 0.06, H - 0.06, shade(C.wood, -0.3)));
     }
-    // Тень — по солнцу, вправо за торец: эллипс под центром ложился тёмным пятном на дорогу
-    s.castShadow(x0, y0, W, D, H + 0.25);
-    s.add(x0 + y0 + W + D, front);
+    g.append(s.box(x, y, H - 0.06, topW, D, 0.06, C.wood));
+    s.castShadow(x, y, W, D, H);
+    s.hover(g, label);
+    s.add(x + y + 0.3, g);
+
+    const post = svg('g'), px = x + topW, screen = svg('g'), at = px + 0.1 + 0.003;
+    post.append(s.box(px, y + 0.08, 0, 0.1, D - 0.16, H + 0.55, BENCH.board));
+    post.append(s.panel('x', at, y + 0.15, y + D - 0.15, H + 0.2, H + 0.45, BENCH.screen), screen);
+    s.hover(post, label);
+    s.add(px + y + D + 0.6, post);
 
     return {
-      width: W,
-      bayCenter: i => [x0 + i * BAY + BAY / 2, yf],              // середина ворот бокса i
-      parkAt: i => [carX(i) + CAR.L / 2, carY + CAR.W / 2],      // центр машины в боксе i
-      // Живая сцена: поток в боксе сменился (или появился) — перекрасить маркизу, поменять табличку
-      paintBay(i, worker) {
-        const color = worker.name ? threadColor(worker.name) : FREE_BAY;
-        [...awnings[i].children].forEach((stripe, k) => stripe.setAttribute('style', stripeStyle(color, k)));
-        const l = labelOf(worker);
-        s.relabel(bayLabels[i], l.lines, { color: l.color, bar: l.bar });
+      top: [x + topW / 2, y + D / 2, H],
+      set(fraction, color) {
+        screen.replaceChildren();
+        if (fraction == null) return;
+        const a0 = y + 0.18, a1 = y + D - 0.18, f = Math.max(0.02, Math.min(fraction, 1));
+        screen.append(s.panel('x', at + 0.001, a0, a0 + (a1 - a0) * f, H + 0.24, H + 0.41, color));
       },
     };
   }
@@ -457,5 +421,5 @@
     s.add(x0 + y0 + (along === 'x' ? 0 : len / 2), g);
   }
 
-  Object.assign(IsoObjects, { washHouse, fuelStation, conveyor, conveyorLength, warehouse, rack, house, barrierGate, trafficLight, bench, streetLamp, picket });
+  Object.assign(IsoObjects, { BENCH, workbench, fuelStation, conveyor, conveyorLength, warehouse, rack, house, barrierGate, trafficLight, bench, streetLamp, picket });
 })();

@@ -35,6 +35,8 @@ const Pool = (() => {
   const VISIT_MS = 1200;         // сколько помнится законченный execute: плашка вызывающего тает или отскакивает (как у LBQ)
   const CALLERS_SHOWN = 2;       // плашек вызывающих у входа — не больше: место постоянное, рамка не прыгает
   const FLY_MS = 900;            // сколько летит задача firstTask от вызывающего к новому воркеру (меньше VISIT_MS)
+  const DRAIN_MS = 2500;         // сколько помнится shutdownNow: диорама показывает снятые с ленты задачи
+  const TAKE_MS = 1200;          // сколько помнится, что воркер взял задачу из очереди (take / poll): диорама везёт ящик от головы
 
   // ---------- REST ----------
   // Запросы и лог HTTP — UI.call из base.js
@@ -98,7 +100,7 @@ const Pool = (() => {
   function createStore(render) {
     // poolId → { id, state, methods, notice: { text, failed, start } | null }
     const pools = new Map();
-    // queueId → { id, capacity, elements, methods, nodeEffect }
+    // queueId → { id, capacity, elements, methods, nodeEffect, takes } — takes: поток → { taskId, at } (недавний take / poll с задачей)
     const queues = new Map();
     // factoryId → { id, methods }
     const factories = new Map();
@@ -125,7 +127,7 @@ const Pool = (() => {
       return pools.get(id);
     }
     function queueOf(id) {
-      if (!queues.has(id)) queues.set(id, { id, capacity: null, elements: [], methods: KV.methodsState(['offer', 'take', 'poll', 'drainTo']), nodeEffect: null });
+      if (!queues.has(id)) queues.set(id, { id, capacity: null, elements: [], methods: KV.methodsState(['offer', 'take', 'poll', 'drainTo']), nodeEffect: null, takes: new Map() });
       return queues.get(id);
     }
     function factoryOf(id) {
@@ -215,8 +217,25 @@ const Pool = (() => {
       if (d.method === 'execute' && phase === 'OUT_FAILED') {
         notify(pool, `execute(#${d.args.taskId}) ✗ ${shortError(d.error)}`, true);
       }
+      if (d.method === 'shutdownNow' && phase) trackDrain(pool, d, phase);
       if (d.method === 'shutdownNow' && phase === 'OUT' && d.result.length > 0) {
         notify(pool, `shutdownNow returned ${d.result.map(id => '#' + id).join(', ')} — never started`, false);
+      }
+    }
+
+    /*
+     * shutdownNow снимает задачи с очереди (drainTo) и возвращает их вызывающему: pool.drain — { thread, taskIds, at }.
+     * Открывается на METHOD_IN — со списком из очереди в этот момент (drainTo придёт раньше METHOD_OUT, и без этого
+     * задачи на миг пропали бы отовсюду); на METHOD_OUT список — настоящий результат, at — когда вернулся
+     */
+    function trackDrain(pool, d, phase) {
+      if (phase === 'IN') {
+        pool.drain = { thread: d.thread, taskIds: [...(queueById(pool.state?.queueId)?.elements ?? [])], at: null };
+      } else if (phase === 'OUT') {
+        pool.drain = { thread: d.thread, taskIds: d.result, at: performance.now() };
+        setTimeout(render, DRAIN_MS);
+      } else {
+        pool.drain = null;
       }
     }
 
@@ -238,6 +257,11 @@ const Pool = (() => {
       if (d.method === 'poll') {
         if (phase === 'IN') polling.set(d.thread, { timeoutMs: d.args.timeoutMs, start: performance.now() });
         else polling.delete(d.thread);
+      }
+      // Воркер взял задачу из головы: между take и run — микросекунды, без этого диорама не увидела бы, что он за ней ездил
+      if ((d.method === 'take' || d.method === 'poll') && phase === 'OUT' && d.result != null) {
+        queue.takes.set(d.thread, { taskId: d.result, at: performance.now() });
+        setTimeout(render, TAKE_MS);
       }
       const effect = queueEffectOf(d.method, phase, d);
       if (effect) KV.setEffect(queue, effect, render);
@@ -304,6 +328,18 @@ const Pool = (() => {
   // Визиты execute, которые ещё не устарели (store удаляет старые только при новом execute); незаконченные — всегда.
   // Нужны плитке (плашки у входа) и диораме порта (баржи)
   const recentVisits = pool => pool.visits.filter(v => v.outcome === null || performance.now() - v.at < VISIT_MS);
+
+  // Недавний shutdownNow пула: { thread, taskIds, at } (at = null — ещё внутри) или null. Нужен диораме fixed-пула
+  function recentDrain(pool) {
+    const drain = pool.drain;
+    return drain && (drain.at === null || performance.now() - drain.at < DRAIN_MS) ? drain : null;
+  }
+
+  // Недавний take / poll потока thread из очереди LinkedBlockingQueue: { taskId, at } или null. Нужен диораме fixed-пула
+  function recentTake(queue, thread) {
+    const take = queue?.takes?.get(thread);
+    return take && performance.now() - take.at < TAKE_MS ? take : null;
+  }
 
   // Задачи, которые ещё летят к своему воркеру: firstTask (новому) и handed (ждущему в poll SynchronousQueue)
   const flightsOf = pool => pool.visits.filter(v => v.worker && performance.now() - v.flyAt < FLY_MS);
@@ -525,5 +561,5 @@ const Pool = (() => {
   const cachedOf = maxThreads => view('CachedThreadPool', [], () => api.createCached(maxThreads));
   const cached = cachedOf(null);
 
-  return { PRESET_QUEUE_CAPACITY, presetOf, fixed, cached, cachedOf, recentVisits };
+  return { PRESET_QUEUE_CAPACITY, presetOf, fixed, cached, cachedOf, recentVisits, recentTake, recentDrain };
 })();

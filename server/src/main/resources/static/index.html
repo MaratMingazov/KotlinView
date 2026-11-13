@@ -167,7 +167,7 @@
    */
   const STRUCTURES = [
     { id: 'pool', diorama: PoolDiorama,
-      view: { ...Pool.fixed, params: [['nThreads', 2, { min: 1, max: PoolDiorama.LIMITS.bays }]] } },
+      view: { ...Pool.fixed, params: [['nThreads', 3, { min: 1, max: PoolDiorama.LIMITS.bays }]] } },
     // Поля ввода нет: пул — не больше стольких потоков, сколько кранов в порту (на сервере по умолчанию 5)
     { id: 'cached', diorama: CachedDiorama, view: Pool.cachedOf(CachedDiorama.LIMITS.cranes) },
     { id: 'sem', diorama: SemaphoreDiorama,
