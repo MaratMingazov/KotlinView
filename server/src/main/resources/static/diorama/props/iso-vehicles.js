@@ -1,6 +1,7 @@
 /*
  * Реквизит диорам, часть 1 — транспорт и грузы: машина вдоль дороги и поперёк (в бокс и из бокса), погрузчик,
- * актёры с маршрутом (общий vehicleActor), деревянный ящик-актёр (груз, который возят машины и погрузчики).
+ * полицейская машина, актёры с маршрутом (общий vehicleActor), деревянный ящик-актёр (груз, который возят машины
+ * и погрузчики), квитанция (листок на крыше машины).
  * Здесь же объявлен IsoObjects — общий объект всего реквизита: остальные файлы iso-*.js дописывают в него свои вещи.
  * Каждый объект рисуется в сцену из iso-scene.js (s — сцена) и сам кладёт туда свои тени и таблички.
  * Смысла (пул, семафор) здесь нет: что и где стоит — решают описания структур (diorama-*.js) через набор (diorama-kit.js).
@@ -240,6 +241,47 @@ const IsoObjects = {};
     return { key, moveTo: (x, y, z = 0) => a.moveTo(x, y, z), remove: () => a.remove() };
   }
 
+  // ---------- Полицейская машина ----------
+
+  const POLICE_LIGHTS = [C.fail, '#4a7fd4']; // мигалка: красная и синяя половины
+
+  /**
+   * Полицейская машина-актёр: обычная машина цвета color, белая полоса по ближнему борту, на крыше — мигалка
+   * (красная и синяя половины) со свечением. Ездит только по дороге (вдоль x): на поперечных перегонах — та же модель.
+   * Груз (квитанция, которую везёт) — на крыше
+   */
+  function policeActor(s, key, color, { label } = {}) {
+    const { L, W } = CAR, n = POLICE_LIGHTS.length, step = 0.24 / n;
+    return vehicleActor(s, key, (sc, dir) => {
+      sc.castShadow(-L / 2 + 0.04, -W / 2 + 0.04, 0.84, 0.44, 0.45);
+      const node = carNode(sc, -L / 2, -W / 2, color, { facing: dir === 'x-' ? '-x' : '+x' });
+      node.append(sc.panel('y', W / 2 + 0.004, -L / 2 + 0.12, L / 2 - 0.12, 0.16, 0.22, '#ffffff'));
+      POLICE_LIGHTS.forEach((c, i) => {
+        node.append(sc.box(-0.12 + i * step, -0.09, 0.5, step, 0.18, 0.08, c));
+        const [gx, gy] = sc.P(-0.12 + (i + 0.5) * step, 0, 0.62);
+        node.append(svg('circle', { cx: gx, cy: gy, r: 7, style: `fill: ${c}; opacity: .35` }));
+      });
+      if (label) sc.hover(node, sc.label(0, 0, 0.9, label.lines, label));
+      sc.add(0.1, node);
+    }, { z: 0.5 });
+  }
+
+  // ---------- Квитанция ----------
+
+  /**
+   * Квитанция-актёр: белый листок с красной полосой. Лежит на крыше машины (груз): своей тени нет.
+   * label — табличка при наведении { lines }
+   */
+  function ticketActor(s, key, { label } = {}) {
+    const a = s.actor(key, sc => {
+      const g = svg('g');
+      g.append(sc.box(-0.14, -0.09, 0, 0.28, 0.18, 0.015, '#fffdf5'), sc.box(-0.14, -0.09, 0.016, 0.28, 0.05, 0.004, C.fail));
+      if (label) sc.hover(g, sc.label(0, 0, 0.3, label.lines, label));
+      sc.add(0.15, g); // глубже машины в той же точке: листок — поверх крыши
+    });
+    return { key, moveTo: (x, y, z = 0) => a.moveTo(x, y, z), remove: () => a.remove() };
+  }
+
   // vehicleActor — наружу: им строятся и другие актёры с маршрутом (люди — iso-people.js)
-  Object.assign(IsoObjects, { CAR, carColor, carNode, car, vehicleActor, carActor, FORKLIFT, forkliftActor, CRATE, crateActor });
+  Object.assign(IsoObjects, { CAR, carColor, carNode, car, vehicleActor, carActor, FORKLIFT, forkliftActor, policeActor, CRATE, crateActor, ticketActor });
 })();

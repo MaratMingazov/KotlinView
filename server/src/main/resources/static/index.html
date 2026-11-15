@@ -162,6 +162,7 @@
 <script src="diorama/scenes/diorama-queue.js"></script>
 <script src="diorama/scenes/diorama-sync.js"></script>
 <script src="diorama/scenes/diorama-cached.js"></script>
+<script src="diorama/scenes/diorama-locksupport.js"></script>
 <script>
   /*
    * Структуры: плитка (пульт и точный вид) и её диорама. Плитки — с пределами:
@@ -176,9 +177,8 @@
       // durationMs, fair, timeoutMs не вводятся: по умолчанию (5000 и false — сервер, 2000 — create в semaphoretask.js)
       view: { ...SemaphoreTaskView, params: [['permits', 2, { min: 1, max: SemaphoreDiorama.LIMITS.inside }],
         ['mode', 'ACQUIRE', { options: [['ACQUIRE', 'blocking'], ['TRY_ACQUIRE', 'non-blocking'], ['TRY_ACQUIRE_TIMEOUT', 'timeout 2s']] }]] } },
-    // Диорамы пока нет: карточка с пустой водой, под ней — только плитка.
     // Параметров нет: durationMs 5000 и PARK — по умолчанию (create в locksupport.js)
-    { id: 'park', diorama: null, view: { ...LockSupportView, params: [] } },
+    { id: 'park', diorama: LockSupportDiorama, view: { ...LockSupportView, params: [] } },
     { id: 'lbq', diorama: QueueDiorama,
       view: { ...BlockingQueueView, params: [['capacity', 3, { min: 1, max: QueueDiorama.LIMITS.slots }]] } },
     { id: 'sync', diorama: SyncDiorama, view: SynchronousQueueView },  ];

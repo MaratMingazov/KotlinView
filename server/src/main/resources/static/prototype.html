@@ -31,11 +31,11 @@
   <div id="portRoot"></div>
 </section>
 
-<!-- Мастерская FixedThreadPool (diorama-pool.js) — сцена в работе, демо-снимок -->
+<!-- Стоянка LockSupport (diorama-locksupport.js) — сцена в работе, демо-снимок -->
 <section>
-  <div class="diorama-title">Workshop by the conveyor = FixedThreadPool(3)</div>
-  <div class="legend">truck = caller thread: execute → offer puts the crate on the tail and drives away · conveyor = workQueue (LinkedBlockingQueue 5) · forklift = pool worker (its color), waits in take() at its workbench · workbench = run(), the screen shows progress · garage = ThreadFactory (firstTask: crate handed over by the garage, past the belt)</div>
-  <div id="poolRoot"></div>
+  <div class="diorama-title">Parking lot = LockSupport</div>
+  <div class="legend">car = parker thread (its color), stays on its spot · parking meter = progress of the task before park · z z = sleeps in park() · z z ⏰ = parkNanos timeout · police car = the thread that calls unpark (its color): wakes a sleeping car, or leaves a ticket (the permit) on a working one — its next park() returns at once</div>
+  <div id="parkRoot"></div>
 </section>
 
 <!-- Движок → реквизит → набор → описание сцены -->
@@ -48,10 +48,10 @@
 <script src="diorama/kit/diorama-kit.js"></script>
 <script src="diorama/kit/diorama-street.js"></script>
 <script src="diorama/scenes/diorama-cached.js"></script>
-<script src="diorama/scenes/diorama-pool.js"></script>
+<script src="diorama/scenes/diorama-locksupport.js"></script>
 <script>
   document.getElementById('portRoot').replaceChildren(Kit.show(CachedDiorama.kind, CachedDiorama.demo, CachedDiorama.demoShape));
-  document.getElementById('poolRoot').replaceChildren(Kit.show(PoolDiorama.kind, PoolDiorama.demo, PoolDiorama.demoShape));
+  document.getElementById('parkRoot').replaceChildren(Kit.show(LockSupportDiorama.kind, LockSupportDiorama.demo, LockSupportDiorama.demoShape));
 </script>
 </body>
 </html>

@@ -103,6 +103,7 @@ const Kit = (() => {
   const models = {
     car: (s, key, spec) => IsoObjects.carActor(s, key, spec.color, { ...spec.look, label: spec.label }),
     forklift: (s, key, spec) => IsoObjects.forkliftActor(s, key, spec.color, { label: spec.label }),
+    police: (s, key, spec) => IsoObjects.policeActor(s, key, spec.color, { label: spec.label }),
     // Люди — iso-people.js (подключать, если диорама их использует)
     courier: (s, key, spec) => IsoObjects.courierActor(s, key, spec.color, { label: spec.label }),
     person: (s, key, spec) => IsoObjects.personActor(s, key, spec.color, { label: spec.label }),
@@ -114,6 +115,7 @@ const Kit = (() => {
   /** Модели грузов: имя → (s, key, spec) => { moveTo(x, y, z), remove() }. У актёра-носителя — cargoZ (высота груза). */
   const cargoModels = {
     crate: (s, key, spec) => IsoObjects.crateActor(s, key, { label: spec.label }),
+    ticket: (s, key, spec) => IsoObjects.ticketActor(s, key, { label: spec.label }),
     bag: (s, key, spec) => IsoObjects.bagActor(s, key, { label: spec.label }),
     // Морской контейнер (iso-port.js): цвет — spec.color, длина — вдоль spec.axis ('y' по умолчанию)
     container: (s, key, spec) => IsoObjects.containerActor(s, key, { color: spec.color, axis: spec.axis, label: spec.label }),

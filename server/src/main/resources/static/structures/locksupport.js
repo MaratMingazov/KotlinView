@@ -30,6 +30,7 @@ const LockSupportView = (() => {
   const DONE_MS = KV.FADE_MS;
   const FAILED_MS = 4000;
   const UNPARK_MS = KV.FADE_MS;
+  const UNPARK_KEEP_MS = 2500; // сколько store помнит unpark: диорама ведёт к цели полицию — ей надо успеть доехать
   const fadeMsOf = p => p.result === 'failed' ? FAILED_MS : DONE_MS;
   const CALLERS_SHOWN = 2; // плашек тех, кто позвал unpark, — не больше (как у пула): место постоянное, рамки не прыгают
   const NOTICE_MS = 4000;  // сколько видна строка об отказе remove / unpark
@@ -74,8 +75,10 @@ const LockSupportView = (() => {
    *   parked — внутри park / parkNanos (timeoutMs — у parkNanos, parkedAt — для отсчёта);
    *   done — park вернулся (doneAt), result — почему: returned / timeout / interrupted (failed — park бросил исключение);
    *   leftAt — вышел из run объекта: плашка тает (DONE_MS, упавший — FAILED_MS) и пропадает;
-   * unparks — недавние unpark { thread, threadState, by, at }: threadState — состояние цели в момент вызова (args),
-   * by — кто позвал unpark (HTTP-поток: разрешение даёт другой поток).
+   * unparks — недавние unpark (UNPARK_KEEP_MS) { thread, threadState, by, targetStage, at }: threadState — состояние
+   * цели в момент вызова (args), by — кто позвал unpark (HTTP-поток: разрешение даёт другой поток), targetStage — этап
+   * цели (work / parked) на METHOD_IN unpark: запись — на входе, а не на выходе, — разбуженный поток мог выйти из park
+   * раньше, чем пришёл METHOD_OUT unpark (их шлют разные потоки), а на входе цель ещё точно не проснулась.
    * store.lockSupports — lockSupportId → { id, parked, methods } (бейджи park / parkNanos / unpark);
    * store.tasks — задачи (KV.trackTask): прогресс работы у каждого потока свой
    */
@@ -143,11 +146,13 @@ const LockSupportView = (() => {
         const p = parkerOf(item, d.thread);
         if (phase === 'IN') Object.assign(p, { stage: 'parked', parkedAt: now, timeoutMs: d.args?.timeoutMs ?? null });
         else Object.assign(p, { stage: 'done', doneAt: now, result: phase === 'OUT' ? d.result : 'failed' });
-      } else if (d.method === 'unpark' && phase === 'OUT') {
-        item.unparks = item.unparks.filter(u => now - u.at < UNPARK_MS);
-        // by — кто позвал (HTTP-поток): разрешение потоку даёт другой поток
-        item.unparks.push({ thread: d.args.thread, threadState: d.args.threadState, by: d.thread, at: now });
-        setTimeout(render, UNPARK_MS);
+      } else if (d.method === 'unpark' && phase === 'IN') {
+        // На входе: цель ещё не проснулась — её этап сейчас честный (см. unparks). by — кто позвал (HTTP-поток)
+        item.unparks = item.unparks.filter(u => now - u.at < UNPARK_KEEP_MS);
+        item.unparks.push({ thread: d.args.thread, threadState: d.args.threadState, by: d.thread,
+          targetStage: item.threads.get(d.args.thread)?.stage ?? null, at: now });
+        setTimeout(render, UNPARK_MS);      // вспышка в плитке погасла
+        setTimeout(render, UNPARK_KEEP_MS); // диорама: визит полиции закончился
       }
     }
 
@@ -160,8 +165,9 @@ const LockSupportView = (() => {
     return { items, lockSupports, tasks, apply, notify };
   }
 
-  // Недавние unpark объекта (store удаляет старые только при новом unpark)
-  const recentUnparks = item => item.unparks.filter(u => performance.now() - u.at < UNPARK_MS);
+  // Недавние unpark объекта (store удаляет старые только при новом unpark): плитке — за UNPARK_MS (вспышка),
+  // диораме — за UNPARK_KEEP_MS (визит полиции)
+  const recentUnparks = (item, ms = UNPARK_MS) => item.unparks.filter(u => performance.now() - u.at < ms);
 
   // ---------- Отрисовка ----------
 
@@ -270,6 +276,7 @@ const LockSupportView = (() => {
     params: [['durationMs', 5000], ['mode', 'PARK', { options: MODES }],
       ['timeoutMs', 2000, { showIf: values => values.mode === 'PARK_NANOS' }]],
     types, createStore, remove, operations, renderState,
+    recentUnparks: item => recentUnparks(item, UNPARK_KEEP_MS), // диорама (diorama-locksupport.js)
     // Поля могут не прийти (на index.html параметров нет) — значения по умолчанию
     create: values => create(values.durationMs ?? 5000, values.mode ?? 'PARK', values.timeoutMs ?? 2000),
   };

@@ -1,5 +1,5 @@
 /*
- * Реквизит диорам, часть 3 — постройки: верстак, бензоколонка, конвейер, склад, стеллаж, шлагбаум, светофор; мебель площадки — скамейка, фонарь, штакетник.
+ * Реквизит диорам, часть 3 — постройки: верстак, паркомат, бензоколонка, конвейер, склад, стеллаж, шлагбаум, светофор; мебель площадки — скамейка, фонарь, штакетник.
  * Подключение: после iso-vehicles.js (размер машины — для бензоколонки).
  */
 (() => {
@@ -40,6 +40,29 @@
         if (fraction == null) return;
         const a0 = y + 0.18, a1 = y + D - 0.18, f = Math.max(0.02, Math.min(fraction, 1));
         screen.append(s.panel('x', at + 0.001, a0, a0 + (a1 - a0) * f, H + 0.24, H + 0.41, color));
+      },
+    };
+  }
+
+  // ---------- Паркомат ----------
+
+  const METER = { post: C.post, head: '#5b5f66', screen: '#2f3236' };
+
+  /**
+   * Паркомат (x, y — дальний угол головы): столбик и голова с экраном на ближней грани +y. label — табличка при
+   * наведении. Возвращает set(fraction, color) — полоска на экране цветом потока; fraction = null — экран пустой
+   */
+  function parkingMeter(s, x, y, label) {
+    const g = svg('g'), screen = svg('g'), front = y + 0.16 + 0.003;
+    g.append(s.box(x + 0.06, y + 0.04, 0, 0.08, 0.08, 0.55, METER.post));
+    g.append(s.box(x, y, 0.55, 0.2, 0.16, 0.3, METER.head), screen);
+    s.castShadow(x, y, 0.2, 0.16, 0.85);
+    s.hover(g, label);
+    s.add(x + y + 0.36, g);
+    return {
+      set(fraction, color) {
+        screen.replaceChildren(s.panel('y', front, x + 0.03, x + 0.17, 0.65, 0.78, METER.screen));
+        if (fraction != null) screen.append(s.panel('y', front + 0.001, x + 0.035, x + 0.035 + 0.13 * Math.max(0.05, Math.min(fraction, 1)), 0.665, 0.765, color));
       },
     };
   }
@@ -421,5 +444,5 @@
     s.add(x0 + y0 + (along === 'x' ? 0 : len / 2), g);
   }
 
-  Object.assign(IsoObjects, { BENCH, workbench, fuelStation, conveyor, conveyorLength, warehouse, rack, house, barrierGate, trafficLight, bench, streetLamp, picket });
+  Object.assign(IsoObjects, { BENCH, workbench, parkingMeter, fuelStation, conveyor, conveyorLength, warehouse, rack, house, barrierGate, trafficLight, bench, streetLamp, picket });
 })();
