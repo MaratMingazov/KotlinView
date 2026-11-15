@@ -193,5 +193,7 @@ const KV = (() => {
     el, methodsState, trackMethod, renderBadges, setEffect, renderOps,
     trackTask,
     threadColor, seconds, THREAD_LABEL, roomChip,
+    // Ритм затухания бейджа — для всего, что гаснет вместе с ним (одно событие, один ритм)
+    FADE_MS,
   };
 })();

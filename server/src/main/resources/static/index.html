@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="structures/pool.css">
   <link rel="stylesheet" href="structures/synchronousqueue.css">
   <link rel="stylesheet" href="structures/semaphore.css">
+  <link rel="stylesheet" href="structures/locksupport.css">
   <link rel="stylesheet" href="core/tiles.css">
   <style>
     /*
@@ -144,6 +145,7 @@
 <script src="structures/blockingqueue.js"></script>
 <script src="structures/semaphore.js"></script>
 <script src="structures/semaphoretask.js"></script>
+<script src="structures/locksupport.js"></script>
 <script src="core/tiles.js"></script>
 <!-- Диорамы: движок → реквизит → набор → каркас → описания структур -->
 <script src="diorama/engine/iso-scene.js"></script>
@@ -174,6 +176,9 @@
       // durationMs, fair, timeoutMs не вводятся: по умолчанию (5000 и false — сервер, 2000 — create в semaphoretask.js)
       view: { ...SemaphoreTaskView, params: [['permits', 2, { min: 1, max: SemaphoreDiorama.LIMITS.inside }],
         ['mode', 'ACQUIRE', { options: [['ACQUIRE', 'blocking'], ['TRY_ACQUIRE', 'non-blocking'], ['TRY_ACQUIRE_TIMEOUT', 'timeout 2s']] }]] } },
+    // Диорамы пока нет: карточка с пустой водой, под ней — только плитка.
+    // Параметров нет: durationMs 5000 и PARK — по умолчанию (create в locksupport.js)
+    { id: 'park', diorama: null, view: { ...LockSupportView, params: [] } },
     { id: 'lbq', diorama: QueueDiorama,
       view: { ...BlockingQueueView, params: [['capacity', 3, { min: 1, max: QueueDiorama.LIMITS.slots }]] } },
     { id: 'sync', diorama: SyncDiorama, view: SynchronousQueueView },  ];
@@ -206,7 +211,7 @@
   // Пока плитка спит, диорама показывает «пустой» остров по полю параметров — обновлять при вводе
   for (const tile of tiles) for (const input of Object.values(tile.inputs)) input.addEventListener('input', render);
 
-  // Выбор по адресу (#pool, #cached, #sem, #lbq, #sync): новая живая диорама — сразу с машинами на местах; нет диорамы — только полоса
+  // Выбор по адресу (#pool, #cached, #sem, #park, #lbq, #sync): новая живая диорама — сразу с машинами на местах; нет диорамы — только полоса
   function select() {
     selected = STRUCTURES.find(s => `#${s.id}` === location.hash) ?? STRUCTURES[0];
     for (const [id, card] of cards) card.classList.toggle('on', id === selected.id);
