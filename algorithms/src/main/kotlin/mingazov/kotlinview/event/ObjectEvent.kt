@@ -10,7 +10,8 @@ enum class ObjectType {
     THREAD,
     THREAD_POOL_EXECUTOR,
     SEMAPHORE,
-    SEMAPHORE_RUNNABLE_TASK
+    SEMAPHORE_RUNNABLE_TASK,
+    LOCK_SUPPORT
 }
 
 /** state — начальное состояние объекта: клиент может нарисовать его сразу, не дожидаясь первого вызова метода. */
