@@ -9,10 +9,12 @@
  * Поток (run объекта) — машина въезжает по дороге и встаёт на своё место (закреплено за потоком, пока он жив);
  * park вернулся — пропал из снимка, машина выезжает и уезжает к краю плиты. Мест — LIMITS.spots, потоков больше —
  * «+N» у въезда на площадку (на местах — первые пришедшие). Прогресс на паркомате и таймаут parkNanos — кадрами.
+ * Работающая машина «с заведённым двигателем» — пар из выхлопной трубы; мигалка полиции мигает (оба — SVG <animate>).
  *
  * unpark — визит полиции (LockSupportView.recentUnparks: кто позвал, кому, этап цели на входе в unpark): машина цвета
  * вызывающего едет по дороге к месту цели, стоит и уезжает. Что с квитанцией — по этапу цели в момент unpark:
- *   спит (parked) — квитанция перелетает с полиции на машину (стоят обе), машина просыпается и уезжает с ней;
+ *   спит (parked) — полиция будит: встреча без груза (ActorSpec.meet), когда стоят обе, машина вздрагивает и уезжает
+ *   (разрешение park забирает сразу — квитанцию, которая тут же исчезла бы, не показываем);
  *   работает, квитанции нет — квитанция ложится на машину и лежит, пока не вернётся её park (разрешение заранее);
  *   работает, квитанция уже лежит — полиция постояла и уехала со своей: разрешение не копится.
  * Лежит ли квитанция — история событий (был unpark работающему, его park ещё не вернулся), а не копия разрешения
@@ -25,7 +27,7 @@
  * Всё лежит в объекте LockSupportDiorama: kind — описание для Kit.panel / Kit.show, LIMITS, demo.
  */
 const LockSupportDiorama = (() => {
-  const { threadColor, PALETTE: C } = Iso;
+  const { svg, threadColor, PALETTE: C } = Iso;
   const O = IsoObjects;
 
   // Мест на стоянке; потоков больше — «+N»
@@ -58,6 +60,27 @@ const LockSupportDiorama = (() => {
     callers: [{ id: 1, thread: 'http-nio-8080-exec-2', target: 'parker-2', spot: 1, kind: 'wake' }],
   };
 
+  /**
+   * Пар из выхлопной трубы — «двигатель заведён», пока машина работает на месте. Облачка у заднего бампера (машина
+   * стоит носом от дороги — зад к зрителю) поднимаются, растут и тают по очереди: SVG <animate> (SMIL), браузер
+   * крутит их сам, без кадров набора. Рисует сцена у места, а не модель машины: у других сцен пара нет.
+   * Возвращает узел — показать или спрятать
+   */
+  const PUFF = { n: 3, dur: 1.2, rise: 0.55, back: 0.25, r: [2, 6], opacity: 0.75 };
+  function exhaust(s, x, y) {
+    const g = svg('g'), from = s.P(x, y, 0.14), to = s.P(x, y + PUFF.back, 0.14 + PUFF.rise);
+    for (let k = 0; k < PUFF.n; k++) {
+      const c = svg('circle', { cx: from[0], cy: from[1], r: PUFF.r[0], fill: '#f4f4f4', opacity: 0 });
+      const anim = (attributeName, a, b) => c.append(svg('animate', { attributeName, values: `${a};${b}`, dur: `${PUFF.dur}s`,
+        begin: `${k * PUFF.dur / PUFF.n}s`, repeatCount: 'indefinite' }));
+      anim('cx', from[0], to[0]); anim('cy', from[1], to[1]); anim('r', ...PUFF.r); anim('opacity', PUFF.opacity, 0);
+      g.append(c);
+    }
+    g.style.display = 'none';
+    s.add(x + y + 0.5, g); // глубже машины на месте: облачка — поверх её зада
+    return g;
+  }
+
   // Доля работы задачи и сколько осталось таймаута — к моменту now (живые — по времени, демо — как дано)
   const workOf = (p, now) => p.progress ?? (p.run?.durationMs ? Math.min((now - p.run.startedAt) / p.run.durationMs, 1) : 0);
   const leftOf = (t, now) => t.left ?? Math.max(0, 1 - (now - t.start) / t.ms);
@@ -83,9 +106,11 @@ const LockSupportDiorama = (() => {
       const meter = O.parkingMeter(s, x + 0.56, L.carY + 0.55, l);
       // Спит: z z; у parkNanos — та же табличка с будильником и полоской таймаута
       const zz = s.label(x, L.carY, 0.95, ['z z'], { permanent: true });
+      // Выхлопная труба — у левого заднего угла машины (зад — к дороге, +y)
+      const puffs = exhaust(s, x - 0.15, L.carY + O.CAR.L / 2);
       st.place(`spot${i}`, [x, L.carY]);
       st.lanePlace(`curb${i}`, x);
-      return { meter, zz, p: null, shown: 'init' };
+      return { meter, zz, puffs, x, p: null, shown: 'init', steaming: false };
     });
     // Потоков больше, чем мест, — «+N» у въезда на площадку
     const more = s.label(L.lot[0] + 0.2, L.carY, 0.8, ['+0'], { permanent: true });
@@ -98,11 +123,14 @@ const LockSupportDiorama = (() => {
       s.showLabel(more, snap.extra > 0);
     }
 
-    // Паркомат (прогресс задачи) и табличка спящего (z z, у parkNanos — с таймаутом) — шагом 2%;
-    // true — кто-то ещё работает или ждёт с таймаутом: кадры нужны дальше
-    function frame(now) {
+    // Паркомат (прогресс задачи) и табличка спящего (z z, у parkNanos — с таймаутом) — шагом 2%; пар — пока машина
+    // работает и уже стоит на месте (въезжающая ещё не работает); true — кто-то работает или ждёт: кадры нужны дальше
+    function frame(now, actors = []) {
       let busy = false;
       for (const t of spots) {
+        const car = t.p && actors.find(a => a.key === t.p.name);
+        const steaming = t.p?.stage === 'work' && !!car && Math.hypot(car.x - t.x, car.y - L.carY) < 0.05;
+        if (steaming !== t.steaming) { t.steaming = steaming; t.puffs.style.display = steaming ? '' : 'none'; }
         const p = t.p, color = p ? threadColor(p.name) : null;
         const work = p?.stage === 'work' ? workOf(p, now) : null;
         const left = p?.stage === 'parked' && p.timeout ? leftOf(p.timeout, now) : null;
@@ -134,14 +162,20 @@ const LockSupportDiorama = (() => {
     bounce: c => `unpark(${c.target}): it already has a permit — permits do not add up`,
   };
 
-  /** Машина потока — на своём месте (въезд и выезд — по дороге); полиция — напротив места цели, на визит unpark. */
+  /**
+   * Машина потока — на своём месте (въезд и выезд — по дороге); полиция — напротив места цели, на визит unpark.
+   * Спящую будят встречей: у её машины — meet с полицией (набор запомнит её по первому снимку и подержит машину,
+   * когда та, проснувшись, пропадёт из снимка, — пока полиция не встанет напротив; тогда вздрог)
+   */
   function actorsOf(snap) {
+    const callers = snap.callers ?? [];
     return [
       ...snap.parkers.map(p => {
-        const color = threadColor(p.name);
-        return { key: p.name, place: `spot${p.spot}`, color, label: { lines: [Kit.THREAD_LABEL, 'runs the task, then park()'], color } };
+        const color = threadColor(p.name), i = callers.findIndex(c => c.kind === 'wake' && c.target === p.name);
+        return { key: p.name, place: `spot${p.spot}`, color, label: { lines: [Kit.THREAD_LABEL, 'runs the task, then park()'], color },
+          ...(i >= 0 && { meet: { with: policeKey(callers[i], i), at: `spot${p.spot}`, withAt: `curb${p.spot}`, pose: { jolt: true } } }) };
       }),
-      ...(snap.callers ?? []).map((c, i) => {
+      ...callers.map((c, i) => {
         const color = threadColor(c.thread);
         return { key: policeKey(c, i), place: `curb${c.spot}`, model: 'police', color,
           label: { lines: [Kit.THREAD_LABEL, CALLER_LINE[c.kind ?? 'wake'](c)], color } };
@@ -153,14 +187,13 @@ const LockSupportDiorama = (() => {
 
   /**
    * Квитанции. Лежит на работающей машине (ticket) — с визита unpark до её park; пока визит идёт — сначала на крыше
-   * полиции и перелетает, когда стоят обе (via — место машины, viaFrom — полиция напротив). Разбудить спящую (wake) —
-   * так же перелетает, потом уезжает с машиной. Лишняя (bounce) — на крыше полиции: уезжает с ней
+   * полиции и перелетает, когда стоят обе (via — место машины, viaFrom — полиция напротив). Лишняя (bounce) — на крыше
+   * полиции: уезжает с ней. Разбудить спящую (wake) — без квитанции, встречей (actorsOf)
    */
   function cargoOf(snap) {
     const specs = [];
     const handoff = (c, i) => ({ via: `spot${c.spot}`, viaFrom: `curb${c.spot}`, from: [{ actor: policeKey(c, i) }] });
     (snap.callers ?? []).forEach((c, i) => {
-      if (c.kind === 'wake') specs.push({ key: `ticket-wake-${c.id}`, model: 'ticket', actor: c.target, label: TICKET_LABEL, ...handoff(c, i) });
       if (c.kind === 'bounce') specs.push({ key: `ticket-bounce-${c.id}`, model: 'ticket', actor: policeKey(c, i), label: TICKET_LABEL });
     });
     for (const p of snap.parkers) {

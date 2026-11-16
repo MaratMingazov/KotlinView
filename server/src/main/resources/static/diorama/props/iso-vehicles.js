@@ -85,6 +85,9 @@ const IsoObjects = {};
   // Плавный разгон и торможение на всём маршруте
   const easeInOut = t => t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
 
+  // Вздрог (pose({ jolt })): за ms два коротких подскока по z, затухающих — |sin| × (1 − k); h — высота подскока (клетки)
+  const JOLT = { ms: 400, h: 0.12 };
+
   // Направление перегона → модель машины: по дороге (+x), назад по дороге (−x), в бокс (−y), из бокса (+y)
   const dirOf = (dx, dy) => Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? 'x-' : 'x') : dy < 0 ? 'y-' : 'y+';
 
@@ -94,13 +97,15 @@ const IsoObjects = {};
    * скоростью (speed клеток в секунду), но не быстрее minMs: даже короткий перегон виден глазу. Плавный разгон
    * и торможение. update(now) — на каждом кадре; true — ещё едет.
    * cargo — где лежит груз: { z, ahead } — высота и вынос вперёд по направлению (у погрузчика — на вилах).
-   * single — одна модель на все направления (кран на рельсах не разворачивается): build(sc, 'x') строится один раз
+   * single — одна модель на все направления (кран на рельсах не разворачивается): build(sc, 'x') строится один раз.
+   * Поза (не облик — актёр не пересоздаётся): pose({ jolt }) — вздрогнуть (подскок по z, груз — вместе с ним),
+   * animate(now) — кадр позы на каждом кадре набора; true — ещё подпрыгивает
    */
   function vehicleActor(s, key, build, { z: cargoZ = 0.5, ahead = 0, single = false } = {}) {
     const DIRS = ['x', 'x-', 'y-', 'y+'];
     const one = single ? s.actor(`${key}~any`, sc => build(sc, 'x')) : null;
     const models = Object.fromEntries(DIRS.map(dir => [dir, one ?? s.actor(`${key}~${dir}`, sc => build(sc, dir))]));
-    let dir = null, route = null;
+    let dir = null, route = null, hop = 0, jolt = null; // hop — текущий подскок по z, jolt — { start } идущего вздрога
     const pos = { x: 0, y: 0 };
 
     function moveTo(x, y, d = dir ?? 'x') {
@@ -109,7 +114,22 @@ const IsoObjects = {};
         if (!one) for (const [k, m] of Object.entries(models)) m.show(k === d);
         dir = d;
       }
-      models[d].moveTo(x, y);
+      models[d].moveTo(x, y, hop);
+    }
+
+    // Поза — не облик: { jolt } — вздрогнуть сейчас (набор зовёт, когда поза сменилась). Остальное — не про транспорт
+    function pose(p, now = performance.now()) {
+      if (p?.jolt) jolt = { start: now };
+    }
+
+    // Кадр позы: подскок затухает за JOLT.ms; true — ещё подпрыгивает
+    function animate(now = performance.now()) {
+      if (!jolt) return false;
+      const k = Math.min((now - jolt.start) / JOLT.ms, 1);
+      hop = k >= 1 ? 0 : Math.abs(Math.sin(k * Math.PI * 2)) * JOLT.h * (1 - k);
+      models[dir].moveTo(pos.x, pos.y, hop);
+      if (k >= 1) jolt = null;
+      return jolt != null;
     }
 
     function go(points, { speed = 6, minMs = 450, now = performance.now() } = {}) {
@@ -149,12 +169,12 @@ const IsoObjects = {};
     // Точка груза [x, y, z]: над центром или вынесена вперёд по направлению (вилы)
     function cargoPoint() {
       const [dx, dy] = { x: [1, 0], 'x-': [-1, 0], 'y+': [0, 1], 'y-': [0, -1] }[dir];
-      return [pos.x + dx * ahead, pos.y + dy * ahead, cargoZ];
+      return [pos.x + dx * ahead, pos.y + dy * ahead, cargoZ + hop]; // груз подпрыгивает вместе с машиной
     }
 
     moveTo(0, 0, 'x');
     // cargoZ — высота, на которой лежит груз: набор кладёт туда ящик, который актёр везёт (точка — cargoPoint)
-    return { key, pos, moveTo, go, update, remove, heading, cargoPoint, cargoZ, get moving() { return route != null; }, get dir() { return dir; } };
+    return { key, pos, moveTo, go, update, remove, heading, cargoPoint, cargoZ, pose, animate, get moving() { return route != null; }, get dir() { return dir; } };
   }
 
   /** Машина-актёр: груз — на крыше. */
@@ -244,10 +264,13 @@ const IsoObjects = {};
   // ---------- Полицейская машина ----------
 
   const POLICE_LIGHTS = [C.fail, '#4a7fd4']; // мигалка: красная и синяя половины
+  const BLINK_S = 0.6;                         // период мигания; половины — со сдвигом на полпериода, попеременно
 
   /**
    * Полицейская машина-актёр: обычная машина цвета color, белая полоса по ближнему борту, на крыше — мигалка
-   * (красная и синяя половины) со свечением. Ездит только по дороге (вдоль x): на поперечных перегонах — та же модель.
+   * (красная и синяя половины) со свечением; свечение мигает попеременно — SVG <animate> (SMIL): браузер крутит его сам,
+   * без кадров набора (украшение, со временем событий не связано). Ездит только по дороге (вдоль x): на поперечных
+   * перегонах — та же модель.
    * Груз (квитанция, которую везёт) — на крыше
    */
   function policeActor(s, key, color, { label } = {}) {
@@ -259,7 +282,11 @@ const IsoObjects = {};
       POLICE_LIGHTS.forEach((c, i) => {
         node.append(sc.box(-0.12 + i * step, -0.09, 0.5, step, 0.18, 0.08, c));
         const [gx, gy] = sc.P(-0.12 + (i + 0.5) * step, 0, 0.62);
-        node.append(svg('circle', { cx: gx, cy: gy, r: 7, style: `fill: ${c}; opacity: .35` }));
+        // opacity — атрибутом, а не в style: иначе <animate> его не перекрыл бы
+        const glow = svg('circle', { cx: gx, cy: gy, r: 7, fill: c, opacity: 0.35 });
+        glow.append(svg('animate', { attributeName: 'opacity', values: '0.08;0.65;0.08', dur: `${BLINK_S}s`,
+          begin: `${i * BLINK_S / 2}s`, repeatCount: 'indefinite' }));
+        node.append(glow);
       });
       if (label) sc.hover(node, sc.label(0, 0, 0.9, label.lines, label));
       sc.add(0.1, node);

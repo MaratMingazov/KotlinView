@@ -70,6 +70,14 @@
  * @property {Object} [pose]                                 — поза частей актёра, не облик (тележка крана на балке):
  *                                                              сменилась — набор передаёт её actor.pose(pose, now), актёр
  *                                                              не пересоздаётся; actor.animate(now) — на каждом кадре
+ * @property {{ with: string|number, at: string, withAt: string, pose: Object }} [meet] — встреча без груза: этот актёр
+ *                                                              стоит в at, актёр with — в withAt; набор держит обоих,
+ *                                                              пока не встанут оба, тогда — этому actor.pose(pose)
+ *                                                              (полиция будит спящую машину: вздрог); пока поза
+ *                                                              анимируется, этот актёр ещё стоит. Встреча запоминается
+ *                                                              по первому снимку и ждёт, даже если актёр уже пропал
+ *                                                              из снимка (уезжает после встречи); кого-то из двоих
+ *                                                              больше нет — отменяется
  */
 
 /**
@@ -192,6 +200,20 @@ const Kit = (() => {
     // Удержание: (ключ, место) → true — актёру пока нельзя уезжать (с ним идёт передача груза). Задают грузы (freight)
     let hold = () => false;
 
+    /**
+     * Встречи без груза (ActorSpec.meet): ключ → { a, at, b, withAt, pose, metAt }. До встречи оба стоят в своих
+     * местах; встретились (оба стоят) — позу актёру a; после — a стоит, пока анимирует позу, b свободен
+     */
+    const meetings = new Map();
+    const meetHold = (key, at) => {
+      for (const m of meetings.values()) {
+        if (m.metAt == null && ((m.a === key && m.at === at) || (m.b === key && m.withAt === at))) return true;
+        if (m.metAt != null && m.a === key) return true;
+      }
+      return false;
+    };
+    const held = (key, at) => hold(key, at) || meetHold(key, at);
+
     function create(spec) {
       const make = models[spec.model ?? 'car'];
       if (!make) throw new Error(`Kit: нет модели «${spec.model}»`);
@@ -297,6 +319,14 @@ const Kit = (() => {
       const wanted = new Set();
       for (const spec of specs) {
         if (!net.places[spec.place]) throw new Error(`Kit: неизвестное место «${spec.place}» у актёра ${spec.key}`);
+        // Встреча — по первому снимку: дальше ждёт сама, даже когда актёр пропал из снимка
+        const meetKey = spec.meet && `${spec.key}|${spec.meet.with}`;
+        if (spec.meet && !instant && !meetings.has(meetKey)) {
+          for (const place of [spec.meet.at, spec.meet.withAt]) {
+            if (!net.places[place]) throw new Error(`Kit: неизвестное место встречи «${place}» у актёра ${spec.key}`);
+          }
+          meetings.set(meetKey, { a: spec.key, b: spec.meet.with, at: spec.meet.at, withAt: spec.meet.withAt, pose: spec.meet.pose, metAt: null });
+        }
         wanted.add(spec.key);
         const exit = spec.exit ?? layout.exit, appear = spec.entry ?? layout.entry;
         if (!net.places[exit]) throw new Error(`Kit: неизвестный выезд «${exit}» у актёра ${spec.key}`);
@@ -328,9 +358,27 @@ const Kit = (() => {
       }
     }
 
+    // Встречи: оба стоят на своих местах — позу актёру a; вздрогнул (поза больше не анимируется) — встречу забыть.
+    // Кого-то из двоих уже нет — отменить. true — какая-то встреча ещё ждёт или идёт
+    function meet(now) {
+      const standing = (key, place) => { const e = actors.get(key); return !!e && !e.route && e.at === place; };
+      for (const [k, m] of meetings) {
+        const a = actors.get(m.a);
+        if (!a || !actors.has(m.b)) { meetings.delete(k); continue; }
+        if (m.metAt == null && standing(m.a, m.at) && standing(m.b, m.withAt)) {
+          m.metAt = now;
+          a.actor.pose?.(m.pose, now);
+          a.animating = true; // до следующего кадра: иначе встречу забыли бы, не дав вздрогнуть
+        } else if (m.metAt != null && !a.animating) {
+          meetings.delete(k);
+        }
+      }
+      return meetings.size > 0;
+    }
+
     // Кадр. true — кто-то едет или ещё ждёт следующей остановки: кадры нужны дальше
     function tick(now) {
-      let busy = false;
+      let busy = meet(now);
       for (const [key, entry] of actors) {
         if (entry.route && !entry.actor.update(now)) {
           // Доехал: если дальше ещё есть куда — постоять, чтобы остановку было видно
@@ -338,14 +386,15 @@ const Kit = (() => {
           entry.route = entry.routeTarget = null;
           entry.readyAt = now + (entry.plan.length ? entry.dwellMs : 0);
         }
-        if (!entry.route && entry.plan.length && now >= entry.readyAt && !hold(key, entry.at)) start(entry, now);
+        if (!entry.route && entry.plan.length && now >= entry.readyAt && !held(key, entry.at)) start(entry, now);
         if (!entry.route && !entry.plan.length && entry.leaving && entry.at === entry.exit) {
           entry.actor.remove();
           actors.delete(key);
           continue;
         }
         busy ||= !!entry.route || entry.plan.length > 0;
-        if (entry.actor.animate?.(now)) busy = true; // части актёра (тележка крана) ещё движутся
+        entry.animating = !!entry.actor.animate?.(now); // части актёра (тележка крана, вздрог) ещё движутся
+        if (entry.animating) busy = true;
       }
       return busy;
     }
