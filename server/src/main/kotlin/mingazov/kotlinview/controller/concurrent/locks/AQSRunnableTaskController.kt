@@ -3,6 +3,7 @@ package mingazov.kotlinview.controller.concurrent.locks
 import mingazov.kotlinview.controller.collection.CreatedResponse
 import mingazov.kotlinview.controller.collection.ErrorResponse
 import mingazov.kotlinview.controller.collection.ThreadResponse
+import mingazov.kotlinview.instrumented.concurrent.locks.AQSAcquireMode
 import mingazov.kotlinview.service.concurrent.locks.AQSRunnableTaskService
 import mingazov.kotlinview.service.concurrent.locks.AQSTaskSpec
 import org.springframework.http.HttpStatus
@@ -15,10 +16,16 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
-/** limit — сколько места в AQS; tasks — задачи над ним. По умолчанию: exclusive на 3 и shared на 1 */
+/**
+ * limit — сколько места в AQS; tasks — задачи над ним. По умолчанию все занимают по 1 (arg) из 2: очередь — с третьего
+ * потока. Один exclusive и один shared — в очереди узлы обоих типов
+ */
 data class CreateAQSRunnableTaskRequest(
-    val limit: Int = 5,
-    val tasks: List<AQSTaskSpec> = listOf(AQSTaskSpec(shared = false, arg = 3), AQSTaskSpec(shared = true, arg = 1)),
+    val limit: Int = 2,
+    val tasks: List<AQSTaskSpec> = listOf(
+        AQSTaskSpec(shared = false, mode = AQSAcquireMode.ACQUIRE),
+        AQSTaskSpec(shared = true, mode = AQSAcquireMode.ACQUIRE),
+    ),
 )
 
 data class InterruptRequest(val thread: String)

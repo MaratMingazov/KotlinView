@@ -75,18 +75,25 @@ class InstrumentedAQS(
     fun releaseShared(arg: Int) = events.call("releaseShared", mapOf("arg" to arg)) { sync.releaseShared(arg) }
 
     /**
-     * Состояние для событий. state — точно (volatile). Очереди — снимок best-effort, как у InstrumentedSemaphore:
-     * AQS обходит их без замка, и в METHOD_IN acquire поток в очередь ещё не встал.
+     * Состояние для событий. state — точно (volatile). queue — одна очередь, head первым, у каждого потока режим узла:
+     * снимок best-effort, как у InstrumentedSemaphore: AQS обходит её без замка, и в METHOD_IN acquire поток в очередь
+     * ещё не встал.
      */
-    override fun state(): Map<String, Any?> = mapOf(
-        "state" to sync.currentState(),
-        "limit" to limit,
-        "hasContended" to sync.hasContended(),
-        // AQS отдаёт от tail к head — разворачиваем: первый в очереди — первый в списке
-        "queuedThreads" to sync.queuedThreads.map { it.name }.reversed(),
-        "exclusiveQueuedThreads" to sync.exclusiveQueuedThreads.map { it.name }.reversed(),
-        "sharedQueuedThreads" to sync.sharedQueuedThreads.map { it.name }.reversed(),
-    )
+    override fun state(): Map<String, Any?> {
+        // Режим узла AQS наружу не отдаёт — только отдельным обходом. Сначала очередь, потом shared: вставший между
+        // обходами попадёт лишь в shared-множество и ничего не испортит (в обратном порядке новый shared вышел бы
+        // exclusive). Расхождение остаётся у ушедшего между обходами shared: в этом снимке он — exclusive
+        // (клиент знает режим потока и по его задаче)
+        val queued = sync.queuedThreads
+        val shared = sync.sharedQueuedThreads.toSet()
+        return mapOf(
+            "state" to sync.currentState(),
+            "limit" to limit,
+            "hasContended" to sync.hasContended(),
+            // AQS отдаёт от tail к head — разворачиваем: первый в очереди — первый в списке
+            "queue" to queued.reversed().map { mapOf("thread" to it.name, "shared" to (it in shared)) },
+        )
+    }
 
     /**
      * Хуки: AQS зовёт их сам — изнутри наших acquire / release, поэтому их события вложены в события публичного
