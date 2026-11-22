@@ -14,7 +14,8 @@ enum class ObjectType {
     LOCK_SUPPORT,
     LOCK_SUPPORT_RUNNABLE_TASK,
     AQS,
-    AQS_RUNNABLE_TASK
+    AQS_RUNNABLE_TASK,
+    COUNT_DOWN_LATCH
 }
 
 /** state — начальное состояние объекта: клиент может нарисовать его сразу, не дожидаясь первого вызова метода. */
