@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="structures/semaphore.css">
   <link rel="stylesheet" href="structures/locksupport.css">
   <link rel="stylesheet" href="structures/aqs.css">
+  <link rel="stylesheet" href="structures/countdownlatch.css">
   <link rel="stylesheet" href="core/tiles.css">
   <style>
     /*
@@ -148,6 +149,7 @@
 <script src="structures/semaphoretask.js"></script>
 <script src="structures/locksupport.js"></script>
 <script src="structures/aqs.js"></script>
+<script src="structures/countdownlatch.js"></script>
 <script src="core/tiles.js"></script>
 <!-- Диорамы: движок → реквизит → набор → каркас → описания структур -->
 <script src="diorama/engine/iso-scene.js"></script>
@@ -165,6 +167,7 @@
 <script src="diorama/scenes/diorama-sync.js"></script>
 <script src="diorama/scenes/diorama-cached.js"></script>
 <script src="diorama/scenes/diorama-locksupport.js"></script>
+<script src="diorama/scenes/diorama-latch.js"></script>
 <script>
   /*
    * Структуры: плитка (пульт и точный вид) и её диорама. Плитки — с пределами:
@@ -183,6 +186,9 @@
     { id: 'park', diorama: LockSupportDiorama, view: { ...LockSupportView, params: [] } },
     // Диорамы пока нет — карточка с пустой водой; limit и задачи — по умолчанию на сервере
     { id: 'aqs', diorama: null, view: AQSView },
+    // count — не больше огней на портале; 0 — старт открыт сразу
+    { id: 'latch', diorama: LatchDiorama,
+      view: { ...CountDownLatchView, params: [['count', 3, { min: 0, max: LatchDiorama.LIMITS.lights }]] } },
     { id: 'lbq', diorama: QueueDiorama,
       view: { ...BlockingQueueView, params: [['capacity', 3, { min: 1, max: QueueDiorama.LIMITS.slots }]] } },
     { id: 'sync', diorama: SyncDiorama, view: SynchronousQueueView },  ];
@@ -215,7 +221,7 @@
   // Пока плитка спит, диорама показывает «пустой» остров по полю параметров — обновлять при вводе
   for (const tile of tiles) for (const input of Object.values(tile.inputs)) input.addEventListener('input', render);
 
-  // Выбор по адресу (#pool, #cached, #sem, #park, #aqs, #lbq, #sync): новая живая диорама — сразу с машинами на местах; нет диорамы — только полоса
+  // Выбор по адресу (#pool, #cached, #sem, #park, #aqs, #latch, #lbq, #sync): новая живая диорама — сразу с машинами на местах; нет диорамы — только полоса
   function select() {
     selected = STRUCTURES.find(s => `#${s.id}` === location.hash) ?? STRUCTURES[0];
     for (const [id, card] of cards) card.classList.toggle('on', id === selected.id);

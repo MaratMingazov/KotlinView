@@ -113,10 +113,11 @@
 
   /**
    * Дорога от u0 до u1 вдоль axis ('x' — по умолчанию, 'y') по полосе v0 – v1 поперёк: полотно, светлая полоса износа
-   * у краёв, бордюры-бортики (у них есть высота — дорога «утоплена»), пунктир посередине. По острову — только по суше:
-   * за берегом продолжается деревянным мостом. skip — [от, до] по u без пунктира (места очереди размечены рамками)
+   * у краёв, бордюры-бортики (у них есть высота — дорога «утоплена»), пунктир между полосами (lanes — сколько полос
+   * поперёк; по умолчанию 2 — пунктир посередине). По острову — только по суше: за берегом продолжается деревянным
+   * мостом. skip — [от, до] по u без пунктира (места очереди размечены рамками)
    */
-  function road(s, u0, u1, { axis = 'x', v0 = 0, v1 = 1.2, skip = null } = {}) {
+  function road(s, u0, u1, { axis = 'x', v0 = 0, v1 = 1.2, skip = null, lanes = 2 } = {}) {
     const { pt, rect, cube } = roadAxes(s, axis);
     const mid = (v0 + v1) / 2, onShore = u => inside(s.shore, ...pt(u, mid));
     // Край суши: от конца дороги идём к острову, пока не окажемся на берегу
@@ -129,10 +130,13 @@
     s.ground.push(rect(u0, v0, u1 - u0, v1 - v0, C.road));
     s.ground.push(rect(u0, v0, u1 - u0, 0.1, shade(C.road, 0.12)), rect(u0, v1 - 0.1, u1 - u0, 0.1, shade(C.road, 0.12)));
     s.ground.push(cube(u0, v0 - 0.14, 0, u1 - u0, 0.14, 0.06, C.curb), cube(u0, v1, 0, u1 - u0, 0.14, 0.06, C.curb));
-    for (let u = u0 + 0.3; u < u1 - 0.4; u += 0.9) {
-      if (skip && u + 0.45 > skip[0] && u < skip[1]) continue;
-      const [a, b] = [s.P(...pt(u, mid), 0), s.P(...pt(u + 0.45, mid), 0)];
-      s.ground.push(svg('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], style: `stroke: ${C.roadMark}; stroke-width: 2.2; stroke-linecap: round` }));
+    for (let k = 1; k < lanes; k++) {
+      const v = v0 + (v1 - v0) * k / lanes;
+      for (let u = u0 + 0.3; u < u1 - 0.4; u += 0.9) {
+        if (skip && u + 0.45 > skip[0] && u < skip[1]) continue;
+        const [a, b] = [s.P(...pt(u, v), 0), s.P(...pt(u + 0.45, v), 0)];
+        s.ground.push(svg('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], style: `stroke: ${C.roadMark}; stroke-width: 2.2; stroke-linecap: round` }));
+      }
     }
   }
 

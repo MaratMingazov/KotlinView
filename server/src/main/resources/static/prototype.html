@@ -38,6 +38,13 @@
   <div id="parkRoot"></div>
 </section>
 
+<!-- Старт ралли CountDownLatch (diorama-latch.js) — сцена в работе, демо-снимок -->
+<section>
+  <div class="diorama-title">Rally start = CountDownLatch</div>
+  <div class="legend">car = thread in await() (its color), one per lane at the stop line · start lights over the stop line = count: one light per initial count, red ones are still needed · judge = the thread that calls countDown (its color): fires the pistol at the podium, each shot turns one light off; at 0 all turn green and the cars start</div>
+  <div id="latchRoot"></div>
+</section>
+
 <!-- Движок → реквизит → набор → описание сцены -->
 <script src="diorama/engine/iso-scene.js"></script>
 <script src="diorama/props/iso-vehicles.js"></script>
@@ -45,12 +52,15 @@
 <script src="diorama/props/iso-buildings.js"></script>
 <script src="diorama/props/iso-nature.js"></script>
 <script src="diorama/props/iso-port.js"></script>
+<script src="diorama/props/iso-people.js"></script>
 <script src="diorama/kit/diorama-kit.js"></script>
 <script src="diorama/kit/diorama-street.js"></script>
 <script src="diorama/scenes/diorama-cached.js"></script>
 <script src="diorama/scenes/diorama-locksupport.js"></script>
+<script src="diorama/scenes/diorama-latch.js"></script>
 <script>
   document.getElementById('portRoot').replaceChildren(Kit.show(CachedDiorama.kind, CachedDiorama.demo, CachedDiorama.demoShape));
+  document.getElementById('latchRoot').replaceChildren(Kit.show(LatchDiorama.kind, LatchDiorama.demo, LatchDiorama.demoShape));
   document.getElementById('parkRoot').replaceChildren(Kit.show(LockSupportDiorama.kind, LockSupportDiorama.demo, LockSupportDiorama.demoShape));
 </script>
 </body>

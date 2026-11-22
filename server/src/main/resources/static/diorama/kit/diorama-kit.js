@@ -353,7 +353,8 @@ const Kit = (() => {
       for (const [key, entry] of actors) {
         if (wanted.has(key) || entry.leaving) continue;
         entry.leaving = true;
-        entry.plan.push(entry.exit);
+        // Уже едет на выезд (место в снимке и было выездом) — второй раз не добавлять: постоял бы на нём DWELL_MS
+        if (finalOf(entry) !== entry.exit) entry.plan.push(entry.exit);
         retime(entry, now);
       }
     }

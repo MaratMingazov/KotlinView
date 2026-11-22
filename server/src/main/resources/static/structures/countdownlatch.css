@@ -1,0 +1,24 @@
+/* CountDownLatch (countdownlatch.js): бейджи, строка count с судьями, под ней старт — ждущие, ворота, выехавшие
+   (.room* — components.css) */
+
+/* count 2/3: подпись мелко, дробь крупно; initialCount приглушённый */
+.cdl-line { display: flex; align-items: center; gap: 6px; margin-top: 8px; min-height: 18px; cursor: default; }
+.cdl-key { color: var(--dim); font-size: 11px; }
+.cdl-fraction { font-size: 15px; font-weight: bold; }
+.cdl-count { padding: 0 2px; border-radius: 3px; color: var(--num); }
+.cdl-initial { color: var(--dim); }
+.cdl-judges { display: flex; gap: 4px; margin-left: 8px; }
+
+/* Старт и выезд не схлопываются, пока пустые: ворота не прыгают */
+.cdl-start, .cdl-gone { min-width: 52px; min-height: 18px; }
+.room-chip.cdl-failed { border-color: var(--fail); color: var(--fail); }
+
+/* Ворота: закрыты — сплошная планка, открыты — зелёный пунктир */
+.cdl-gate { width: 0; height: 26px; border-left: 4px solid var(--border); cursor: default; }
+.cdl-gate.open { border-left: 4px dashed var(--out); }
+
+/* count изменился: цифра вспыхивает */
+@keyframes cdl-count {
+  from { background: color-mix(in srgb, var(--num) 35%, transparent); }
+  to { background: transparent; }
+}
