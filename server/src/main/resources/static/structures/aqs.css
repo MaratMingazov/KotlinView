@@ -1,0 +1,39 @@
+/* Группа AQS (aqs.js): бейджи, строки state и queue, под ними рамка задачи (.room* — components.css) */
+
+/* Строка поля AQS: ключ слева, значение справа */
+.aqs-line { display: flex; align-items: center; gap: 6px; margin-top: 8px; min-height: 18px; cursor: default; }
+.aqs-key { color: var(--dim); font-size: 11px; }
+.aqs-state { padding: 0 2px; border-radius: 3px; color: var(--num); }
+/* state 1/2: значение и limit — одного размера, limit приглушённый (правило хуков, а не поле AQS) */
+.aqs-fraction { font-size: 15px; font-weight: bold; }
+.aqs-limit { color: var(--dim); }
+
+/* Рамка задачи не схлопывается, пока пустая */
+.aqs-room { min-width: 68px; min-height: 18px; }
+
+/* Режим узла и arg — в правом углу плашки (E2 — exclusive на 2, S1 — shared на 1); плашка шире обычной: метка
+   не наезжает на подпись */
+.room-chip.aqs-chip { width: 64px; }
+.room-chip .aqs-mode { position: absolute; top: 0; right: 3px; font-size: 9px; line-height: 16px; opacity: .8; }
+
+/* state изменился: цифра вспыхивает */
+@keyframes aqs-state {
+  from { background: color-mix(in srgb, var(--num) 35%, transparent); }
+  to { background: transparent; }
+}
+
+/* Попытка tryAcquire*: короткая вспышка вокруг плашки — красная (отказ) или зелёная (взял) */
+@keyframes aqs-try-fail {
+  from { box-shadow: 0 0 0 3px var(--fail); }
+  to { box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes aqs-try-ok {
+  from { box-shadow: 0 0 0 3px var(--out); }
+  to { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* release* разбудил первого в очереди: вспыхивает рамка его плашки */
+@keyframes aqs-signal {
+  from { border-color: var(--keyword); background: color-mix(in srgb, var(--keyword) 35%, transparent); }
+  to { }
+}

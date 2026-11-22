@@ -3,10 +3,6 @@
 /* Рамка не схлопывается, пока пустая: task и parked одной высоты */
 .ls-room { min-width: 68px; min-height: 18px; }
 
-/* Работающий и спящий поток — кнопка: клик — unpark */
-.room-chip.clickable { cursor: pointer; }
-.room-chip.clickable:hover { border-color: var(--thread); }
-
 /* Вышел из park: тает (fade-out — из renderChip); не returned (timeout, interrupted, упал) — пунктир */
 .room-chip.done.failed { border-style: dashed; }
 

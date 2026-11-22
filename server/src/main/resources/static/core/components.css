@@ -45,6 +45,9 @@
 /* Ждёт с таймаутом: полоска внизу убывает */
 .room-chip .countdown { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: var(--thread); }
 .room-chip.entering { opacity: .5; }
+/* Плашка-кнопка: клик — действие над потоком (unpark у LockSupport, interrupt у AQS) */
+.room-chip.clickable { cursor: pointer; }
+.room-chip.clickable:hover { border-color: var(--thread); }
 .room-chip.rejected { border-style: dashed; }
 .room {
   position: relative; display: flex; flex-direction: column; gap: 4px; padding: 7px; cursor: default;

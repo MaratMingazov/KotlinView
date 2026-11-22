@@ -17,14 +17,17 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 /**
- * limit — сколько места в AQS; tasks — задачи над ним. По умолчанию все занимают по 1 (arg) из 2: очередь — с третьего
- * потока. Один exclusive и один shared — в очереди узлы обоих типов
+ * limit — сколько места в AQS; tasks — задачи над ним. По умолчанию limit 2 и оба режима на 1 и на 2 (arg): так видно
+ * каскад — exclusive на 2 вышел, освободилось сразу 2, и проснувшийся shared на 1 будит следующего shared на 1
+ * (два exclusive на 1 на его месте — второй так и спит: exclusive будит только release)
  */
 data class CreateAQSRunnableTaskRequest(
     val limit: Int = 2,
     val tasks: List<AQSTaskSpec> = listOf(
-        AQSTaskSpec(shared = false, mode = AQSAcquireMode.ACQUIRE),
-        AQSTaskSpec(shared = true, mode = AQSAcquireMode.ACQUIRE),
+        AQSTaskSpec(shared = false, mode = AQSAcquireMode.ACQUIRE, arg = 1),
+        AQSTaskSpec(shared = false, mode = AQSAcquireMode.ACQUIRE, arg = 2),
+        AQSTaskSpec(shared = true, mode = AQSAcquireMode.ACQUIRE, arg = 1),
+        AQSTaskSpec(shared = true, mode = AQSAcquireMode.ACQUIRE, arg = 2),
     ),
 )
 
