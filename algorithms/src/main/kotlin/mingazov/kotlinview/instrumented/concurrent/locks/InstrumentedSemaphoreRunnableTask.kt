@@ -1,11 +1,9 @@
 package mingazov.kotlinview.instrumented.concurrent.locks
 
 import mingazov.kotlinview.event.EventSink
-import mingazov.kotlinview.event.MethodIn
-import mingazov.kotlinview.event.MethodOut
-import mingazov.kotlinview.event.MethodOutFailed
 import mingazov.kotlinview.event.ObjectType
 import mingazov.kotlinview.instrumented.Instrumented
+import mingazov.kotlinview.instrumented.MethodEvents
 import mingazov.kotlinview.instrumented.executor.InstrumentedRunnableTask
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -26,7 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class InstrumentedSemaphoreRunnableTask(
     override val id: Long,
-    private val sink: EventSink,
+    sink: EventSink,
     private val semaphore: InstrumentedSemaphore,
     private val task: InstrumentedRunnableTask,
     private val mode: AcquireMode,
@@ -42,28 +40,28 @@ class InstrumentedSemaphoreRunnableTask(
     private val active = AtomicInteger()
     fun activeCount(): Int = active.get()
 
+    // Состояние неизменяемо — замок на события не нужен
+    private val events = MethodEvents(TYPE, id, sink, ::state)
+
+    /**
+     * События run: METHOD_IN, METHOD_OUT с результатом done / rejected или METHOD_OUT_FAILED (InterruptedException —
+     * прервали в acquire / tryAcquire с таймаутом или внутри задачи) — их шлёт MethodEvents
+     */
     override fun run() {
-        val args = emptyMap<String, Any?>()
         active.incrementAndGet()
-        sink.emit(MethodIn(TYPE, id, threadName(), "run", args, state()))
         try {
-            // Вход — вне try / finally: если разрешение не взято (отказ или поток прервали, пока ждал), отдавать нечего.
-            // Внутри try такой поток всё равно сделал бы release — и «напечатал» бы лишнее разрешение
-            if (!enter()) {
-                sink.emit(MethodOut(TYPE, id, threadName(), "run", args, REJECTED, state()))
-                return
+            events.call("run", emptyMap()) {
+                // Вход — вне try / finally: если разрешение не взято (отказ или поток прервали, пока ждал), отдавать
+                // нечего. Внутри try такой поток всё равно сделал бы release — и «напечатал» бы лишнее разрешение
+                if (!enter()) return@call REJECTED
+                try {
+                    task.run()
+                } finally {
+                    // Даже если задача упала: иначе разрешение утекло бы навсегда
+                    semaphore.release()
+                }
+                DONE
             }
-            try {
-                task.run()
-            } finally {
-                // Даже если задача упала: иначе разрешение утекло бы навсегда
-                semaphore.release()
-            }
-            sink.emit(MethodOut(TYPE, id, threadName(), "run", args, DONE, state()))
-        } catch (e: Exception) {
-            // InterruptedException — прервали в acquire / tryAcquire с таймаутом или внутри задачи
-            sink.emit(MethodOutFailed(TYPE, id, threadName(), "run", args, e.toString(), state()))
-            throw e
         } finally {
             active.decrementAndGet()
         }
@@ -76,15 +74,13 @@ class InstrumentedSemaphoreRunnableTask(
         AcquireMode.TRY_ACQUIRE_TIMEOUT -> semaphore.tryAcquire(timeoutMs, TimeUnit.MILLISECONDS)
     }
 
-    /** Состояние неизменяемо — ссылки на части и способ входа. Поэтому замок на события, как у семафора, не нужен. */
+    /** Состояние неизменяемо — ссылки на части и способ входа. */
     override fun state(): Map<String, Any?> = mapOf(
         "semaphoreId" to semaphore.id,
         "taskId" to task.id,
         "mode" to mode.name,
         "timeoutMs" to timeoutMs,
     )
-
-    private fun threadName() = Thread.currentThread().name
 
     private companion object {
         val TYPE = ObjectType.SEMAPHORE_RUNNABLE_TASK

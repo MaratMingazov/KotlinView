@@ -14,7 +14,8 @@ import mingazov.kotlinview.event.ObjectType
  * lock — снимок state и отправка под одним замком: если методы идут параллельно, более старый снимок не уйдёт
  * последним (как у InstrumentedLinkedBlockingQueueRunnable); null — без замка. Сам вызов (block) — вне замка:
  * ждущий в нём поток никого не держит.
- * Пока на нём InstrumentedSemaphore и InstrumentedLockSupport; остальные шлют события вручную — переводить по одному.
+ * На нём весь concurrent (семафор, LockSupport, AQS, CountDownLatch и составные задачи под ними); коллекции и
+ * executor шлют события вручную — переводить по одному.
  */
 class MethodEvents(
     private val type: ObjectType,

@@ -42,11 +42,11 @@ const SyncDiorama = (() => {
    */
   const demo = {
     givers: [
-      { id: 1, thread: 'putter-1', method: 'put', taskId: 11, dur: '5.0s', state: 'inside', pair: null },
-      { id: 2, thread: 'putter-2', method: 'put', taskId: 12, dur: '5.0s', state: 'inside', pair: null },
-      { id: 3, thread: 'putter-3', method: 'put', taskId: 13, dur: '5.0s', state: 'done', pair: 4 },
+      { id: 1, thread: 'sync-putter-1', method: 'put', taskId: 11, dur: '5.0s', state: 'inside', pair: null },
+      { id: 2, thread: 'sync-putter-2', method: 'put', taskId: 12, dur: '5.0s', state: 'inside', pair: null },
+      { id: 3, thread: 'sync-putter-3', method: 'put', taskId: 13, dur: '5.0s', state: 'done', pair: 4 },
     ],
-    takers: [{ id: 4, thread: 'taker-1', taskId: 13, dur: '5.0s', state: 'done', pair: 3 }],
+    takers: [{ id: 4, thread: 'sync-taker-1', taskId: 13, dur: '5.0s', state: 'done', pair: 3 }],
   };
 
   const waitingGivers = snap => snap.givers.filter(g => g.method === 'put' && g.state === 'inside' && g.pair == null);

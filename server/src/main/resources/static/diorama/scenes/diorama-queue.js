@@ -55,8 +55,8 @@ const QueueDiorama = (() => {
     queue: [{ id: 21, dur: '5.0s' }, { id: 22, dur: '5.0s' }, { id: 23, dur: '5.0s' }, { id: 24, dur: '5.0s' }],
     waiting: [],
     offers: [{ key: 'offer-1', thread: 'http-nio-8080-exec-3', taskId: 25, dur: '5.0s', accepted: false }],
-    puts: [{ key: 'put-2', thread: 'putter-1', taskId: 26, dur: '5.0s', accepted: null }],
-    takes: [{ thread: 'taker-1', taskId: 20, dur: '5.0s' }],
+    puts: [{ key: 'put-2', thread: 'lbq-putter-1', taskId: 26, dur: '5.0s', accepted: null }],
+    takes: [{ thread: 'lbq-taker-1', taskId: 20, dur: '5.0s' }],
   };
 
   const titleOf = snap => [`LinkedBlockingQueue(${snap.capacity})`,

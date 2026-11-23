@@ -3,9 +3,9 @@ package mingazov.kotlinview.service.collection
 import mingazov.kotlinview.instrumented.collection.InstrumentedLinkedBlockingQueueRunnable
 import mingazov.kotlinview.instrumented.collection.registry.InstrumentedLinkedBlockingQueueRunnableRegistry
 import mingazov.kotlinview.instrumented.executor.registry.InstrumentedRunnableTaskRegistry
+import mingazov.kotlinview.service.concurrent.WorkerThreads
 import org.springframework.stereotype.Service
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicLong
 
 @Service
 class LinkedBlockingQueueRunnableService(
@@ -13,9 +13,11 @@ class LinkedBlockingQueueRunnableService(
     private val taskRegistry: InstrumentedRunnableTaskRegistry,
 ) {
 
-    private val takerIds = AtomicLong()
-    private val putterIds = AtomicLong()
-    private val pollerIds = AtomicLong()
+    // Потоки блокирующих вызовов; владелец — id очереди. Префикс lbq- — имена уникальны на весь сервер: у другой
+    // очереди тоже есть taker / putter / poller, а клиент склеивает события по имени потока
+    private val takers = WorkerThreads("lbq-taker")
+    private val putters = WorkerThreads("lbq-putter")
+    private val pollers = WorkerThreads("lbq-poller")
 
     fun create(capacity: Int): InstrumentedLinkedBlockingQueueRunnable = registry.create(capacity)
     fun get(queueId: Long): InstrumentedLinkedBlockingQueueRunnable = registry.get(queueId)
@@ -32,7 +34,7 @@ class LinkedBlockingQueueRunnableService(
      */
     fun take(queueId: Long): String {
         val queue = registry.get(queueId)
-        return startDaemon("taker-${takerIds.incrementAndGet()}") { queue.take() }
+        return takers.start(queueId) { queue.take() }
     }
 
     /**
@@ -42,20 +44,12 @@ class LinkedBlockingQueueRunnableService(
     fun put(queueId: Long, taskId: Long): String {
         val queue = registry.get(queueId)
         val task = taskRegistry.get(taskId)
-        return startDaemon("putter-${putterIds.incrementAndGet()}") { queue.put(task) }
+        return putters.start(queueId) { queue.put(task) }
     }
 
     /** poll(timeout): как take, но ждёт не дольше timeoutMs; METHOD_OUT poll — taskId или null (не дождался). */
     fun poll(queueId: Long, timeoutMs: Long): String {
         val queue = registry.get(queueId)
-        return startDaemon("poller-${pollerIds.incrementAndGet()}") { queue.poll(timeoutMs, TimeUnit.MILLISECONDS) }
-    }
-
-    // Поток, ждущий в очереди, не должен мешать остановке приложения
-    private fun startDaemon(name: String, body: () -> Unit): String {
-        val thread = Thread(body, name)
-        thread.isDaemon = true
-        thread.start()
-        return thread.name
+        return pollers.start(queueId) { queue.poll(timeoutMs, TimeUnit.MILLISECONDS) }
     }
 }
