@@ -33,7 +33,6 @@ const LockSupportView = (() => {
   const UNPARK_KEEP_MS = 2500; // сколько store помнит unpark: диорама ведёт к цели полицию — ей надо успеть доехать
   const fadeMsOf = p => p.result === 'failed' ? FAILED_MS : DONE_MS;
   const CALLERS_SHOWN = 2; // плашек тех, кто позвал unpark, — не больше (как у пула): место постоянное, рамки не прыгают
-  const NOTICE_MS = 4000;  // сколько видна строка об отказе remove / unpark
 
   // Как поток паркуется после задачи (ParkMode на сервере): подпись в списке пульта
   const MODES = [['PARK', 'park()'], ['PARK_NANOS', 'parkNanos(timeout)']];
@@ -47,17 +46,14 @@ const LockSupportView = (() => {
   async function unparkOf(store, id, thread) {
     const res = await UI.request('POST', `${base}/${id}/unpark`, { thread });
     const item = store.items.get(id);
-    if (!res.ok && item) store.notify(item, `unpark(${thread}) ✗ ${errorMessage(res.body?.error)}`);
+    if (!res.ok && item) store.notify(item, `unpark(${thread}) ✗ ${KV.errorMessage(res.body?.error)}`);
   }
 
   async function remove(store, id) {
     const res = await UI.request('DELETE', `${base}/${id}`);
     const item = store.items.get(id);
-    if (!res.ok && item) store.notify(item, `remove ✗ ${errorMessage(res.body?.error)}`);
+    if (!res.ok && item) store.notify(item, `remove ✗ ${KV.errorMessage(res.body?.error)}`);
   }
-
-  // java.lang.IllegalStateException: LockSupportRunnableTask 7 has threads inside run → LockSupportRunnableTask 7 has …
-  const errorMessage = error => error ? error.split(': ').slice(1).join(': ') || error : 'request failed';
 
   const operations = [
     // Только run: unpark — клик по плашке потока
@@ -156,11 +152,7 @@ const LockSupportView = (() => {
       }
     }
 
-    function notify(item, text) {
-      item.notice = { text, start: performance.now() };
-      setTimeout(render, NOTICE_MS);
-      render();
-    }
+    const notify = (item, text) => KV.notify(item, text, render);
 
     return { items, lockSupports, tasks, apply, notify };
   }
@@ -196,8 +188,8 @@ const LockSupportView = (() => {
     const row = KV.el('div', 'room-row');
     row.append(renderCallers(unparks, now), working, parked);
     out.push(row);
-    const n = item.notice;
-    if (n && now - n.start < NOTICE_MS) out.push(KV.el('div', 'semtask-notice error', n.text));
+    const notice = KV.renderNotice(item);
+    if (notice) out.push(notice);
     return out;
   }
 

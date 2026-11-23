@@ -189,8 +189,38 @@ const KV = (() => {
     return ops;
   }
 
+  // ---------- Строка-уведомление под плиткой: отказ REST и прочее ----------
+
+  const NOTICE_MS = 4000; // сколько видна строка — успеть прочитать; тает к концу
+
+  /** Текст ошибки из ответа сервера: "java.lang.IllegalStateException: AQS 7 has …" → "AQS 7 has …" */
+  const errorMessage = error => error ? error.split(': ').slice(1).join(': ') || error : 'request failed';
+
+  /**
+   * Запомнить уведомление на объекте плитки (item.notice) и перерисовать — сейчас и когда погаснет.
+   * kind — 'error' (отказ) или 'info' (сообщение: у пула — задачи, возвращённые shutdownNow)
+   */
+  function notify(item, text, render, kind = 'error') {
+    item.notice = { text, kind, start: performance.now() };
+    setTimeout(render, NOTICE_MS);
+    render();
+  }
+
+  /**
+   * Строка уведомления объекта: тает к концу NOTICE_MS (отрицательная задержка — продолжить с того места, где была).
+   * Нет или погасла — null; с reserve — пустая строка той же высоты: место постоянное, плитка не прыгает
+   */
+  function renderNotice(item, { reserve = false } = {}) {
+    const n = item.notice, elapsed = n ? performance.now() - n.start : Infinity;
+    if (elapsed >= NOTICE_MS) return reserve ? el('div', 'notice reserve') : null;
+    const row = el('div', `notice ${n.kind}${reserve ? ' reserve' : ''}`, n.text);
+    row.style.animation = `fade-out ${NOTICE_MS}ms ease-in ${-elapsed}ms forwards`;
+    return row;
+  }
+
   return {
     el, methodsState, trackMethod, renderBadges, setEffect, renderOps,
+    errorMessage, notify, renderNotice,
     trackTask,
     threadColor, seconds, THREAD_LABEL, roomChip,
     // Ритм затухания бейджа — для всего, что гаснет вместе с ним (одно событие, один ритм)

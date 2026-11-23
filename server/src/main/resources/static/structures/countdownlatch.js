@@ -29,28 +29,24 @@ const CountDownLatchView = (() => {
   const LEAVE_KEEP_MS = 2500;      // сколько store помнит вышедших: диораме — успеть проехать (плитка тает раньше)
   const DEPART_STEP_MS = 250;      // диорама: выпущенные трогаются по одной — с таким шагом, в порядке выхода из await
   const FLASH_MS = KV.FADE_MS;     // вспышка count
-  const NOTICE_MS = 4000;          // сколько видна строка об отказе interrupt / remove
 
   // ---------- REST ----------
   // Запросы и лог HTTP — UI.call из base.js. Latch появится по событию OBJECT_CREATED
 
   const create = count => UI.call('POST', base, { count });
 
-  // java.lang.IllegalStateException: CountDownLatch 7 has waiting threads → CountDownLatch 7 has waiting threads
-  const errorMessage = error => error ? error.split(': ').slice(1).join(': ') || error : 'request failed';
-
   // Отказ (409 — кто-то ждёт) событий не порождает: пишем его в строку-уведомление
   async function remove(store, id) {
     const res = await UI.request('DELETE', `${base}/${id}`);
     const latch = store.items.get(id);
-    if (!res.ok && latch) store.notify(latch, `remove ✗ ${errorMessage(res.body?.error)}`);
+    if (!res.ok && latch) store.notify(latch, `remove ✗ ${KV.errorMessage(res.body?.error)}`);
   }
 
   // interrupt — клик по плашке ждущего. 404 — поток уже вышел из await
   async function interruptOf(store, id, thread) {
     const res = await UI.request('POST', `${base}/${id}/interrupt`, { thread });
     const latch = store.items.get(id);
-    if (!res.ok && latch) store.notify(latch, `interrupt(${thread}) ✗ ${errorMessage(res.body?.error)}`);
+    if (!res.ok && latch) store.notify(latch, `interrupt(${thread}) ✗ ${KV.errorMessage(res.body?.error)}`);
   }
 
   // await(timeout) сервер умеет ({ timeoutMs }), модель и отрисовка его понимают — кнопки пока нет
@@ -146,11 +142,7 @@ const CountDownLatchView = (() => {
       setTimeout(render, SHOT_KEEP_MS); // диорама: судья ушёл
     }
 
-    function notify(latch, text) {
-      latch.notice = { text, start: performance.now() };
-      setTimeout(render, NOTICE_MS);
-      render();
-    }
+    const notify = (latch, text) => KV.notify(latch, text, render);
 
     return { items, apply, notify };
   }
@@ -169,8 +161,8 @@ const CountDownLatchView = (() => {
     const row = KV.el('div', 'room-row');
     row.append(renderWaiting(store, latch, now), renderGate(latch), renderGone(latch, now));
     out.push(row);
-    const n = latch.notice;
-    if (n && now - n.start < NOTICE_MS) out.push(KV.el('div', 'semtask-notice error', n.text));
+    const notice = KV.renderNotice(latch);
+    if (notice) out.push(notice);
     return out;
   }
 

@@ -1,5 +1,6 @@
 /*
- * Реквизит диорам, часть 3 — постройки: верстак, паркомат, бензоколонка, конвейер, склад, стеллаж, шлагбаум, светофор; мебель площадки — скамейка, фонарь, штакетник.
+ * Реквизит диорам, часть 3 — постройки: верстак, паркомат, бензоколонка, конвейер, склад, стеллаж, шлагбаум, светофор;
+ * старт: трибуна, выстрел, стартовые огни; мебель площадки — скамейка, фонарь, штакетник.
  * Подключение: после iso-vehicles.js (размер машины — для бензоколонки).
  */
 (() => {
@@ -353,6 +354,70 @@
     return { set };
   }
 
+  // ---------- Старт: трибуна, выстрел, стартовые огни ----------
+
+  /** Трибуна у обочины (x, y — дальний угол): низкий помост со ступенькой справа и стойка с цветной полкой */
+  function podium(s, x, y) {
+    const g = svg('g');
+    g.append(s.box(x, y, 0, 0.6, 0.45, 0.22, C.wood), s.box(x + 0.6, y + 0.1, 0, 0.18, 0.3, 0.1, shade(C.wood, -0.1)));
+    g.append(s.box(x + 0.05, y + 0.05, 0.22, 0.08, 0.08, 0.5, '#5b5f66'), s.box(x - 0.02, y - 0.02, 0.72, 0.22, 0.12, 0.05, C.accent));
+    s.castShadow(x, y, 0.6, 0.45, 0.4);
+    s.add(x + y + 0.3, g);
+  }
+
+  /**
+   * Выстрел вверх над точкой (x, y): жёлтая вспышка на высоте поднятой руки человечка и облачко дыма над ней.
+   * Возвращает узел, сначала спрятанный: показать или спрятать — style.display
+   */
+  function pistolShot(s, x, y) {
+    const g = svg('g');
+    const [cx, cy] = s.P(x, y, 1.05);
+    const star = [];
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2, r = i % 2 ? 4 : 10;
+      star.push(`${(cx + Math.cos(a) * r).toFixed(1)},${(cy + Math.sin(a) * r).toFixed(1)}`);
+    }
+    g.append(svg('circle', { cx, cy: cy - 14, r: 6, style: 'fill: #f4f4f4; opacity: .8' }),
+      svg('circle', { cx: cx + 5, cy: cy - 19, r: 4, style: 'fill: #f4f4f4; opacity: .6' }),
+      svg('polygon', { points: star.join(' '), style: 'fill: #ffd86b; stroke: #f2a93b; stroke-width: 1' }));
+    g.style.display = 'none';
+    s.add(x + y + 2, g);
+    return g;
+  }
+
+  /**
+   * Стартовые огни: портал поперёк дороги вдоль y — столбы на обочинах (y0, y1) и высокая перекладина с n огнями.
+   * Высоко — чтобы на экране перекладина шла над крышами машин у линии, а не поперёк них. Столбы — отдельными
+   * объектами, каждый со своей глубиной: ближний — перед машинами, дальний — за ними. label — табличка при наведении.
+   * Возвращает set(red): горят красные — первые red огней, остальные погашены; red = 0 — все зелёные (старт)
+   */
+  function startLights(s, x, [y0, y1], n, label) {
+    const g = svg('g'), z = 2.3;
+    for (const y of [y0, y1]) {
+      s.add(x + y + 0.1, s.box(x - 0.06, y - 0.06, 0, 0.12, 0.12, z + 0.25, '#5b5f66'));
+      s.castShadow(x - 0.06, y - 0.06, 0.12, 0.12, z + 0.25);
+    }
+    g.append(s.box(x - 0.1, y0, z, 0.2, y1 - y0, 0.3, '#2b2b2b'));
+    const lamps = Array.from({ length: n }, (_, i) => {
+      const y = y0 + (y1 - y0) * (i + 1) / (n + 1);
+      const [cx, cy] = s.P(x + 0.1, y, z + 0.15);
+      const glow = svg('circle', { cx, cy, r: 8 }), core = svg('circle', { cx, cy, r: 4.5 });
+      g.append(glow, core);
+      return { glow, core };
+    });
+    s.hover(g, label);
+    s.add(x + y1 + 0.5, g); // перекладина — поверх всего под ней
+    return {
+      set(red) {
+        lamps.forEach(({ glow, core }, i) => {
+          const on = red === 0 || i < red, color = red === 0 ? C.ok : C.fail;
+          core.setAttribute('style', `fill: ${color}; opacity: ${on ? 1 : 0.25}`);
+          glow.setAttribute('style', `fill: ${color}; opacity: ${on ? 0.35 : 0}`);
+        });
+      },
+    };
+  }
+
   // ---------- Жилой дом с крыльцом ----------
 
   const HOUSE = { wall: '#fbe9d0', frame: '#fff8ee', lit: '#ffe3a0', door: '#a8744a', doorway: '#4a3a33', stone: '#e6dccb', floorH: 0.8 };
@@ -444,5 +509,5 @@
     s.add(x0 + y0 + (along === 'x' ? 0 : len / 2), g);
   }
 
-  Object.assign(IsoObjects, { BENCH, workbench, parkingMeter, fuelStation, conveyor, conveyorLength, warehouse, rack, house, barrierGate, trafficLight, bench, streetLamp, picket });
+  Object.assign(IsoObjects, { BENCH, workbench, parkingMeter, fuelStation, conveyor, conveyorLength, warehouse, rack, house, barrierGate, trafficLight, podium, pistolShot, startLights, bench, streetLamp, picket });
 })();

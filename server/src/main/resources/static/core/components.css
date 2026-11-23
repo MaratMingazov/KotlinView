@@ -73,3 +73,10 @@
   55% { transform: translateX(-6px); opacity: 1; }
   100% { transform: translateX(-24px); opacity: 0; }
 }
+
+/* --- строка-уведомление под плиткой (KV.renderNotice): отказ REST и прочее, тает --- */
+.notice { margin-top: 8px; }
+.notice.error { color: var(--fail); }
+.notice.info { color: var(--keyword); }
+/* Место держится, даже когда строки нет: плитка не прыгает */
+.notice.reserve { min-height: 20px; }

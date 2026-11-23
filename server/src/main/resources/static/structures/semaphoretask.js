@@ -21,7 +21,6 @@ const SemaphoreTaskView = (() => {
   const GUARDED = 'SEMAPHORE_RUNNABLE_TASK';
   const SEMAPHORE = 'SEMAPHORE';
   const TASK = 'RUNNABLE_TASK';
-  const NOTICE_MS = 4000; // сколько видна строка об отказе remove
 
   // ---------- REST ----------
   // Запросы и лог HTTP — UI.call из base.js. Объект появится по событию OBJECT_CREATED (после семафора и задачи)
@@ -37,11 +36,8 @@ const SemaphoreTaskView = (() => {
   async function remove(store, id) {
     const res = await UI.request('DELETE', `${base}/${id}`);
     const item = store.items.get(id);
-    if (!res.ok && item) store.notify(item, `remove ✗ ${errorMessage(res.body?.error)}`);
+    if (!res.ok && item) store.notify(item, `remove ✗ ${KV.errorMessage(res.body?.error)}`);
   }
-
-  // java.lang.IllegalStateException: SemaphoreRunnableTask 7 has threads inside run → SemaphoreRunnableTask 7 has …
-  const errorMessage = error => error ? error.split(': ').slice(1).join(': ') || error : 'request failed';
 
   const operations = [
     // Только run: release поток делает сам, на выходе из задачи
@@ -90,11 +86,7 @@ const SemaphoreTaskView = (() => {
       }
     }
 
-    function notify(item, text) {
-      item.notice = { text, start: performance.now() };
-      setTimeout(render, NOTICE_MS);
-      render();
-    }
+    const notify = (item, text) => KV.notify(item, text, render);
 
     return { items, semaphores, tasks, apply, notify };
   }
@@ -110,8 +102,8 @@ const SemaphoreTaskView = (() => {
     const task = store.tasks.get(item.taskId) ?? { id: item.taskId ?? '?', durationMs: null, runs: new Map() };
     const enter = item.mode && item.mode !== 'ACQUIRE' ? 'tryAcquire' : 'acquire';
     const out = sem ? [KV.renderBadges(pick(sem.methods, [enter, 'release'])), renderRoom(item, sem, task)] : [renderRoom(item, null, task)];
-    const n = item.notice;
-    if (n && performance.now() - n.start < NOTICE_MS) out.push(KV.el('div', 'semtask-notice error', n.text));
+    const notice = KV.renderNotice(item);
+    if (notice) out.push(notice);
     return out;
   }
 

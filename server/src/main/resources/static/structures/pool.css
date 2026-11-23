@@ -6,10 +6,6 @@
 .dot.RUNNING { background: var(--out); }
 .dot.SHUTDOWN, .dot.TIDYING { background: var(--keyword); }
 .run-state { color: var(--text); }
-/* Отказ execute, задачи, возвращённые shutdownNow: строка вспыхивает и тает */
-.notice { min-height: 20px; }
-.notice.failed { color: var(--fail); }
-.notice.info { color: var(--keyword); }
 
 /* --- воркеры: места в рамке «workers» (общие стили .room* — components.css) --- */
 /* Место живого потока — рамка его цвета; внутри номер задачи (заливка — прогресс run) или ожидание */

@@ -37,7 +37,6 @@ const AQSView = (() => {
   const FAILED_MS = 4000;
   const fadeMsOf = w => w.result === 'failed' ? FAILED_MS : DONE_MS;
   const SIGNAL_KEEP_MS = 2500; // сколько store помнит release (кого он будил): диораме — успеть показать
-  const NOTICE_MS = 4000;      // сколько видна строка об отказе run / interrupt / remove
 
   // Режим — по имени метода: *Shared — shared, остальное — exclusive
   const isShared = method => method.endsWith('Shared');
@@ -55,14 +54,11 @@ const AQSView = (() => {
   // Тело пустое — limit и задачи по умолчанию задаёт сервер (CreateAQSRunnableTaskRequest)
   const create = () => UI.call('POST', base, {});
 
-  // java.lang.IllegalStateException: AQS 7 has threads inside run → AQS 7 has threads inside run
-  const errorMessage = error => error ? error.split(': ').slice(1).join(': ') || error : 'request failed';
-
   // Отказ (409 — кто-то внутри) событий не порождает: пишем его в строку-уведомление
   async function remove(store, id) {
     const res = await UI.request('DELETE', `${base}/${id}`);
     const group = store.items.get(id);
-    if (!res.ok && group) store.notify(group, `remove ✗ ${errorMessage(res.body?.error)}`);
+    if (!res.ok && group) store.notify(group, `remove ✗ ${KV.errorMessage(res.body?.error)}`);
   }
 
   // interrupt — клик по плашке потока (отрисовка). 404 — поток уже вышел из run
@@ -70,7 +66,7 @@ const AQSView = (() => {
     const group = store.items.get(id), taskId = group?.workers.get(thread)?.taskId;
     if (!group || taskId == null) return;
     const res = await UI.request('POST', `${base}/task/${taskId}/interrupt`, { thread });
-    if (!res.ok) store.notify(group, `interrupt(${thread}) ✗ ${errorMessage(res.body?.error)}`);
+    if (!res.ok) store.notify(group, `interrupt(${thread}) ✗ ${KV.errorMessage(res.body?.error)}`);
   }
 
   // Задачи ещё не пришли (страницу открыли после создания и событий задач не было) — запускать нечего
@@ -211,11 +207,7 @@ const AQSView = (() => {
       }
     }
 
-    function notify(group, text) {
-      group.notice = { text, start: performance.now() };
-      setTimeout(render, NOTICE_MS);
-      render();
-    }
+    const notify = (group, text) => KV.notify(group, text, render);
 
     return { items, tasks, apply, notify };
   }
@@ -235,8 +227,8 @@ const AQSView = (() => {
     const row = KV.el('div', 'room-row');
     row.append(renderTask(store, group, now));
     out.push(row);
-    const n = group.notice;
-    if (n && now - n.start < NOTICE_MS) out.push(KV.el('div', 'semtask-notice error', n.text));
+    const notice = KV.renderNotice(group);
+    if (notice) out.push(notice);
     return out;
   }
 

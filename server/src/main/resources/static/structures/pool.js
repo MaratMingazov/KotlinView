@@ -29,7 +29,6 @@ const Pool = (() => {
   const INT_MAX = 2147483647;    // ёмкость LinkedBlockingQueue() без аргумента
   const DONE_FADE_MS = 1500;     // сколько тает колонка завершившегося потока
   const FAILED_FADE_MS = 4000;   // упавшего — дольше, чтобы успеть прочитать ошибку
-  const NOTICE_MS = 4000;        // сколько видна строка об отказе / возвращённых задачах
   const TASK_DURATION_MS = 5000; // все задачи пока одной длины
   const NEW_MS = 1500;           // сколько подсвечена задача, только что попавшая в очередь (= перерисовка KV.setEffect)
   const VISIT_MS = 1200;         // сколько помнится законченный execute: плашка вызывающего тает или отскакивает (как у LBQ)
@@ -59,12 +58,11 @@ const Pool = (() => {
     async remove(store, poolId) {
       const res = await UI.request('DELETE', `${base}/${poolId}`);
       const pool = store.pools.get(poolId);
-      if (!res.ok && pool) store.notify(pool, `remove pool ✗ ${errorMessage(res.body?.error)}`, true);
+      if (!res.ok && pool) store.notify(pool, `remove pool ✗ ${KV.errorMessage(res.body?.error)}`, true);
     },
   };
 
   // java.lang.IllegalStateException: Pool 3 must be terminated before removal → Pool 3 must be terminated before removal
-  const errorMessage = error => error ? error.split(': ').slice(1).join(': ') || error : 'request failed';
 
   // Подсказки к кнопкам: что уйдёт на сервер
   const titles = {
@@ -98,7 +96,7 @@ const Pool = (() => {
    * store.apply(env) — учесть событие; store.pools — poolId → пул.
    */
   function createStore(render) {
-    // poolId → { id, state, methods, notice: { text, failed, start } | null }
+    // poolId → { id, state, methods, notice: { text, kind, start } | null (KV.notify) }
     const pools = new Map();
     // queueId → { id, capacity, elements, methods, nodeEffect, takes } — takes: поток → { taskId, at } (недавний take / poll с задачей)
     const queues = new Map();
@@ -239,10 +237,8 @@ const Pool = (() => {
       }
     }
 
-    function notify(pool, text, failed) {
-      pool.notice = { text, failed, start: performance.now() };
-      setTimeout(render, NOTICE_MS);
-    }
+    // failed — отказ (красным), иначе сообщение (задачи, возвращённые shutdownNow)
+    const notify = (pool, text, failed) => KV.notify(pool, text, render, failed ? 'error' : 'info');
 
     function applyQueue(env, d) {
       if (env.type === 'OBJECT_REMOVED') { queues.delete(d.objectId); return; }
@@ -322,7 +318,7 @@ const Pool = (() => {
     const flights = flightsOf(pool);
     row.append(renderCallers(pool), renderQueue(store, pool), renderWorkers(store, pool, new Set(flights.map(v => v.worker))));
     renderFlights(row, flights);
-    return [status, renderNotice(pool), row];
+    return [status, KV.renderNotice(pool, { reserve: true }), row];
   }
 
   // Визиты execute, которые ещё не устарели (store удаляет старые только при новом execute); незаконченные — всегда.
@@ -416,15 +412,6 @@ const Pool = (() => {
     status.append(KV.el('span', `dot ${s.runState}`), s.runState);
     status.title = `threads ${s.poolSize} / core ${s.corePoolSize} / max ${s.maximumPoolSize} · active ${s.activeCount} · completed ${s.completedTaskCount}`;
     return status;
-  }
-
-  function renderNotice(pool) {
-    const n = pool.notice;
-    const elapsed = n ? performance.now() - n.start : Infinity;
-    if (elapsed >= NOTICE_MS) return KV.el('div', 'notice');
-    const row = KV.el('div', 'notice ' + (n.failed ? 'failed' : 'info'), n.text);
-    row.style.animation = `fade-out ${NOTICE_MS}ms ease-in ${-elapsed}ms forwards`;
-    return row;
   }
 
   const PIPE_MAX = 8; // ячеек в трубе у неограниченной очереди; остальное — «+N» у хвоста

@@ -1,6 +1,5 @@
 /* Задача под семафором (semaphoretask.js): бейджи, под ними «комната» (.room* — components.css).
    Подключать после base.css и components.css */
-.semtask-notice { margin-top: 8px; }
 
 /* Места «комнаты» (общие стили — .room* в components.css), только у семафора: разрешение держит кто-то вне задачи,
    «напечатано» лишним release, долг */

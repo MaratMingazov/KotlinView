@@ -13,7 +13,7 @@
  * Kit.show, LIMITS, demo, demoShape.
  */
 const LatchDiorama = (() => {
-  const { svg, shade, threadColor, PALETTE: C } = Iso;
+  const { threadColor } = Iso;
   const O = IsoObjects;
 
   // Мест на старте — по полосе; машин больше — «+N». Огней на портале — не больше lights (count ограничен полем
@@ -51,69 +51,6 @@ const LatchDiorama = (() => {
     judge: { thread: 'http-nio-8080-exec-4', kind: 'tick', shooting: true },
   };
 
-  // ---------- Реквизит сцены ----------
-
-  /** Трибуна судьи: низкий помост со ступенькой и стойка; судья стоит рядом */
-  function podium(s, x, y) {
-    const g = svg('g');
-    g.append(s.box(x, y, 0, 0.6, 0.45, 0.22, C.wood), s.box(x + 0.6, y + 0.1, 0, 0.18, 0.3, 0.1, shade(C.wood, -0.1)));
-    g.append(s.box(x + 0.05, y + 0.05, 0.22, 0.08, 0.08, 0.5, '#5b5f66'), s.box(x - 0.02, y - 0.02, 0.72, 0.22, 0.12, 0.05, C.accent));
-    s.castShadow(x, y, 0.6, 0.45, 0.4);
-    s.add(x + y + 0.3, g);
-  }
-
-  /**
-   * Выстрел вверх: жёлтая вспышка над поднятой рукой судьи и облачко дыма. Возвращает узел — показать или спрятать
-   */
-  function shot(s, x, y) {
-    const g = svg('g');
-    const [cx, cy] = s.P(x, y, 1.05);
-    const star = [];
-    for (let i = 0; i < 16; i++) {
-      const a = (i / 16) * Math.PI * 2, r = i % 2 ? 4 : 10;
-      star.push(`${(cx + Math.cos(a) * r).toFixed(1)},${(cy + Math.sin(a) * r).toFixed(1)}`);
-    }
-    g.append(svg('circle', { cx, cy: cy - 14, r: 6, style: 'fill: #f4f4f4; opacity: .8' }),
-      svg('circle', { cx: cx + 5, cy: cy - 19, r: 4, style: 'fill: #f4f4f4; opacity: .6' }),
-      svg('polygon', { points: star.join(' '), style: 'fill: #ffd86b; stroke: #f2a93b; stroke-width: 1' }));
-    g.style.display = 'none';
-    s.add(x + y + 2, g);
-    return g;
-  }
-
-  /**
-   * Портал над стоп-линией — два столба на обочинах и перекладина вдоль y; на ней n огней (по initialCount).
-   * set(count, n): горят красные — первые count, остальные погашены; count = 0 — все зелёные
-   */
-  function lightsGantry(s, x, [y0, y1], n, label) {
-    // Высоко: перекладина на экране — над крышами машин у стоп-линии, а не поперёк них
-    const g = svg('g'), z = 2.3;
-    // Столбы — отдельно, каждый со своей глубиной: ближний — перед машинами, дальний — за ними
-    for (const y of [y0, y1]) {
-      s.add(x + y + 0.1, s.box(x - 0.06, y - 0.06, 0, 0.12, 0.12, z + 0.25, '#5b5f66'));
-      s.castShadow(x - 0.06, y - 0.06, 0.12, 0.12, z + 0.25);
-    }
-    g.append(s.box(x - 0.1, y0, z, 0.2, y1 - y0, 0.3, '#2b2b2b'));
-    const lamps = Array.from({ length: n }, (_, i) => {
-      const y = y0 + (y1 - y0) * (i + 1) / (n + 1);
-      const [cx, cy] = s.P(x + 0.1, y, z + 0.15);
-      const glow = svg('circle', { cx, cy, r: 8 }), core = svg('circle', { cx, cy, r: 4.5 });
-      g.append(glow, core);
-      return { glow, core };
-    });
-    s.hover(g, label);
-    s.add(x + y1 + 0.5, g); // перекладина — поверх всего под ней
-    return {
-      set(count) {
-        lamps.forEach(({ glow, core }, i) => {
-          const on = count === 0 || i < count, color = count === 0 ? C.ok : C.fail;
-          core.setAttribute('style', `fill: ${color}; opacity: ${on ? 1 : 0.25}`);
-          glow.setAttribute('style', `fill: ${color}; opacity: ${on ? 0.35 : 0}`);
-        });
-      },
-    };
-  }
-
   // ---------- Сцена ----------
 
   const countLines = snap => snap.count === 0
@@ -136,11 +73,11 @@ const LatchDiorama = (() => {
       s.title(['CountDownLatch', 'await · countDown']);
       O.stopLine(s, L.stopX, v0, v1);
 
-      podium(s, ...L.podium);
-      const flash = shot(s, L.judge[0] + 0.15, L.judge[1] - 0.1);
+      O.podium(s, ...L.podium);
+      const flash = O.pistolShot(s, L.judge[0] + 0.15, L.judge[1] - 0.1);
       // Портал — прямо над стоп-линией: огни там, где машины ждут
       const countLabel = s.label(L.stopX, (v0 + v1) / 2, 2.85, ['count', '…'], {});
-      const counter = lightsGantry(s, L.stopX, [v0 - 0.15, v1 + 0.15], shape.lights, countLabel);
+      const counter = O.startLights(s, L.stopX, [v0 - 0.15, v1 + 0.15], shape.lights, countLabel);
 
       st.lanePlace('in', 1.4);
       st.lanePlace('out', 7.0);
