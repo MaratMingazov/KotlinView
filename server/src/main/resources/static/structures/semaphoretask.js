@@ -101,7 +101,7 @@ const SemaphoreTaskView = (() => {
     const sem = item.semaphoreId != null ? store.semaphores.items.get(item.semaphoreId) : null;
     const task = store.tasks.get(item.taskId) ?? { id: item.taskId ?? '?', durationMs: null, runs: new Map() };
     const enter = item.mode && item.mode !== 'ACQUIRE' ? 'tryAcquire' : 'acquire';
-    const out = sem ? [KV.renderBadges(pick(sem.methods, [enter, 'release'])), renderRoom(item, sem, task)] : [renderRoom(item, null, task)];
+    const out = sem ? [KV.renderBadges(sem.methods, [enter, 'release']), renderRoom(item, sem, task)] : [renderRoom(item, null, task)];
     const notice = KV.renderNotice(item);
     if (notice) out.push(notice);
     return out;
@@ -201,13 +201,6 @@ const SemaphoreTaskView = (() => {
     return frame;
   }
 
-  // Бейджи только этих методов: renderBadges рисует всё, что есть в inside
-  function pick(methods, names) {
-    return {
-      inside: Object.fromEntries(names.map(n => [n, methods.inside[n]])),
-      fade: Object.fromEntries(names.map(n => [n, methods.fade[n]])),
-    };
-  }
 
   // ---------- Описание для плитки (tiles.js) ----------
   // fair — булев параметр: плитка рисует его чекбоксом

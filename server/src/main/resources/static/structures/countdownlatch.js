@@ -28,7 +28,6 @@ const CountDownLatchView = (() => {
   const SHOT_KEEP_MS = 2500;       // сколько store помнит countDown: диораме — успеть показать судью
   const LEAVE_KEEP_MS = 2500;      // сколько store помнит вышедших: диораме — успеть проехать (плитка тает раньше)
   const DEPART_STEP_MS = 250;      // диорама: выпущенные трогаются по одной — с таким шагом, в порядке выхода из await
-  const FLASH_MS = KV.FADE_MS;     // вспышка count
 
   // ---------- REST ----------
   // Запросы и лог HTTP — UI.call из base.js. Latch появится по событию OBJECT_CREATED
@@ -169,16 +168,10 @@ const CountDownLatchView = (() => {
   /** count 2/3 — count крупно (вспыхивает), /initialCount — приглушённо; справа — кто только что позвал countDown */
   function renderCountLine(latch, now) {
     const s = latch.snapshot;
-    const line = KV.el('div', 'cdl-line');
-    const value = KV.el('span', 'cdl-count', s ? String(s.count) : '?');
-    if (latch.countAt != null && now - latch.countAt < FLASH_MS) {
-      value.style.animation = `cdl-count ${FLASH_MS}ms ease-out ${-(now - latch.countAt)}ms forwards`;
-    }
-    const fraction = KV.el('span', 'cdl-fraction');
-    fraction.append(value, KV.el('span', 'cdl-initial', s ? `/${s.initialCount}` : ''));
-    line.append(KV.el('span', 'cdl-key', 'count'), fraction, renderJudges(latch, now));
-    line.title = 'count — how many countDown() are still needed to open the gate (after the slash — the initial count). '
-      + 'It only goes down: the latch cannot be reset';
+    const line = KV.fraction('count', s?.count, s?.initialCount, { changedAt: latch.countAt,
+      title: 'count — how many countDown() are still needed to open the gate (after the slash — the initial count). '
+        + 'It only goes down: the latch cannot be reset' });
+    line.append(renderJudges(latch, now));
     return line;
   }
 

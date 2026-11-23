@@ -173,7 +173,7 @@ const LockSupportView = (() => {
     const ls = item.lockSupportId != null ? store.lockSupports.get(item.lockSupportId) : null;
     const task = store.tasks.get(item.taskId) ?? { durationMs: null, runs: new Map() };
     const park = item.mode === 'PARK_NANOS' ? 'parkNanos' : 'park';
-    const out = ls ? [KV.renderBadges(pick(ls.methods, [park, 'unpark']))] : [];
+    const out = ls ? [KV.renderBadges(ls.methods, [park, 'unpark'])] : [];
     const working = KV.el('div', 'room ls-room'), parked = KV.el('div', 'room ls-room');
     working.append(KV.el('span', 'room-label', 'task'));
     parked.append(KV.el('span', 'room-label', 'parked'));
@@ -250,13 +250,6 @@ const LockSupportView = (() => {
     return chip;
   }
 
-  // Бейджи только этих методов: renderBadges рисует всё, что есть в inside
-  function pick(methods, names) {
-    return {
-      inside: Object.fromEntries(names.map(n => [n, methods.inside[n]])),
-      fade: Object.fromEntries(names.map(n => [n, methods.fade[n]])),
-    };
-  }
 
   // ---------- Описание для плитки (tiles.js) ----------
 

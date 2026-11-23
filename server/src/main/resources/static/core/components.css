@@ -80,3 +80,16 @@
 .notice.info { color: var(--keyword); }
 /* Место держится, даже когда строки нет: плитка не прыгает */
 .notice.reserve { min-height: 20px; }
+
+/* --- строка «подпись дробь» (KV.fraction): state 1/2, count 2/3 — подпись мелко, дробь крупно --- */
+.fraction-line { display: flex; align-items: center; gap: 6px; margin-top: 8px; min-height: 18px; cursor: default; }
+.fraction-key { color: var(--dim); font-size: 11px; }
+.fraction { font-size: 15px; font-weight: bold; }
+.fraction-value { padding: 0 2px; border-radius: 3px; color: var(--num); }
+/* За дробью — приглушённо: это предел или начальное значение, а не то, что меняется */
+.fraction-total { color: var(--dim); }
+/* Значение изменилось: цифра вспыхивает */
+@keyframes fraction-changed {
+  from { background: color-mix(in srgb, var(--num) 35%, transparent); }
+  to { background: transparent; }
+}

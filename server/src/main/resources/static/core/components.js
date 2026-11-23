@@ -42,9 +42,11 @@ const KV = (() => {
     return phase;
   }
 
-  function renderBadges(state) {
+  /** Бейджи методов. only — какие и в каком порядке (по умолчанию — все, в порядке methodsState) */
+  function renderBadges(state, only = Object.keys(state.inside)) {
     const badges = el('div', 'badges');
-    for (const [method, threads] of Object.entries(state.inside)) {
+    for (const method of only) {
+      const threads = state.inside[method];
       const badge = el('span', 'method' + (threads.size > 0 ? ' active' : ''), method + (threads.size > 1 ? ` ×${threads.size}` : ''));
       // Бейдж пересоздаётся на каждый render. Отрицательная задержка продолжает затухание
       // с того места, где оно было, — без неё анимация начиналась бы заново и бейдж дёргался
@@ -189,6 +191,25 @@ const KV = (() => {
     return ops;
   }
 
+  // ---------- Строка «подпись дробь»: state 1/2, count 2/3 ----------
+
+  /**
+   * Строка «подпись дробь». value — крупно, цветом числа; вспыхивает, если менялось недавно (changedAt не старше
+   * FADE_MS: одно событие, один ритм); total — за дробью, приглушённо (null — без дроби); value null — «?».
+   * title — подсказка. Возвращает строку: в неё можно дописать своё (у latch — судьи)
+   */
+  function fraction(key, value, total, { changedAt = null, title = '' } = {}) {
+    const line = el('div', 'fraction-line');
+    const number = el('span', 'fraction-value', value == null ? '?' : String(value));
+    const elapsed = changedAt == null ? Infinity : performance.now() - changedAt;
+    if (elapsed < FADE_MS) number.style.animation = `fraction-changed ${FADE_MS}ms ease-out ${-elapsed}ms forwards`;
+    const both = el('span', 'fraction');
+    both.append(number, el('span', 'fraction-total', total == null ? '' : `/${total}`));
+    line.append(el('span', 'fraction-key', key), both);
+    line.title = title;
+    return line;
+  }
+
   // ---------- Строка-уведомление под плиткой: отказ REST и прочее ----------
 
   const NOTICE_MS = 4000; // сколько видна строка — успеть прочитать; тает к концу
@@ -220,7 +241,7 @@ const KV = (() => {
 
   return {
     el, methodsState, trackMethod, renderBadges, setEffect, renderOps,
-    errorMessage, notify, renderNotice,
+    errorMessage, notify, renderNotice, fraction,
     trackTask,
     threadColor, seconds, THREAD_LABEL, roomChip,
     // Ритм затухания бейджа — для всего, что гаснет вместе с ним (одно событие, один ритм)

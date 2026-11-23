@@ -243,17 +243,9 @@ const AQSView = (() => {
   function renderStateLine(group, now) {
     const s = group.snapshot;
     // Одной строкой: state 0/2 — значение state (вспыхивает при изменении), за дробью limit
-    const line = KV.el('div', 'aqs-line');
-    const value = KV.el('span', 'aqs-state', s ? String(s.state) : '?');
-    if (group.stateAt != null && now - group.stateAt < FLASH_MS) {
-      value.style.animation = `aqs-state ${FLASH_MS}ms ease-out ${-(now - group.stateAt)}ms forwards`;
-    }
-    const fraction = KV.el('span', 'aqs-fraction');
-    fraction.append(value, KV.el('span', 'aqs-limit', s ? `/${s.limit}` : ''));
-    line.append(KV.el('span', 'aqs-key', 'state'), fraction);
-    line.title = 'AQS state — an int with no meaning of its own: our hooks give it one. '
-      + 'acquire(arg) adds arg, release(arg) subtracts arg, tryAcquire refuses when state + arg > limit (after the slash)';
-    return line;
+    return KV.fraction('state', s?.state, s?.limit, { changedAt: group.stateAt,
+      title: 'AQS state — an int with no meaning of its own: our hooks give it one. '
+        + 'acquire(arg) adds arg, release(arg) subtracts arg, tryAcquire refuses when state + arg > limit (after the slash)' });
   }
 
   /**
