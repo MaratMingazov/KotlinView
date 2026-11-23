@@ -5,15 +5,13 @@ import mingazov.kotlinview.instrumented.concurrent.locks.ParkMode
 import mingazov.kotlinview.instrumented.concurrent.locks.registry.InstrumentedLockSupportRegistry
 import mingazov.kotlinview.instrumented.concurrent.locks.registry.InstrumentedLockSupportRunnableTaskRegistry
 import mingazov.kotlinview.instrumented.executor.registry.InstrumentedRunnableTaskRegistry
+import mingazov.kotlinview.service.concurrent.WorkerThreads
 import org.springframework.stereotype.Service
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Фасад задачи с парковкой: собирает её из частей (LockSupport, задача) и удаляет их вместе с ней.
  * Реестры в algorithms остаются независимыми — правило владения живёт только здесь, как у SemaphoreRunnableTaskService.
- * Потоки parker-N создаёт сам (run) и держит по имени, пока поток внутри run: unpark приходит по REST именем.
- * Закончил run — поток убирается из списка: ссылки на завершившиеся не копятся.
+ * Потоки parker-N — WorkerThreads: держит их по имени, пока поток внутри run, — unpark приходит по REST именем.
  */
 @Service
 class LockSupportRunnableTaskService(
@@ -22,12 +20,8 @@ class LockSupportRunnableTaskService(
     private val taskRegistry: InstrumentedRunnableTaskRegistry,
 ) {
 
-    private val parkerIds = AtomicLong()
-
-    // Имя потока → поток и id объекта, в чьём run он идёт (unpark — только своим потокам)
-    private class Parker(val thread: Thread, val ownerId: Long)
-
-    private val parkers = ConcurrentHashMap<String, Parker>()
+    // Владелец потока — id объекта, в чьём run он идёт (unpark — только своим потокам)
+    private val threads = WorkerThreads("parker")
 
     fun create(durationMs: Long, mode: ParkMode, timeoutMs: Long): InstrumentedLockSupportRunnableTask {
         // Проверяем до создания частей: иначе клиент получил бы OBJECT_CREATED частей без хозяина
@@ -48,26 +42,15 @@ class LockSupportRunnableTaskService(
      */
     fun run(id: Long): String {
         val parking = registry.get(id)
-        val name = "parker-${parkerIds.incrementAndGet()}"
-        val thread = Thread({
-            try {
-                parking.run()
-            } finally {
-                parkers.remove(name)
-            }
-        }, name)
-        thread.isDaemon = true             // спящий в park не должен мешать остановке приложения
-        parkers[name] = Parker(thread, id) // до start: unpark во время работы задачи найдёт поток
-        thread.start()
-        return name
+        return threads.start(id) { parking.run() }
     }
 
     /** unpark из HTTP-потока. Потока нет или он не этого объекта — NoSuchElementException (контроллер: 404). */
     fun unpark(id: Long, threadName: String) {
         val parking = registry.get(id)
-        val parker = parkers[threadName]?.takeIf { it.ownerId == id }
+        val thread = threads.threadOf(id, threadName)
             ?: throw NoSuchElementException("Thread $threadName is not running in LockSupportRunnableTask $id")
-        lockSupportRegistry.get(parking.lockSupportId).unpark(parker.thread)
+        lockSupportRegistry.get(parking.lockSupportId).unpark(thread)
     }
 
     // TODO: LockSupport и задачу можно удалить в обход фасада через DELETE /api/tasks/{id}

@@ -7,9 +7,9 @@ import mingazov.kotlinview.instrumented.concurrent.locks.InstrumentedAQSRunnable
 import mingazov.kotlinview.instrumented.concurrent.locks.registry.InstrumentedAQSRegistry
 import mingazov.kotlinview.instrumented.concurrent.locks.registry.InstrumentedAQSRunnableTaskRegistry
 import mingazov.kotlinview.instrumented.executor.registry.InstrumentedRunnableTaskRegistry
+import mingazov.kotlinview.service.concurrent.WorkerThreads
 import org.springframework.stereotype.Service
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Описание одной задачи группы. durationMs — сколько «работает» поток, уже войдя в AQS;
@@ -28,7 +28,7 @@ data class AQSTaskSpec(
  * очереди оказываются exclusive- и shared-узлы с разным arg. Создаёт и удаляет группу целиком: AQS отдельно не
  * удаляется, поэтому правила «нельзя удалить, пока на него ссылаются» не нужно. Реестры в algorithms независимы —
  * правило владения живёт только здесь, как у SemaphoreRunnableTaskService.
- * id группы — id её AQS. Потоки aqs-worker-N создаёт сам (run) и держит по имени, пока поток внутри run:
+ * id группы — id её AQS. Потоки aqs-worker-N — WorkerThreads: держит их по имени, пока поток внутри run, —
  * interrupt приходит по REST именем.
  */
 @Service
@@ -41,12 +41,8 @@ class AQSRunnableTaskService(
     // id AQS → задачи группы
     private val groups = ConcurrentHashMap<Long, List<InstrumentedAQSRunnableTask>>()
 
-    private val workerIds = AtomicLong()
-
-    // Имя потока → поток и id задачи, в чьём run он идёт (interrupt — только своим потокам)
-    private class Worker(val thread: Thread, val ownerId: Long)
-
-    private val workers = ConcurrentHashMap<String, Worker>()
+    // Владелец потока — id задачи, в чьём run он идёт (interrupt — только своим потокам)
+    private val threads = WorkerThreads("aqs-worker")
 
     fun create(limit: Int, specs: List<AQSTaskSpec>): Long {
         // Все проверки — до создания частей: иначе клиент получил бы OBJECT_CREATED частей без хозяина
@@ -73,18 +69,7 @@ class AQSRunnableTaskService(
      */
     fun run(taskId: Long): String {
         val task = registry.get(taskId)
-        val name = "aqs-worker-${workerIds.incrementAndGet()}"
-        val thread = Thread({
-            try {
-                task.run()
-            } finally {
-                workers.remove(name)
-            }
-        }, name)
-        thread.isDaemon = true                  // ждущий в очереди AQS не должен мешать остановке приложения
-        workers[name] = Worker(thread, taskId)  // до start: interrupt сразу после ответа найдёт поток
-        thread.start()
-        return name
+        return threads.start(taskId) { task.run() }
     }
 
     /**
@@ -95,9 +80,9 @@ class AQSRunnableTaskService(
      */
     fun interrupt(taskId: Long, threadName: String) {
         registry.get(taskId)
-        val worker = workers[threadName]?.takeIf { it.ownerId == taskId }
+        val thread = threads.threadOf(taskId, threadName)
             ?: throw NoSuchElementException("Thread $threadName is not running in AQSRunnableTask $taskId")
-        worker.thread.interrupt()
+        thread.interrupt()
     }
 
     // TODO: AQS и задачи можно удалить в обход фасада через DELETE /api/tasks/{id}

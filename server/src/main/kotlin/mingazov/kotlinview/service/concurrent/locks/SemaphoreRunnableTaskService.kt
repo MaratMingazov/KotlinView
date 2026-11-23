@@ -5,8 +5,8 @@ import mingazov.kotlinview.instrumented.concurrent.locks.InstrumentedSemaphoreRu
 import mingazov.kotlinview.instrumented.concurrent.locks.registry.InstrumentedSemaphoreRegistry
 import mingazov.kotlinview.instrumented.concurrent.locks.registry.InstrumentedSemaphoreRunnableTaskRegistry
 import mingazov.kotlinview.instrumented.executor.registry.InstrumentedRunnableTaskRegistry
+import mingazov.kotlinview.service.concurrent.WorkerThreads
 import org.springframework.stereotype.Service
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Фасад задачи под семафором: собирает её из частей (семафор, задача) и удаляет их вместе с ней.
@@ -19,7 +19,8 @@ class SemaphoreRunnableTaskService(
     private val taskRegistry: InstrumentedRunnableTaskRegistry,
 ) {
 
-    private val runnerIds = AtomicLong()
+    // Владелец потока — id объекта, в чьём run он идёт. По имени потоки пока никто не ищет (interrupt здесь нет)
+    private val threads = WorkerThreads("sem-runner")
 
     /** Объект владеет своими частями: создаёт их сам и удаляет вместе с собой. */
     fun create(permits: Int, fair: Boolean, durationMs: Long, mode: AcquireMode, timeoutMs: Long): InstrumentedSemaphoreRunnableTask {
@@ -44,10 +45,7 @@ class SemaphoreRunnableTaskService(
      */
     fun run(id: Long): String {
         val guarded = registry.get(id)
-        val thread = Thread(guarded, "sem-runner-${runnerIds.incrementAndGet()}")
-        thread.isDaemon = true // поток, ждущий в acquire, не должен мешать остановке приложения
-        thread.start()
-        return thread.name
+        return threads.start(id) { guarded.run() }
     }
 
     // TODO: семафор и задачу можно удалить в обход фасада через DELETE /api/semaphore/{id} и /api/tasks/{id}

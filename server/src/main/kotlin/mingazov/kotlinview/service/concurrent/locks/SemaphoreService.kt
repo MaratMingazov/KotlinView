@@ -2,9 +2,9 @@ package mingazov.kotlinview.service.concurrent.locks
 
 import mingazov.kotlinview.instrumented.concurrent.locks.InstrumentedSemaphore
 import mingazov.kotlinview.instrumented.concurrent.locks.registry.InstrumentedSemaphoreRegistry
+import mingazov.kotlinview.service.concurrent.WorkerThreads
 import org.springframework.stereotype.Service
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Блокирующие acquire / tryAcquire с таймаутом — в новом daemon-потоке, как take у очередей: HTTP отвечает сразу
@@ -17,7 +17,8 @@ class SemaphoreService(
     private val registry: InstrumentedSemaphoreRegistry,
 ) {
 
-    private val acquirerIds = AtomicLong()
+    // Потоки acquirer-N; владелец — id семафора. По имени их пока никто не ищет
+    private val threads = WorkerThreads("acquirer")
 
     fun create(permits: Int, fair: Boolean): InstrumentedSemaphore = registry.create(permits, fair)
     fun get(semaphoreId: Long): InstrumentedSemaphore = registry.get(semaphoreId)
@@ -28,7 +29,7 @@ class SemaphoreService(
         val semaphore = registry.get(semaphoreId)
         // Проверяем здесь, а не в потоке: иначе ошибка ушла бы только в METHOD_OUT_FAILED, а HTTP ответил бы 202
         require(permits >= 0) { "permits must be >= 0" }
-        return startDaemon { semaphore.acquire(permits) }
+        return threads.start(semaphoreId) { semaphore.acquire(permits) }
     }
 
     /** Неблокирующий: true — забрал, false — не хватило. Обгоняет очередь даже у честного семафора. */
@@ -38,7 +39,7 @@ class SemaphoreService(
     fun tryAcquireTimeout(semaphoreId: Long, permits: Int, timeoutMs: Long): String {
         val semaphore = registry.get(semaphoreId)
         require(permits >= 0) { "permits must be >= 0" }
-        return startDaemon { semaphore.tryAcquire(permits, timeoutMs, TimeUnit.MILLISECONDS) }
+        return threads.start(semaphoreId) { semaphore.tryAcquire(permits, timeoutMs, TimeUnit.MILLISECONDS) }
     }
 
     fun release(semaphoreId: Long, permits: Int) = registry.get(semaphoreId).release(permits)
@@ -48,13 +49,5 @@ class SemaphoreService(
         val semaphore = registry.get(semaphoreId)
         check(!semaphore.hasQueuedThreads()) { "Semaphore $semaphoreId has waiting threads" }
         registry.remove(semaphoreId)
-    }
-
-    // Ждущий поток не должен мешать остановке приложения
-    private fun startDaemon(body: () -> Unit): String {
-        val thread = Thread(body, "acquirer-${acquirerIds.incrementAndGet()}")
-        thread.isDaemon = true
-        thread.start()
-        return thread.name
     }
 }
